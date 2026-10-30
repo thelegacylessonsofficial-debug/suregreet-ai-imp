@@ -17,6 +17,9 @@ function getTransporter() {
         user: config.smtp.user,
         pass: config.smtp.pass,
       },
+      connectionTimeout: 5000, // 5s connection timeout
+      greetingTimeout: 5000,
+      socketTimeout: 8000,
     });
   }
   return transporter;
@@ -42,6 +45,6 @@ export async function sendEmail({ to, subject, html, text }) {
     return { success: true, messageId: info.messageId };
   } catch (err) {
     console.error(`[Mailer] Error sending email to ${to}:`, err.message);
-    throw err;
+    return { success: false, error: err.message };
   }
 }
