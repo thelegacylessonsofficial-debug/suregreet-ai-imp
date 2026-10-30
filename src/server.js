@@ -4,7 +4,10 @@ import { config } from './config.js';
 import { calcomRouter } from './routes/calcomWebhook.js';
 import { retellRouter } from './routes/retellWebhook.js';
 import { leadCallbackRouter } from './routes/leadCallbackWebhook.js';
+import { telegramRouter } from './routes/telegramWebhook.js';
 import { initReminderCron, runDailyReminders } from './cron/reminderCron.js';
+import { initAccountabilityCron } from './cron/accountabilityCron.js';
+import { setTelegramWebhook } from './services/telegram.js';
 
 const app = express();
 
@@ -23,12 +26,15 @@ app.use(express.urlencoded({ extended: true }));
 app.get('/', (req, res) => {
   res.json({
     status: 'online',
-    service: 'Nexflo / SureGreet AI Automation Hub',
+    agency: 'SureGreet AI',
+    bot: '@SureGreetaiArchit_bot',
     time: new Date().toISOString(),
     endpoints: [
       'POST /webhook/calcom-booking-webhook',
       'POST /webhook/retell-post-call-webhook',
       'POST /webhook/suregreet-lead-callback',
+      'POST /webhook/telegram',
+      'GET /set-webhook',
       'POST /test/run-reminders',
     ],
   });
@@ -38,10 +44,18 @@ app.get('/health', (req, res) => {
   res.json({ status: 'ok', uptime: process.uptime() });
 });
 
-// Webhook Routes (exact 1:1 match with your n8n URLs)
+// Telegram Setup Endpoint
+app.get('/set-webhook', async (req, res) => {
+  const renderUrl = req.query.render_url || 'https://suregreet-automation.onrender.com';
+  const result = await setTelegramWebhook(renderUrl);
+  res.json({ success: Boolean(result?.ok), telegram_response: result });
+});
+
+// Webhook Routes
 app.use(['/webhook/calcom-booking-webhook', '/calcom-booking-webhook'], calcomRouter);
 app.use(['/webhook/retell-post-call-webhook', '/retell-post-call-webhook'], retellRouter);
 app.use(['/webhook/suregreet-lead-callback', '/suregreet-lead-callback'], leadCallbackRouter);
+app.use(['/webhook/telegram', '/telegram'], telegramRouter);
 
 // Manual trigger for testing 24h reminders immediately
 app.all('/test/run-reminders', async (req, res) => {
@@ -57,9 +71,10 @@ app.all('/test/run-reminders', async (req, res) => {
 const PORT = config.port;
 app.listen(PORT, () => {
   console.log(`\n======================================================`);
-  console.log(`🚀 Nexflo Automation Server running on port ${PORT}`);
-  console.log(`📡 Ready to receive webhooks from Cal.com, Retell AI, & Website`);
+  console.log(`🚀 SureGreet AI Automation Hub running on port ${PORT}`);
+  console.log(`📡 Ready for Cal.com, Retell AI, HubSpot, & Telegram Bot`);
   console.log(`======================================================\n`);
 
   initReminderCron();
+  initAccountabilityCron();
 });
