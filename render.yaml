@@ -1,6 +1,6 @@
 services:
   - type: web
-    name: nexflo-automation-server
+    name: suregreet-automation
     runtime: node
     plan: free
     region: oregon
@@ -28,9 +28,9 @@ services:
       - key: EMAIL_FROM
         value: "Nexflo AI <architd062@gmail.com>"
       - key: CAL_API_KEY
-        value: cal_live_e1cb6f77bff0165d37acb1e6a8f5d2c0
+        sync: false
       - key: HUBSPOT_ACCESS_TOKEN
-        value: pat-na2-22a3f454-e738-48df-9041-ee53a3608f23
+        sync: false
       - key: RETELL_API_KEY
         sync: false
       - key: RETELL_AGENT_ID
