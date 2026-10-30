@@ -33,6 +33,7 @@ retellRouter.post('/', async (req, res) => {
   const sentiment = callAnalysis.user_sentiment || 'Neutral';
   const callSuccessful = Boolean(callAnalysis.call_successful);
 
+  // Exact outcome logic from n8n
   const summaryLower = callSummary.toLowerCase();
   let callOutcome = 'Inquiry';
   if (summaryLower.includes('transfer')) {
@@ -51,8 +52,10 @@ retellRouter.post('/', async (req, res) => {
   const startMillis = call.start_timestamp ? Number(call.start_timestamp) : Date.now();
   const callDate = DateTime.fromMillis(startMillis).setZone(config.timezone).toFormat('yyyy-MM-dd hh:mm a');
 
+  console.log(`[Retell Webhook] Call ${callId} ended for ${callerPhone}. Outcome: ${callOutcome}`);
+
+  // 1. Google Sheets Append (Isolated try/catch)
   try {
-    // 1. Append to Google Sheets
     await appendCallLogToSheet({
       callDate,
       callerPhone,
@@ -63,8 +66,15 @@ retellRouter.post('/', async (req, res) => {
       recordingUrl,
       callId,
     });
+  } catch (sheetErr) {
+    console.error('[Retell Webhook] Google Sheets error (non-fatal):', sheetErr.message);
+  }
 
-    // 2. Format HubSpot Note HTML
+  // 2. HubSpot Contact & Note Sync (Isolated try/catch)
+  let contactId = null;
+  let isNewLead = false;
+
+  try {
     const noteHtml = `<div style='border: 1px solid #cbd5e1; border-radius: 8px; padding: 16px; background-color: #f8fafc; font-family: sans-serif;'>
       <h3 style='margin-top: 0; color: #0f172a;'>📞 SureGreet AI Voice Call Log</h3>
       <table style='width: 100%; border-collapse: collapse; font-size: 14px;'>
@@ -82,11 +92,7 @@ retellRouter.post('/', async (req, res) => {
       </div>
     </div>`;
 
-    // 3. Search HubSpot Contact
-    let existingContact = await searchContactByPhone(callerPhone);
-    let contactId = null;
-    let isNewLead = false;
-
+    const existingContact = await searchContactByPhone(callerPhone);
     if (existingContact) {
       contactId = existingContact.id;
     } else {
@@ -98,8 +104,12 @@ retellRouter.post('/', async (req, res) => {
     if (contactId) {
       await createNoteAndAssociate({ contactId, noteHtml });
     }
+  } catch (crmErr) {
+    console.error('[Retell Webhook] HubSpot CRM error (non-fatal):', crmErr.message);
+  }
 
-    // 4. Send Email Summary to Owner
+  // 3. Email Notification to Owner (Isolated try/catch)
+  try {
     const emailSubject = isNewLead
       ? `📞 New Lead Call: ${callerPhone} — [${callOutcome}]`
       : `📞 Call Summary: ${callerPhone} — [${callOutcome}]`;
@@ -119,15 +129,15 @@ retellRouter.post('/', async (req, res) => {
         transcript,
       }),
     });
-
-    return res.status(200).json({
-      status: 'success',
-      call_id: callId,
-      call_outcome: callOutcome,
-      contact_id: contactId,
-    });
-  } catch (err) {
-    console.error('[Retell Webhook] Processing error:', err);
-    return res.status(500).json({ status: 'error', error: err.message });
+  } catch (mailErr) {
+    console.error('[Retell Webhook] Email dispatch error (non-fatal):', mailErr.message);
   }
+
+  // Always respond with 200 OK so Retell AI doesn't retry
+  return res.status(200).json({
+    status: 'success',
+    call_id: callId,
+    call_outcome: callOutcome,
+    contact_id: contactId,
+  });
 });
