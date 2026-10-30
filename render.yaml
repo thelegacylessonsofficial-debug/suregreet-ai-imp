@@ -1,0 +1,43 @@
+services:
+  - type: web
+    name: nexflo-automation-server
+    runtime: node
+    plan: free
+    region: oregon
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      - key: PORT
+        value: 10000
+      - key: OWNER_EMAIL
+        value: architd062@gmail.com
+      - key: TIMEZONE
+        value: America/New_York
+      - key: SMTP_HOST
+        value: smtp.gmail.com
+      - key: SMTP_PORT
+        value: 465
+      - key: SMTP_SECURE
+        value: "true"
+      - key: SMTP_USER
+        value: architd062@gmail.com
+      - key: SMTP_PASS
+        sync: false
+      - key: EMAIL_FROM
+        value: "Nexflo AI <architd062@gmail.com>"
+      - key: CAL_API_KEY
+        value: cal_live_e1cb6f77bff0165d37acb1e6a8f5d2c0
+      - key: HUBSPOT_ACCESS_TOKEN
+        value: pat-na2-22a3f454-e738-48df-9041-ee53a3608f23
+      - key: RETELL_API_KEY
+        sync: false
+      - key: RETELL_AGENT_ID
+        sync: false
+      - key: RETELL_FROM_NUMBER
+        value: "+1XXXXXXXXXX"
+      - key: GOOGLE_SHEET_ID
+        value: 1Ev8UJfc8kvBE2C6o6eJRr2aJfNKflAKWGiRgVg7svXM
+      - key: GOOGLE_SHEET_TAB_NAME
+        value: "📞 Call Logs"
