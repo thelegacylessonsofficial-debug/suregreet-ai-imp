@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { DateTime } from 'luxon';
 import { config } from '../config.js';
 import { sendEmail } from '../services/mailer.js';
+import { sendAutomationAlert } from '../services/alertService.js';
 import {
   searchContactByPhone,
   createContactFromCall,
@@ -77,6 +78,13 @@ retellRouter.post('/', async (req, res) => {
       });
     } catch (sheetErr) {
       console.error('[Retell Webhook] Google Sheets error:', sheetErr.message);
+      await sendAutomationAlert({
+        automationName: 'Google Sheets Call Logging (Retell AI)',
+        action: 'appendCallLogToSheet',
+        error: sheetErr,
+        payload: { callId, callerPhone, callDate, callOutcome },
+        severity: 'MEDIUM',
+      });
     }
 
     // 2. HubSpot Contact & Note Sync
@@ -115,6 +123,13 @@ retellRouter.post('/', async (req, res) => {
       }
     } catch (crmErr) {
       console.error('[Retell Webhook] HubSpot CRM error:', crmErr.message);
+      await sendAutomationAlert({
+        automationName: 'HubSpot CRM Sync (Retell AI Call)',
+        action: 'createNoteAndAssociate',
+        error: crmErr,
+        payload: { callId, callerPhone, callOutcome, contactId },
+        severity: 'HIGH',
+      });
     }
 
     // 3. Email Notification to Owner
@@ -123,7 +138,7 @@ retellRouter.post('/', async (req, res) => {
         ? `📞 New Lead Call: ${callerPhone} — [${callOutcome}]`
         : `📞 Call Summary: ${callerPhone} — [${callOutcome}]`;
 
-      await sendEmail({
+      const sendRes = await sendEmail({
         to: config.ownerEmail,
         subject: emailSubject,
         html: ownerCallSummaryTemplate({
@@ -138,10 +153,28 @@ retellRouter.post('/', async (req, res) => {
           transcript,
         }),
       });
+
+      if (sendRes && !sendRes.success) {
+        console.warn('[Retell Webhook] Email delivery flagged error:', sendRes.error);
+      }
     } catch (mailErr) {
       console.error('[Retell Webhook] Email error:', mailErr.message);
+      await sendAutomationAlert({
+        automationName: 'Email Notification (Retell AI Call)',
+        action: 'sendOwnerCallSummaryEmail',
+        error: mailErr,
+        payload: { callId, callerPhone, callOutcome },
+        severity: 'MEDIUM',
+      });
     }
-  })().catch((err) => {
+  })().catch(async (err) => {
     console.error('[Retell Webhook] Background task error:', err);
+    await sendAutomationAlert({
+      automationName: 'Retell AI Background Execution',
+      action: 'processCallEndedBackground',
+      error: err,
+      payload: { callId, callerPhone, callOutcome },
+      severity: 'HIGH',
+    });
   });
 });
