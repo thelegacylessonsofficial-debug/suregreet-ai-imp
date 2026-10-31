@@ -18,6 +18,32 @@ export async function sendTelegram(text, chatId = TELEGRAM_CHAT_ID) {
   }
 }
 
+export async function sendTelegramHtml(html, chatId = TELEGRAM_CHAT_ID) {
+  const url = `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`;
+  try {
+    const res = await axios.post(url, {
+      chat_id: chatId,
+      text: html,
+      parse_mode: 'HTML',
+    });
+    return res.data;
+  } catch (err) {
+    console.error('[Telegram HTML] Send error:', err.response?.data || err.message);
+    // Fallback: strip tags and send as plain text
+    try {
+      const stripped = html.replace(/<[^>]*>?/gm, '');
+      const fb = await axios.post(url, {
+        chat_id: chatId,
+        text: stripped,
+      });
+      return fb.data;
+    } catch (fbErr) {
+      console.error('[Telegram Fallback] Send error:', fbErr.response?.data || fbErr.message);
+      return null;
+    }
+  }
+}
+
 export function generateCoFounderReply(userText) {
   const textLower = (userText || '').trim().toLowerCase();
 
