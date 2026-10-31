@@ -87,9 +87,9 @@ export function generateCoFounderReply(userText) {
       "• Run and test lead finder script\n" +
       "• Pull 5 MedSpas on Meta Ads Library\n" +
       "• Post Skool free pilot offer (for video testimonials)\n\n" +
-      "*3. Sales & Accent Training:*\n" +
-      "• 15-min US accent vocal practice (25% slower)\n" +
-      "• Alex Hormozi objection roleplay drills\n\n" +
+      "*3. Sales & English Training (05:15–07:15 PM IST):*\n" +
+      "• 2-Hour deep vocal practice (speak 25% slower)\n" +
+      "• Alex Hormozi CLOSER & objection roleplay\n\n" +
       "*4. Content Planning:*\n" +
       "• Research 3 screen-first video topics for IG & YouTube\n\n" +
       "Reply with your progress anytime, Founder! 🔥"
