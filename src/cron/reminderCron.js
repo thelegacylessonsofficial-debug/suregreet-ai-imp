@@ -3,6 +3,7 @@ import { DateTime } from 'luxon';
 import { config } from '../config.js';
 import { getCalAcceptedBookings } from '../services/calcom.js';
 import { sendEmail } from '../services/mailer.js';
+import { sendAutomationAlert } from '../services/alertService.js';
 import { customerReminderTemplate, ownerDailySummaryTemplate } from '../templates/emailTemplates.js';
 
 export async function runDailyReminders() {
@@ -81,6 +82,13 @@ export function initReminderCron() {
         await runDailyReminders();
       } catch (err) {
         console.error('[Cron] Error during daily reminders job:', err);
+        await sendAutomationAlert({
+          automationName: 'Cal.com 24h Daily Reminders Cron',
+          action: 'runDailyReminders',
+          error: err,
+          payload: { cronSchedule: '0 9 * * *', timezone: config.timezone },
+          severity: 'HIGH',
+        });
       }
     },
     {
