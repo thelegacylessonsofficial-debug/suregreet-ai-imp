@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { dispatchRetellCall, sendSlackAlert } from '../services/retell.js';
 import { createLeadFromCallback } from '../services/hubspot.js';
+import { sendAutomationAlert } from '../services/alertService.js';
 
 export const leadCallbackRouter = Router();
 
@@ -31,22 +32,45 @@ leadCallbackRouter.post('/', async (req, res) => {
     console.log(`[Lead Intake] Valid lead submission for ${fullName} (${phoneE164})`);
 
     // 2. Dispatch Retell AI Call
-    const retellResult = await dispatchRetellCall({
-      toNumber: phoneE164,
-      customerName: fullName,
-      industry,
-      bottleneckNotes,
-    });
-    const callId = retellResult?.call_id || '';
+    let callId = '';
+    try {
+      const retellResult = await dispatchRetellCall({
+        toNumber: phoneE164,
+        customerName: fullName,
+        industry,
+        bottleneckNotes,
+      });
+      callId = retellResult?.call_id || '';
+    } catch (retellErr) {
+      console.error('[Lead Intake] Retell call dispatch failed:', retellErr.message);
+      await sendAutomationAlert({
+        automationName: 'Retell AI Outbound Dispatch (Lead Callback)',
+        action: 'dispatchRetellCall',
+        error: retellErr,
+        payload: { fullName, phoneE164, industry },
+        severity: 'HIGH',
+      });
+    }
 
     // 3. Create Lead in HubSpot CRM
-    await createLeadFromCallback({
-      fullName,
-      email,
-      phoneE164,
-      industry,
-      bottleneckNotes,
-    });
+    try {
+      await createLeadFromCallback({
+        fullName,
+        email,
+        phoneE164,
+        industry,
+        bottleneckNotes,
+      });
+    } catch (crmErr) {
+      console.error('[Lead Intake] HubSpot lead creation failed:', crmErr.message);
+      await sendAutomationAlert({
+        automationName: 'HubSpot Lead Creation (Lead Callback)',
+        action: 'createLeadFromCallback',
+        error: crmErr,
+        payload: { fullName, email, phoneE164, industry },
+        severity: 'HIGH',
+      });
+    }
 
     // 4. Send Slack / Telegram Alert
     const slackText = `🚨 *New Demo Triggered:* ${fullName} (${industry}) just requested an AI callback at \`${phoneE164}\`!\n*Bottleneck:* ${bottleneckNotes || 'None noted'}\n*Call Dispatched:* ${callId ? `✅ Yes (ID: ${callId})` : '⚠️ Retell fallback activated'}`;
@@ -62,6 +86,13 @@ leadCallbackRouter.post('/', async (req, res) => {
     });
   } catch (err) {
     console.error('[Lead Intake] Error handling callback request:', err);
+    await sendAutomationAlert({
+      automationName: 'SureGreet Lead Intake Webhook',
+      action: 'processLeadSubmission',
+      error: err,
+      payload: { fullName, phoneE164, email, industry },
+      severity: 'CRITICAL',
+    });
     return res.status(500).json({ status: 'error', error: err.message });
   }
 });
