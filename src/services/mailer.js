@@ -26,6 +26,37 @@ function getTransporter() {
 }
 
 export async function sendEmail({ to, subject, html, text }) {
+  // 1. Try Resend HTTP API (Port 443 — bypasses any cloud SMTP port blocking)
+  const resendApiKey = process.env.RESEND_API_KEY;
+  if (resendApiKey) {
+    try {
+      const res = await fetch('https://api.resend.com/emails', {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${resendApiKey}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          from: process.env.RESEND_FROM || 'SureGreet AI <onboarding@resend.dev>',
+          to: Array.isArray(to) ? to : [to],
+          subject,
+          html,
+          text: text || '',
+        }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        console.log(`[Mailer:Resend] Email sent successfully to ${to} (ID: ${data.id})`);
+        return { success: true, messageId: data.id, provider: 'resend' };
+      } else {
+        console.warn(`[Mailer:Resend] Warning from API:`, data.message || data);
+      }
+    } catch (resendErr) {
+      console.warn(`[Mailer:Resend] Failed HTTP dispatch, trying SMTP fallback:`, resendErr.message);
+    }
+  }
+
+  // 2. Fallback to Nodemailer SMTP
   const mailClient = getTransporter();
 
   if (!mailClient) {
@@ -41,10 +72,10 @@ export async function sendEmail({ to, subject, html, text }) {
       html,
       text: text || '',
     });
-    console.log(`[Mailer] Email sent successfully to: ${to} (MessageId: ${info.messageId})`);
-    return { success: true, messageId: info.messageId };
+    console.log(`[Mailer:SMTP] Email sent successfully to: ${to} (MessageId: ${info.messageId})`);
+    return { success: true, messageId: info.messageId, provider: 'smtp' };
   } catch (err) {
-    console.error(`[Mailer] Error sending email to ${to}:`, err.message);
+    console.error(`[Mailer:SMTP] Error sending email to ${to}:`, err.message);
     return { success: false, error: err.message };
   }
 }
