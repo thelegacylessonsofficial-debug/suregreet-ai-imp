@@ -63,31 +63,18 @@ app.get('/alerts/recent', (req, res) => {
   });
 });
 
-// Test alert trigger to verify Email + Telegram delivery
+// Clean notification dispatcher endpoint
 app.all('/test/trigger-alert', async (req, res) => {
-  const customMessage = req.query.msg || req.body?.msg || 'Simulated failure: HubSpot API 403 MISSING_SCOPES: crm.objects.contacts.write';
-  const automationName = req.query.automation || req.body?.automation || 'HubSpot CRM Sync (Test Trigger)';
-
-  const simulatedError = new Error(customMessage);
-  simulatedError.status = 403;
-
-  const alertResult = await sendAutomationAlert({
-    automationName,
-    action: 'test_sentinel_simulation',
-    error: simulatedError,
-    payload: {
-      test: true,
-      initiatedBy: req.ip || 'Admin',
-      sampleContact: { name: 'Dr. Test Lead', email: 'lead@medspatest.com', phone: '+14155552671' },
-      timestamp: new Date().toISOString(),
-    },
-    severity: 'HIGH',
-  });
+  const message = req.body?.message || req.body?.msg || req.query?.msg || 'SureGreet AI Sentinel Online';
+  
+  // Send clean message directly to Telegram without triggering fake HubSpot error alerts
+  const tgResult = await sendTelegram(message);
 
   res.json({
-    status: 'alert_dispatched',
-    result: alertResult,
-    sentinel_note: 'Alert dispatches to architd062@gmail.com and Telegram chat 7076170210',
+    status: 'message_dispatched',
+    telegramSent: Boolean(tgResult),
+    message,
+    timestamp: new Date().toISOString(),
   });
 });
 
