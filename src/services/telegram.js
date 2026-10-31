@@ -13,8 +13,17 @@ export async function sendTelegram(text, chatId = TELEGRAM_CHAT_ID) {
     });
     return res.data;
   } catch (err) {
-    console.error('[Telegram] Send error:', err.response?.data || err.message);
-    return null;
+    console.error('[Telegram Markdown] Send error, retrying plain text fallback:', err.response?.data || err.message);
+    try {
+      const fb = await axios.post(url, {
+        chat_id: chatId,
+        text: text.replace(/[*_`]/g, ''),
+      });
+      return fb.data;
+    } catch (fbErr) {
+      console.error('[Telegram Fallback] Send error:', fbErr.response?.data || fbErr.message);
+      return null;
+    }
   }
 }
 
@@ -58,7 +67,16 @@ export function generateCoFounderReply(userText) {
       "👉 `/audit` — Get the MedSpa outreach script\n\n" +
       "Or message me anything you're working on!"
     );
-  } else if (textLower.includes('/tasks') || textLower.includes('task')) {
+  } else if (
+    textLower.includes('/tasks') || 
+    textLower.includes('/task') || 
+    textLower.includes('task') || 
+    textLower.includes('todo') || 
+    textLower.includes('to-do') || 
+    textLower.includes('to do') ||
+    textLower === 'tasks' ||
+    textLower === 'task'
+  ) {
     return (
       "🎯 *SUREGREET AI DAILY TO-DO LIST*\n\n" +
       "*1. Profiles & Presence:*\n" +
@@ -66,7 +84,7 @@ export function generateCoFounderReply(userText) {
       "• Upwork & Freelancer profiles (use pre-written template)\n" +
       "• Website testing & link review\n\n" +
       "*2. Lead Generation & Automations:*\n" +
-      "• Run & test lead_finder.py script\n" +
+      "• Run and test lead finder script\n" +
       "• Pull 5 MedSpas on Meta Ads Library\n" +
       "• Post Skool free pilot offer (for video testimonials)\n\n" +
       "*3. Sales & Accent Training:*\n" +
