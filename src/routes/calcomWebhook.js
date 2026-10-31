@@ -3,6 +3,7 @@ import { DateTime } from 'luxon';
 import { config } from '../config.js';
 import { sendEmail } from '../services/mailer.js';
 import { createOrUpdateContactFromBooking } from '../services/hubspot.js';
+import { sendAutomationAlert } from '../services/alertService.js';
 import {
   ownerBookingCreatedTemplate,
   customerBookingConfirmedTemplate,
@@ -75,11 +76,22 @@ calcomRouter.post('/', async (req, res) => {
       }
 
       // 3. Sync with HubSpot CRM
-      await createOrUpdateContactFromBooking({
-        customerName,
-        customerEmail,
-        customerPhone,
-      });
+      try {
+        await createOrUpdateContactFromBooking({
+          customerName,
+          customerEmail,
+          customerPhone,
+        });
+      } catch (crmErr) {
+        console.error('[Cal.com] HubSpot Sync Error:', crmErr.message);
+        await sendAutomationAlert({
+          automationName: 'HubSpot CRM Sync (Cal.com Booking)',
+          action: 'createOrUpdateContactFromBooking',
+          error: crmErr,
+          payload: { customerName, customerEmail, customerPhone, bookingId, eventTitle },
+          severity: 'HIGH',
+        });
+      }
 
       return res.status(200).json({ status: 'success', action: 'booking_created' });
     }
@@ -160,6 +172,13 @@ calcomRouter.post('/', async (req, res) => {
     return res.status(200).json({ status: 'ignored', message: `Unhandled event: ${triggerEvent}` });
   } catch (err) {
     console.error('[Cal.com Webhook] Error processing webhook:', err);
+    await sendAutomationAlert({
+      automationName: 'Cal.com Booking Webhook',
+      action: triggerEvent || 'UNKNOWN_TRIGGER',
+      error: err,
+      payload: { bookingId, customerName, customerEmail, triggerEvent },
+      severity: 'CRITICAL',
+    });
     return res.status(500).json({ status: 'error', error: err.message });
   }
 });
