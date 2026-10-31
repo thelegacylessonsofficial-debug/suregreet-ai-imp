@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { sendTelegram, generateCoFounderReply } from '../services/telegram.js';
+import { sendAutomationAlert } from '../services/alertService.js';
 
 export const telegramRouter = Router();
 
@@ -23,6 +24,13 @@ telegramRouter.post('/', async (req, res) => {
     }
   } catch (err) {
     console.error('[Telegram Webhook] Error processing incoming update:', err.message);
+    await sendAutomationAlert({
+      automationName: 'Telegram 2-Way Bot Webhook',
+      action: 'processIncomingMessage',
+      error: err,
+      payload: data,
+      severity: 'HIGH',
+    });
   }
 
   // Telegram expects 200 OK immediately
