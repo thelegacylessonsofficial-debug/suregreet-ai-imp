@@ -8,6 +8,7 @@ import { telegramRouter } from './routes/telegramWebhook.js';
 import { initReminderCron, runDailyReminders } from './cron/reminderCron.js';
 import { initAccountabilityCron } from './cron/accountabilityCron.js';
 import { setTelegramWebhook } from './services/telegram.js';
+import { sendAutomationAlert, getRecentAlerts } from './services/alertService.js';
 
 const app = express();
 
@@ -35,6 +36,8 @@ app.get('/', (req, res) => {
       'POST /webhook/suregreet-lead-callback',
       'POST /webhook/telegram',
       'GET /set-webhook',
+      'GET /alerts/recent',
+      'ALL /test/trigger-alert',
       'POST /test/run-reminders',
     ],
   });
@@ -49,6 +52,43 @@ app.get('/set-webhook', async (req, res) => {
   const renderUrl = req.query.render_url || 'https://suregreet-automation.onrender.com';
   const result = await setTelegramWebhook(renderUrl);
   res.json({ success: Boolean(result?.ok), telegram_response: result });
+});
+
+// Alerts Sentinel Endpoints
+app.get('/alerts/recent', (req, res) => {
+  res.json({
+    status: 'success',
+    count: getRecentAlerts().length,
+    alerts: getRecentAlerts(),
+  });
+});
+
+// Test alert trigger to verify Email + Telegram delivery
+app.all('/test/trigger-alert', async (req, res) => {
+  const customMessage = req.query.msg || req.body?.msg || 'Simulated failure: HubSpot API 403 MISSING_SCOPES: crm.objects.contacts.write';
+  const automationName = req.query.automation || req.body?.automation || 'HubSpot CRM Sync (Test Trigger)';
+
+  const simulatedError = new Error(customMessage);
+  simulatedError.status = 403;
+
+  const alertResult = await sendAutomationAlert({
+    automationName,
+    action: 'test_sentinel_simulation',
+    error: simulatedError,
+    payload: {
+      test: true,
+      initiatedBy: req.ip || 'Admin',
+      sampleContact: { name: 'Dr. Test Lead', email: 'lead@medspatest.com', phone: '+14155552671' },
+      timestamp: new Date().toISOString(),
+    },
+    severity: 'HIGH',
+  });
+
+  res.json({
+    status: 'alert_dispatched',
+    result: alertResult,
+    sentinel_note: 'Alert dispatches to architd062@gmail.com and Telegram chat 7076170210',
+  });
 });
 
 // Webhook Routes
@@ -67,12 +107,47 @@ app.all('/test/run-reminders', async (req, res) => {
   }
 });
 
+// Global Express Error Middleware
+app.use(async (err, req, res, next) => {
+  console.error('[Global Error Middleware]', err);
+  await sendAutomationAlert({
+    automationName: `Express Server Route [${req.method} ${req.path}]`,
+    action: 'http_request_pipeline',
+    error: err,
+    payload: { body: req.body, query: req.query, ip: req.ip },
+    severity: 'HIGH',
+  });
+  res.status(500).json({ status: 'error', message: err.message });
+});
+
+// Process-level unhandled exception handlers
+process.on('unhandledRejection', (reason) => {
+  console.error('[Unhandled Rejection]', reason);
+  sendAutomationAlert({
+    automationName: 'Node.js Process (Unhandled Rejection)',
+    action: 'unhandled_promise_rejection',
+    error: reason instanceof Error ? reason : new Error(String(reason)),
+    severity: 'CRITICAL',
+  }).catch((e) => console.error('Failed to dispatch alert on unhandledRejection:', e));
+});
+
+process.on('uncaughtException', (err) => {
+  console.error('[Uncaught Exception]', err);
+  sendAutomationAlert({
+    automationName: 'Node.js Process (Uncaught Exception)',
+    action: 'uncaught_exception',
+    error: err,
+    severity: 'CRITICAL',
+  }).catch((e) => console.error('Failed to dispatch alert on uncaughtException:', e));
+});
+
 // Start Cron Jobs & Server
 const PORT = config.port;
 app.listen(PORT, () => {
   console.log(`\n======================================================`);
   console.log(`🚀 SureGreet AI Automation Hub running on port ${PORT}`);
   console.log(`📡 Ready for Cal.com, Retell AI, HubSpot, & Telegram Bot`);
+  console.log(`🛡️ Sentinel Real-Time Error Alert Engine ACTIVE`);
   console.log(`======================================================\n`);
 
   initReminderCron();
