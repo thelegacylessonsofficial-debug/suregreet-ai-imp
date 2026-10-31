@@ -265,3 +265,109 @@ export function ownerCallSummaryTemplate({ callerPhone, duration, sentiment, cal
     </div>
   </div>`;
 }
+
+export function automationErrorAlertTemplate({
+  automationName,
+  action,
+  errorMsg,
+  errorCode,
+  errorStack,
+  payloadSummary,
+  suggestedFix,
+  timestamp,
+  severity = 'HIGH',
+}) {
+  const severityBadgeBg = severity === 'CRITICAL' ? '#991b1b' : severity === 'HIGH' ? '#dc2626' : '#d97706';
+
+  const formattedPayload = typeof payloadSummary === 'object'
+    ? JSON.stringify(payloadSummary, null, 2)
+    : (payloadSummary || 'None provided');
+
+  return `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Automation Failure Alert</title>
+</head>
+<body style="margin:0;padding:0;background-color:#090d16;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;color:#f1f5f9;">
+  <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background-color:#090d16;padding:30px 10px;">
+    <tr>
+      <td align="center">
+        <table role="presentation" width="620" cellspacing="0" cellpadding="0" style="background-color:#0f172a;border-radius:12px;overflow:hidden;border:1px solid #1e293b;box-shadow:0 10px 30px rgba(0,0,0,0.5);">
+          <!-- Top Banner -->
+          <tr>
+            <td style="background:linear-gradient(135deg, #7f1d1d, #b91c1c);padding:28px 24px;text-align:center;">
+              <span style="display:inline-block;background-color:${severityBadgeBg};color:#ffffff;padding:4px 12px;border-radius:20px;font-size:11px;font-weight:700;letter-spacing:1px;text-transform:uppercase;margin-bottom:12px;">${severity} SEVERITY</span>
+              <h1 style="margin:0;color:#ffffff;font-size:22px;font-weight:700;letter-spacing:-0.5px;">🚨 Automation Incident Detected</h1>
+              <p style="margin:6px 0 0;color:rgba(255,255,255,0.85);font-size:14px;">SureGreet AI Sentinel captured a service breakdown</p>
+            </td>
+          </tr>
+
+          <!-- Main Content -->
+          <tr>
+            <td style="padding:28px 24px;">
+              <!-- Incident Card -->
+              <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background-color:#1e293b;border-radius:8px;border:1px solid #334155;margin-bottom:20px;">
+                <tr>
+                  <td style="padding:16px 20px;border-bottom:1px solid #334155;">
+                    <span style="color:#94a3b8;font-size:12px;text-transform:uppercase;font-weight:600;display:block;">Automation Engine</span>
+                    <strong style="color:#f8fafc;font-size:16px;">${automationName}</strong>
+                  </td>
+                </tr>
+                <tr>
+                  <td style="padding:16px 20px;border-bottom:1px solid #334155;">
+                    <span style="color:#94a3b8;font-size:12px;text-transform:uppercase;font-weight:600;display:block;">Subroutine / Action</span>
+                    <span style="color:#38bdf8;font-size:14px;font-weight:500;">${action}</span>
+                  </td>
+                </tr>
+                <tr>
+                  <td style="padding:16px 20px;">
+                    <span style="color:#94a3b8;font-size:12px;text-transform:uppercase;font-weight:600;display:block;">Incident Time</span>
+                    <span style="color:#cbd5e1;font-size:13px;">${timestamp}</span>
+                  </td>
+                </tr>
+              </table>
+
+              <!-- Error Box -->
+              <div style="background-color:#450a0a;border-left:4px solid #ef4444;border-radius:4px;padding:16px;margin-bottom:20px;">
+                <span style="color:#fca5a5;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;display:block;margin-bottom:6px;">Error Breakdown ${errorCode ? `(Code: ${errorCode})` : ''}</span>
+                <p style="margin:0;color:#fee2e2;font-size:14px;font-weight:600;line-height:1.5;">${errorMsg}</p>
+              </div>
+
+              <!-- Suggested Fix / Action Plan -->
+              <div style="background-color:#172554;border-left:4px solid #3b82f6;border-radius:4px;padding:16px;margin-bottom:20px;">
+                <span style="color:#93c5fd;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;display:block;margin-bottom:6px;">💡 Suggested Fix & Resolution Steps</span>
+                <p style="margin:0;color:#dbeafe;font-size:13px;line-height:1.6;">${suggestedFix}</p>
+              </div>
+
+              <!-- Payload Summary -->
+              <div style="margin-bottom:20px;">
+                <span style="color:#94a3b8;font-size:12px;font-weight:600;text-transform:uppercase;display:block;margin-bottom:8px;">📦 Trigger Payload / Context Summary</span>
+                <pre style="margin:0;background-color:#020617;border:1px solid #1e293b;border-radius:6px;padding:14px;color:#a5f3fc;font-size:12px;font-family:'Courier New',Courier,monospace;overflow-x:auto;max-height:220px;white-space:pre-wrap;word-break:break-all;">${formattedPayload}</pre>
+              </div>
+
+              ${errorStack ? `
+              <!-- Stack Trace -->
+              <div style="margin-bottom:10px;">
+                <span style="color:#94a3b8;font-size:12px;font-weight:600;text-transform:uppercase;display:block;margin-bottom:8px;">🔍 Raw Stack Trace</span>
+                <pre style="margin:0;background-color:#020617;border:1px solid #1e293b;border-radius:6px;padding:14px;color:#94a3b8;font-size:11px;font-family:'Courier New',Courier,monospace;overflow-x:auto;max-height:180px;white-space:pre-wrap;word-break:break-all;">${errorStack}</pre>
+              </div>` : ''}
+            </td>
+          </tr>
+
+          <!-- Footer -->
+          <tr>
+            <td style="background-color:#090d16;padding:20px 24px;border-top:1px solid #1e293b;text-align:center;">
+              <p style="margin:0;color:#64748b;font-size:12px;">SureGreet AI Sentinel System • Automated Real-Time Monitoring</p>
+              <p style="margin:4px 0 0;color:#475569;font-size:11px;">Host: Render Cloud (Oregon) • Live URL: suregreet-automation.onrender.com</p>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>`;
+}
+
