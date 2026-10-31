@@ -60,11 +60,21 @@ export function generateCoFounderReply(userText) {
     );
   } else if (textLower.includes('/tasks') || textLower.includes('task')) {
     return (
-      "🎯 *TODAY'S TOP 3 PRIORITIES (SureGreet AI)*\n\n" +
-      "1. 📚 *2:30–5:30 PM*: 12th Board study block (Non-negotiable).\n" +
-      "2. 🇺🇸 *6:30–11:00 PM*: Pull 5 MedSpas on Meta Ads Library.\n" +
-      "3. 🤝 Post our Free Pilot Offer in 2 Skool communities.\n\n" +
-      "Have you finished any of these yet? Let me know!"
+      "🎯 *SUREGREET AI DAILY TO-DO LIST*\n\n" +
+      "*1. Profiles & Presence:*\n" +
+      "• LinkedIn clean headshot & headline\n" +
+      "• Upwork & Freelancer profiles (use pre-written template)\n" +
+      "• Website testing & link review\n\n" +
+      "*2. Lead Generation & Automations:*\n" +
+      "• Run & test lead_finder.py script\n" +
+      "• Pull 5 MedSpas on Meta Ads Library\n" +
+      "• Post Skool free pilot offer (for video testimonials)\n\n" +
+      "*3. Sales & Accent Training:*\n" +
+      "• 15-min US accent vocal practice (25% slower)\n" +
+      "• Alex Hormozi objection roleplay drills\n\n" +
+      "*4. Content Planning:*\n" +
+      "• Research 3 screen-first video topics for IG & YouTube\n\n" +
+      "Reply with your progress anytime, Founder! 🔥"
     );
   } else if (textLower.includes('/status') || textLower.includes('status')) {
     return (
