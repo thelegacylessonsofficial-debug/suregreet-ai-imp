@@ -87,7 +87,7 @@ export function generateCoFounderReply(userText) {
       "• Run and test lead finder script\n" +
       "• Pull 5 MedSpas on Meta Ads Library\n" +
       "• Post Skool free pilot offer (for video testimonials)\n\n" +
-      "*3. Sales & English Training (05:15–07:15 PM IST):*\n" +
+      "*3. Sales & English Training (05:30–07:30 PM IST):*\n" +
       "• 2-Hour deep vocal practice (speak 25% slower)\n" +
       "• Alex Hormozi CLOSER & objection roleplay\n\n" +
       "*4. Content Planning:*\n" +
