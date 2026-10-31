@@ -28,21 +28,22 @@ export function initAccountabilityCron() {
     { timezone: istTimezone }
   );
 
-  // 2. 02:30 PM IST — 12th Board Study Block
+  // 2. 02:30 PM IST — Afternoon Agency Sprint
   cron.schedule(
     '30 14 * * *',
     async () => {
       try {
-        console.log('[Accountability Cron] Firing 12th Board Study Block (02:30 PM IST)...');
+        console.log('[Accountability Cron] Firing Afternoon Agency Sprint (02:30 PM IST)...');
         await sendTelegram(
-          '📚 *12th Board Study Block (02:30 PM IST)*\n' +
-          'Close agency tabs. Pure 3 hours of academic focus until 5:30 PM!'
+          '⚡ *SureGreet AI Afternoon Sprint (02:30 PM IST)*\n\n' +
+          'Time to execute: Profile launch, lead finder testing, and Skool pilot post!\n' +
+          'Type `/tasks` on Telegram to see your full daily checklist.'
         );
       } catch (err) {
-        console.error('[Accountability Cron] 12th Board Block failed:', err.message);
+        console.error('[Accountability Cron] Afternoon Sprint failed:', err.message);
         await sendAutomationAlert({
-          automationName: 'Telegram Study Block Alarm',
-          action: 'study_block_1430_IST',
+          automationName: 'Telegram Afternoon Sprint Alarm',
+          action: 'afternoon_sprint_1430_IST',
           error: err,
           severity: 'MEDIUM',
         });
