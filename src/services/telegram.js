@@ -78,21 +78,14 @@ export function generateCoFounderReply(userText) {
     textLower === 'task'
   ) {
     return (
-      "🎯 *SUREGREET AI DAILY TO-DO LIST*\n\n" +
-      "*1. Profiles & Presence:*\n" +
-      "• LinkedIn clean headshot & headline\n" +
-      "• Upwork & Freelancer profiles (use pre-written template)\n" +
-      "• Website testing & link review\n\n" +
-      "*2. Lead Generation & Automations:*\n" +
-      "• Run and test lead finder script\n" +
-      "• Pull 5 MedSpas on Meta Ads Library\n" +
-      "• Post Skool free pilot offer (for video testimonials)\n\n" +
-      "*3. Sales & English Training (05:30–07:30 PM IST):*\n" +
-      "• 2-Hour deep vocal practice (speak 25% slower)\n" +
-      "• Alex Hormozi CLOSER & objection roleplay\n\n" +
-      "*4. Content Planning:*\n" +
-      "• Research 3 screen-first video topics for IG & YouTube\n\n" +
-      "Reply with your progress anytime, Founder! 🔥"
+      "🎯 *SUREGREET AI TOP 3 PRIORITIES (Day 3)*\n\n" +
+      "*1. Skool Free Pilot Post (Priority #1):*\n" +
+      "• Drop the Done-For-You pilot post in your Skool communities to lock in your first 2 video testimonials.\n\n" +
+      "*2. 60-Sec Retell Video Demo (Priority #2):*\n" +
+      "• Open Loom & Retell AI web call, record a 60-second live booking demo.\n\n" +
+      "*3. Meta Ads Clinic Sourcing (Priority #3):*\n" +
+      "• Find 5 MedSpas on Meta Ads Library & log into leads/crm.md.\n\n" +
+      "Which one are we knocking out first right now? 🔥"
     );
   } else if (textLower.includes('/status') || textLower.includes('status')) {
     return (
