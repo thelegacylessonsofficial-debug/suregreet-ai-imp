@@ -14,10 +14,14 @@ export async function dispatchRetellCall({ toNumber, customerName, industry, bot
         from_number: config.retell.fromNumber || '+1XXXXXXXXXX',
         to_number: toNumber,
         override_agent_id: config.retell.agentId,
+        // Anti-Limit Burn Protection: Hard-cap call duration at 180 seconds (3 mins)
+        max_call_duration_ms: 180000,
         retell_llm_dynamic_variables: {
           customer_name: customerName || 'Valued Client',
-          industry: industry || 'Home Services',
+          industry: industry || 'Medical Aesthetics',
           bottleneck_notes: bottleneckNotes || 'None specified',
+          clinic_name: 'Luxe Aesthetics Miami',
+          doctor_name: 'Dr. Reynolds',
         },
       },
       {
