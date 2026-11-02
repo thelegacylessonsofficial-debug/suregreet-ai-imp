@@ -36,6 +36,8 @@ export async function runDailyReminders() {
         attendeeName: attendee.name || 'Client',
         attendeeEmail: attendee.email || '',
         meetingUrl: b.metadata?.videoCallUrl || b.location || 'Video Call Link will be provided',
+        startTimeISO: rawStart,
+        endTimeISO: rawEnd,
       });
     }
   }
