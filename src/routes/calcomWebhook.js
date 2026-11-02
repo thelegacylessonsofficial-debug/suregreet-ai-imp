@@ -71,6 +71,8 @@ calcomRouter.post('/', async (req, res) => {
             endTime,
             meetingUrl,
             bookingId,
+            startTimeISO: payload.startTime || payload.start,
+            endTimeISO: payload.endTime || payload.end,
           }),
         });
       }
@@ -162,6 +164,8 @@ calcomRouter.post('/', async (req, res) => {
             newStartTime,
             newEndTime,
             meetingUrl,
+            startTimeISO: payload.startTime || payload.start,
+            endTimeISO: payload.endTime || payload.end,
           }),
         });
       }
