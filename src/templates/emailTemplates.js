@@ -1,4 +1,73 @@
-export function customerReminderTemplate({ attendeeName, title, startTime, endTime, meetingUrl }) {
+export function generateCalendarButtons({ title, description, location, startTimeISO, endTimeISO }) {
+  if (!startTimeISO) return '';
+
+  const formatGoogle = (iso) => {
+    try {
+      const d = new Date(iso);
+      return d.toISOString().replace(/[-:]/g, '').split('.')[0] + 'Z';
+    } catch (e) {
+      return '';
+    }
+  };
+
+  const startG = formatGoogle(startTimeISO);
+  const endG = endTimeISO ? formatGoogle(endTimeISO) : startG;
+
+  const encTitle = encodeURIComponent(title || 'Discovery Call — SureGreet AI');
+  const encDesc = encodeURIComponent(description || 'Consultation call with SureGreet AI');
+  const encLoc = encodeURIComponent(location || 'Video Call Link');
+
+  const googleUrl = `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${encTitle}&dates=${startG}/${endG}&details=${encDesc}&location=${encLoc}`;
+  const outlookUrl = `https://outlook.live.com/calendar/0/deeplink/compose?path=%2Fcalendar%2Faction%2Fcompose&rru=addevent&subject=${encTitle}&startdt=${encodeURIComponent(startTimeISO)}&enddt=${encodeURIComponent(endTimeISO || startTimeISO)}&body=${encDesc}&location=${encLoc}`;
+  const office365Url = `https://outlook.office.com/calendar/0/deeplink/compose?path=%2Fcalendar%2Faction%2Fcompose&rru=addevent&subject=${encTitle}&startdt=${encodeURIComponent(startTimeISO)}&enddt=${encodeURIComponent(endTimeISO || startTimeISO)}&body=${encDesc}&location=${encLoc}`;
+  const yahooUrl = `https://calendar.yahoo.com/?v=60&view=d&type=20&title=${encTitle}&st=${startG}&et=${endG}&desc=${encDesc}&in_loc=${encLoc}`;
+
+  return `
+    <!-- Add to Calendar Widget -->
+    <div style="margin: 22px 0; padding: 18px 14px; background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 10px; text-align: center;">
+      <p style="margin: 0 0 12px; color: #166534; font-size: 13px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px;">
+        📅 Add to Your Calendar
+      </p>
+      <table role="presentation" cellspacing="0" cellpadding="0" style="margin: 0 auto; width: 100%; max-width: 480px;">
+        <tr>
+          <td align="center" style="padding: 4px;">
+            <a href="${googleUrl}" target="_blank" style="display: block; background: #ffffff; color: #1f2937; border: 1px solid #d1d5db; padding: 9px 10px; border-radius: 6px; text-decoration: none; font-size: 12px; font-weight: 600; text-align: center; box-shadow: 0 1px 2px rgba(0,0,0,0.05);">
+              <span style="color: #4285F4; font-weight: bold;">G</span> Google
+            </a>
+          </td>
+          <td align="center" style="padding: 4px;">
+            <a href="${outlookUrl}" target="_blank" style="display: block; background: #ffffff; color: #1f2937; border: 1px solid #d1d5db; padding: 9px 10px; border-radius: 6px; text-decoration: none; font-size: 12px; font-weight: 600; text-align: center; box-shadow: 0 1px 2px rgba(0,0,0,0.05);">
+              <span style="color: #0078D4; font-weight: bold;">O</span> Outlook
+            </a>
+          </td>
+          <td align="center" style="padding: 4px;">
+            <a href="${office365Url}" target="_blank" style="display: block; background: #ffffff; color: #1f2937; border: 1px solid #d1d5db; padding: 9px 10px; border-radius: 6px; text-decoration: none; font-size: 12px; font-weight: 600; text-align: center; box-shadow: 0 1px 2px rgba(0,0,0,0.05);">
+              <span style="color: #d83b01; font-weight: bold;">365</span> Office 365
+            </a>
+          </td>
+          <td align="center" style="padding: 4px;">
+            <a href="${yahooUrl}" target="_blank" style="display: block; background: #ffffff; color: #1f2937; border: 1px solid #d1d5db; padding: 9px 10px; border-radius: 6px; text-decoration: none; font-size: 12px; font-weight: 600; text-align: center; box-shadow: 0 1px 2px rgba(0,0,0,0.05);">
+              <span style="color: #6001d2; font-weight: bold;">Y!</span> Yahoo
+            </a>
+          </td>
+        </tr>
+      </table>
+      <p style="margin: 10px 0 0; color: #15803d; font-size: 11px;">
+        1-Click to lock this appointment into your personal calendar.
+      </p>
+    </div>
+  `;
+}
+
+export function customerReminderTemplate({ attendeeName, title, startTime, endTime, meetingUrl, startTimeISO, endTimeISO }) {
+  const calButtons = generateCalendarButtons({
+    title,
+    description: `Upcoming meeting with SureGreet AI (${title}). Link: ${meetingUrl}`,
+    location: meetingUrl,
+    startTimeISO,
+    endTimeISO,
+  });
+
   return `<!DOCTYPE html><html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1.0'></head><body style='margin:0;padding:0;background-color:#f4f1ec;font-family:Georgia,serif;'>
 <table role='presentation' width='100%' cellspacing='0' cellpadding='0' style='background-color:#f4f1ec;'>
   <tr>
@@ -27,6 +96,9 @@ export function customerReminderTemplate({ attendeeName, title, startTime, endTi
                 </td>
               </tr>
             </table>
+
+            ${calButtons}
+
             <div style='background-color:#fef3c7;border-radius:10px;padding:18px 24px;border-left:4px solid #f59e0b;margin-top:24px;'>
               <p style='margin:0;color:#92400e;font-size:14px;line-height:1.6;'><strong>💡 Need to reschedule?</strong> Please let us know ahead of time or use the rescheduling link in your original booking email.</p>
             </div>
@@ -36,7 +108,7 @@ export function customerReminderTemplate({ attendeeName, title, startTime, endTi
           <td style='padding:0 40px 40px;'>
             <div style='border-top:1px solid #e5e5e5;padding-top:24px;text-align:center;'>
               <p style='margin:0 0 4px;color:#999;font-size:13px;'>Best regards,</p>
-              <p style='margin:0;color:#1a1a1a;font-size:15px;font-weight:700;'>Nexflo AI</p>
+              <p style='margin:0;color:#1a1a1a;font-size:15px;font-weight:700;'>SureGreet AI</p>
             </div>
           </td>
         </tr>
@@ -81,7 +153,7 @@ export function ownerDailySummaryTemplate({ appointmentCount, bookings }) {
         <p style="margin:0;color:#92400e;font-size:13px;"><strong>✅ Status:</strong> All ${appointmentCount} reminder email(s) sent successfully.</p>
       </div>
       <div style="text-align:center;margin-top:24px;border-top:1px solid #e5e5e5;padding-top:20px;">
-        <p style="margin:0;color:#1a1a1a;font-weight:700;">Nexflo AI</p>
+        <p style="margin:0;color:#1a1a1a;font-weight:700;">SureGreet AI</p>
       </div>
     </div>
   </div>`;
@@ -111,7 +183,15 @@ export function ownerBookingCreatedTemplate({ customerName, customerEmail, custo
   </div>`;
 }
 
-export function customerBookingConfirmedTemplate({ customerName, eventTitle, startTime, endTime, meetingUrl, bookingId }) {
+export function customerBookingConfirmedTemplate({ customerName, eventTitle, startTime, endTime, meetingUrl, bookingId, startTimeISO, endTimeISO }) {
+  const calButtons = generateCalendarButtons({
+    title: eventTitle,
+    description: `Appointment with SureGreet AI (${eventTitle}). Meeting Link: ${meetingUrl}`,
+    location: meetingUrl,
+    startTimeISO,
+    endTimeISO,
+  });
+
   return `<div style="font-family:'Segoe UI',Arial,sans-serif;max-width:600px;margin:0 auto;">
     <div style="background:linear-gradient(135deg,#22c55e,#16a34a);padding:30px;border-radius:12px 12px 0 0;text-align:center;">
       <h1 style="color:#fff;margin:0;font-size:24px;">✅ Appointment Confirmed!</h1>
@@ -128,13 +208,16 @@ export function customerBookingConfirmedTemplate({ customerName, eventTitle, sta
           <tr><td style="padding:10px 0;color:#6b7280;font-size:14px;">🔗 Meeting</td><td style="padding:10px 0;color:#1f2937;font-size:15px;"><a href="${meetingUrl}">${meetingUrl}</a></td></tr>
         </table>
       </div>
+
+      ${calButtons}
+
       <div style="margin-top:20px;padding:16px;background:#fefce8;border-radius:8px;border-left:4px solid #eab308;">
         <p style="margin:0;color:#854d0e;font-size:13px;">💡 <strong>Need to reschedule or cancel?</strong> Simply reply to this email or call us, and we'll take care of it.</p>
       </div>
       <p style="color:#6b7280;font-size:14px;margin-top:24px;">We look forward to speaking with you!</p>
       <div style="margin-top:30px;padding-top:20px;border-top:1px solid #e5e7eb;text-align:center;">
         <p style="color:#9ca3af;font-size:12px;margin:0;">Booking ID: #${bookingId}</p>
-        <p style="color:#9ca3af;font-size:12px;margin:4px 0 0;">Nexflo AI — Powered by AI</p>
+        <p style="color:#9ca3af;font-size:12px;margin:4px 0 0;">SureGreet AI — AI Voice Systems for Home Services</p>
       </div>
     </div>
   </div>`;
@@ -173,7 +256,7 @@ export function customerBookingCancelledTemplate({ customerName, eventTitle, sta
         <p style="margin:0;color:#166534;font-size:14px;">🔄 <strong>Want to rebook?</strong> Feel free to call us or reply to this email to schedule a new appointment.</p>
       </div>
       <div style="text-align:center;margin-top:20px;border-top:1px solid #e5e7eb;padding-top:20px;">
-        <p style="color:#9ca3af;font-size:12px;">Nexflo AI</p>
+        <p style="color:#9ca3af;font-size:12px;">SureGreet AI</p>
       </div>
     </div>
   </div>`;
@@ -201,7 +284,15 @@ export function ownerBookingRescheduledTemplate({ customerName, customerEmail, e
   </div>`;
 }
 
-export function customerBookingRescheduledTemplate({ customerName, eventTitle, newStartTime, newEndTime, meetingUrl }) {
+export function customerBookingRescheduledTemplate({ customerName, eventTitle, newStartTime, newEndTime, meetingUrl, startTimeISO, endTimeISO }) {
+  const calButtons = generateCalendarButtons({
+    title: eventTitle,
+    description: `Updated appointment with SureGreet AI (${eventTitle}). Meeting Link: ${meetingUrl}`,
+    location: meetingUrl,
+    startTimeISO,
+    endTimeISO,
+  });
+
   return `<div style="font-family:'Segoe UI',Arial,sans-serif;max-width:600px;margin:0 auto;">
     <div style="background:linear-gradient(135deg,#f59e0b,#d97706);padding:30px;border-radius:12px 12px 0 0;text-align:center;">
       <h1 style="color:#fff;margin:0;font-size:24px;">📅 Appointment Rescheduled</h1>
@@ -217,9 +308,12 @@ export function customerBookingRescheduledTemplate({ customerName, eventTitle, n
           <tr><td style="padding:10px 0;color:#6b7280;">🔗 Meeting</td><td style="padding:10px 0;"><a href="${meetingUrl}">${meetingUrl}</a></td></tr>
         </table>
       </div>
+
+      ${calButtons}
+
       <p style="color:#6b7280;font-size:14px;margin-top:24px;">We look forward to seeing you at the new time!</p>
       <div style="text-align:center;margin-top:20px;border-top:1px solid #e5e7eb;padding-top:20px;">
-        <p style="color:#9ca3af;font-size:12px;">Nexflo AI</p>
+        <p style="color:#9ca3af;font-size:12px;">SureGreet AI — AI Voice Systems for Home Services</p>
       </div>
     </div>
   </div>`;
