@@ -74,18 +74,19 @@ export function generateCoFounderReply(userText) {
     textLower.includes('todo') || 
     textLower.includes('to-do') || 
     textLower.includes('to do') ||
+    textLower.includes('#imp') ||
+    textLower.includes('imp') ||
     textLower === 'tasks' ||
     textLower === 'task'
   ) {
     return (
-      "🎯 *SUREGREET AI TOP 3 PRIORITIES (Day 3)*\n\n" +
-      "*1. Skool Free Pilot Post (Priority #1):*\n" +
-      "• Drop the Done-For-You pilot post in your Skool communities to lock in your first 2 video testimonials.\n\n" +
-      "*2. 60-Sec Retell Video Demo (Priority #2):*\n" +
-      "• Open Loom & Retell AI web call, record a 60-second live booking demo.\n\n" +
-      "*3. Meta Ads Clinic Sourcing (Priority #3):*\n" +
-      "• Find 5 MedSpas on Meta Ads Library & log into leads/crm.md.\n\n" +
-      "Which one are we knocking out first right now? 🔥"
+      "🚨 *#IMP DAILY TASKS (SureGreet AI Day 4)*\n\n" +
+      "1. 🎙️ *Retell Voice Check*: Test prompt, low-latency voice & live transfer for production.\n" +
+      "2. 🌐 *SureGreet Website*: Production-ready checklist (custom domain + Cal.com integration).\n" +
+      "3. 💡 *Demo Video & Content Ideas*: 5 high-converting video angles for Loom/IG/YouTube.\n" +
+      "4. 🏥 *Demo MedSpa Website*: Luxe Aesthetics Miami demo site built (open demo_medspa/index.html).\n" +
+      "5. 📚 *Learn Sales (Min 4 Hours)*: Deep study of Hormozi CLOSER framework & MedSpa objection drills.\n\n" +
+      "Hourly accountability reminders are active. What are you executing right now? 🔥"
     );
   } else if (textLower.includes('/status') || textLower.includes('status')) {
     return (
