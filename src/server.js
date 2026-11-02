@@ -3,6 +3,7 @@ import cors from 'cors';
 import { config } from './config.js';
 import { calcomRouter } from './routes/calcomWebhook.js';
 import { retellRouter } from './routes/retellWebhook.js';
+import { retellToolRouter } from './routes/retellToolWebhook.js';
 import { leadCallbackRouter } from './routes/leadCallbackWebhook.js';
 import { telegramRouter } from './routes/telegramWebhook.js';
 import { initReminderCron, runDailyReminders } from './cron/reminderCron.js';
@@ -33,6 +34,7 @@ app.get('/', (req, res) => {
     endpoints: [
       'POST /webhook/calcom-booking-webhook',
       'POST /webhook/retell-post-call-webhook',
+      'POST /webhook/retell-tool-call',
       'POST /webhook/suregreet-lead-callback',
       'POST /webhook/telegram',
       'GET /set-webhook',
@@ -81,6 +83,7 @@ app.all('/test/trigger-alert', async (req, res) => {
 // Webhook Routes
 app.use(['/webhook/calcom-booking-webhook', '/calcom-booking-webhook'], calcomRouter);
 app.use(['/webhook/retell-post-call-webhook', '/retell-post-call-webhook'], retellRouter);
+app.use(['/webhook/retell-tool-call', '/retell-tool-call'], retellToolRouter);
 app.use(['/webhook/suregreet-lead-callback', '/suregreet-lead-callback'], leadCallbackRouter);
 app.use(['/webhook/telegram', '/telegram'], telegramRouter);
 
