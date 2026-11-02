@@ -75,5 +75,29 @@ export function initAccountabilityCron() {
     { timezone: istTimezone }
   );
 
-  console.log('[Cron] Initialized 3 daily Telegram accountability alarms (07:30 AM, 02:30 PM, 06:30 PM IST).');
+  // 4. Hourly #imp Daily Tasks Accountability Reminder (07:00 AM - 11:00 PM IST)
+  cron.schedule(
+    '0 7-23 * * *',
+    async () => {
+      try {
+        console.log('[Accountability Cron] Firing Hourly #imp Daily Task Reminder...');
+        const hour = new Date().toLocaleTimeString('en-US', { timeZone: istTimezone, hour: '2-digit', minute: '2-digit', hour12: true });
+        await sendTelegram(
+          `🔔 *HOURLY #IMP DAILY TASK CHECK (${hour} IST)*\n\n` +
+          `Archit, Co-Founder here. Status check on your 5 critical priorities:\n` +
+          `1. 🎙️ Fix Retell Voice check & production-ready\n` +
+          `2. 🌐 SureGreet website production-ready\n` +
+          `3. 💡 Ideas for demo video & organic content\n` +
+          `4. 🏥 Demo MedSpa website build\n` +
+          `5. 📚 Learn sales for min 4 hours\n\n` +
+          `Type your progress or /tasks right now!`
+        );
+      } catch (err) {
+        console.error('[Accountability Cron] Hourly check failed:', err.message);
+      }
+    },
+    { timezone: istTimezone }
+  );
+
+  console.log('[Cron] Initialized daily + hourly Telegram accountability alarms.');
 }
