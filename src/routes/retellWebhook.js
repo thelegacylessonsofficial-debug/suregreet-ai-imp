@@ -9,7 +9,11 @@ import {
   createNoteAndAssociate,
 } from '../services/hubspot.js';
 import { appendCallLogToSheet } from '../services/googleSheets.js';
-import { ownerCallSummaryTemplate } from '../templates/emailTemplates.js';
+import {
+  ownerCallSummaryTemplate,
+  patientAppointmentConfirmationTemplate,
+  callerFollowUpDemoTemplate,
+} from '../templates/emailTemplates.js';
 
 export const retellRouter = Router();
 
@@ -166,6 +170,40 @@ retellRouter.post('/', async (req, res) => {
         payload: { callId, callerPhone, callOutcome },
         severity: 'MEDIUM',
       });
+    }
+
+    // 4. Automated Follow-up Email to Caller / Patient (if email provided)
+    try {
+      const callerEmail = call.retell_llm_dynamic_variables?.customer_email || call.customer_email || existingContact?.properties?.email;
+      if (callerEmail) {
+        if (callOutcome === 'Booked') {
+          await sendEmail({
+            to: callerEmail,
+            subject: `✅ Appointment Confirmed — SureGreet AI`,
+            html: patientAppointmentConfirmationTemplate({
+              callerName: existingContact?.properties?.firstname || 'Patient',
+              clinicName: 'SureGreet AI Demo Clinic',
+              treatmentName: 'AI Voice Receptionist Consultation',
+              appointmentTime: callDate,
+            }),
+          });
+          console.log(`[Retell Webhook] Dispatched booked confirmation to patient: ${callerEmail}`);
+        } else if (callOutcome === 'Inquiry') {
+          await sendEmail({
+            to: callerEmail,
+            subject: `📞 Thanks for Calling SureGreet AI — Information & Demo Inside`,
+            html: callerFollowUpDemoTemplate({
+              callerPhone,
+              demoVideoUrl: 'https://suregreet.ai',
+              bookingUrl: 'https://suregreet-automation.onrender.com/webhook/calcom-booking-webhook',
+              clinicName: 'SureGreet AI',
+            }),
+          });
+          console.log(`[Retell Webhook] Dispatched inquiry demo follow-up to: ${callerEmail}`);
+        }
+      }
+    } catch (callerMailErr) {
+      console.warn('[Retell Webhook] Caller follow-up email skipped/error:', callerMailErr.message);
     }
   })().catch(async (err) => {
     console.error('[Retell Webhook] Background task error:', err);
