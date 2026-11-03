@@ -17,8 +17,15 @@ export const config = {
     pass: process.env.SMTP_PASS || '',
     from: process.env.EMAIL_FROM || `Archit | SureGreet AI <${process.env.BUSINESS_EMAIL || process.env.OWNER_EMAIL || 'architd062@gmail.com'}>`,
   },
+  // Resend API
   resendApiKey: process.env.RESEND_API_KEY || '',
   resendFrom: process.env.RESEND_FROM || `Archit | SureGreet AI <${process.env.BUSINESS_EMAIL ? process.env.BUSINESS_EMAIL : 'onboarding@resend.dev'}>`,
+
+  // Supabase (Database & State Persistence)
+  supabase: {
+    url: process.env.SUPABASE_URL || 'https://ultmqahqlvhemlxcirzr.supabase.co',
+    anonKey: process.env.SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVsdG1xYWhxbHZoZW1seGNpcnpyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTI3Mjc1MzIsImV4cCI6MjEwODMwMzUzMn0.RdKXj-SphFoo-wRR0VEkV_LcZ4xNZMWRLktDcKSxAWk',
+  },
 
   // Cal.com
   calcom: {
