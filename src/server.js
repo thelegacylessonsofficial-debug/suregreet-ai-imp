@@ -6,9 +6,10 @@ import { retellRouter } from './routes/retellWebhook.js';
 import { retellToolRouter } from './routes/retellToolWebhook.js';
 import { leadCallbackRouter } from './routes/leadCallbackWebhook.js';
 import { telegramRouter } from './routes/telegramWebhook.js';
-import { initReminderCron, runDailyReminders } from './cron/reminderCron.js';
+import { outreachRouter } from './routes/outreachRoutes.js';
+import { initReminderCron, runDailyReminders, runHourlyOneHourReminders } from './cron/reminderCron.js';
 import { initAccountabilityCron } from './cron/accountabilityCron.js';
-import { setTelegramWebhook } from './services/telegram.js';
+import { setTelegramWebhook, sendTelegram } from './services/telegram.js';
 import { sendAutomationAlert, getRecentAlerts } from './services/alertService.js';
 
 const app = express();
@@ -37,10 +38,15 @@ app.get('/', (req, res) => {
       'POST /webhook/retell-tool-call',
       'POST /webhook/suregreet-lead-callback',
       'POST /webhook/telegram',
+      'GET /outreach/prospects',
+      'POST /outreach/add',
+      'POST /outreach/send',
+      'GET /outreach/preview',
       'GET /set-webhook',
       'GET /alerts/recent',
       'ALL /test/trigger-alert',
       'POST /test/run-reminders',
+      'ALL /test/run-hourly-reminders',
     ],
   });
 });
@@ -80,17 +86,28 @@ app.all('/test/trigger-alert', async (req, res) => {
   });
 });
 
-// Webhook Routes
+// Webhook & Feature Routes
 app.use(['/webhook/calcom-booking-webhook', '/calcom-booking-webhook'], calcomRouter);
 app.use(['/webhook/retell-post-call-webhook', '/retell-post-call-webhook'], retellRouter);
 app.use(['/webhook/retell-tool-call', '/retell-tool-call'], retellToolRouter);
 app.use(['/webhook/suregreet-lead-callback', '/suregreet-lead-callback'], leadCallbackRouter);
 app.use(['/webhook/telegram', '/telegram'], telegramRouter);
+app.use('/outreach', outreachRouter);
 
 // Manual trigger for testing 24h reminders immediately
 app.all('/test/run-reminders', async (req, res) => {
   try {
     const result = await runDailyReminders();
+    res.json({ status: 'success', result });
+  } catch (err) {
+    res.status(500).json({ status: 'error', message: err.message });
+  }
+});
+
+// Manual trigger for testing 1h urgent reminders immediately
+app.all('/test/run-hourly-reminders', async (req, res) => {
+  try {
+    const result = await runHourlyOneHourReminders();
     res.json({ status: 'success', result });
   } catch (err) {
     res.status(500).json({ status: 'error', message: err.message });
