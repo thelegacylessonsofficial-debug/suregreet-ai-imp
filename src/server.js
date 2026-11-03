@@ -9,6 +9,7 @@ import { telegramRouter } from './routes/telegramWebhook.js';
 import { outreachRouter } from './routes/outreachRoutes.js';
 import { initReminderCron, runDailyReminders, runHourlyOneHourReminders } from './cron/reminderCron.js';
 import { initAccountabilityCron } from './cron/accountabilityCron.js';
+import { initOutreachCron, runOutreachQueueWorker } from './cron/outreachCron.js';
 import { setTelegramWebhook, sendTelegram } from './services/telegram.js';
 import { sendAutomationAlert, getRecentAlerts } from './services/alertService.js';
 
@@ -40,13 +41,18 @@ app.get('/', (req, res) => {
       'POST /webhook/telegram',
       'GET /outreach/prospects',
       'POST /outreach/add',
+      'POST /outreach/activate',
       'POST /outreach/send',
+      'POST /outreach/mark-replied',
+      'GET /outreach/due',
       'GET /outreach/preview',
+      'ALL /outreach/run-queue',
       'GET /set-webhook',
       'GET /alerts/recent',
       'ALL /test/trigger-alert',
       'POST /test/run-reminders',
       'ALL /test/run-hourly-reminders',
+      'ALL /test/run-outreach-queue',
     ],
   });
 });
@@ -114,6 +120,17 @@ app.all('/test/run-hourly-reminders', async (req, res) => {
   }
 });
 
+// Manual trigger for testing automated outreach queue worker
+app.all('/test/run-outreach-queue', async (req, res) => {
+  try {
+    const force = req.query.force === 'true' || req.body?.force === true;
+    const result = await runOutreachQueueWorker({ force });
+    res.json({ status: 'success', result });
+  } catch (err) {
+    res.status(500).json({ status: 'error', message: err.message });
+  }
+});
+
 // Global Express Error Middleware
 app.use(async (err, req, res, next) => {
   console.error('[Global Error Middleware]', err);
@@ -159,4 +176,5 @@ app.listen(PORT, () => {
 
   initReminderCron();
   initAccountabilityCron();
+  initOutreachCron();
 });
