@@ -1,7 +1,7 @@
-import fs from 'fs';
-import path from 'path';
-import { fileURLToPath } from 'url';
+import { DateTime } from 'luxon';
+import { config } from '../config.js';
 import { sendEmail } from './mailer.js';
+import { sendTelegram } from './telegram.js';
 import {
   outreachStep1Template,
   outreachStep2Template,
@@ -9,158 +9,326 @@ import {
   outreachStep4Template,
 } from '../templates/outreachTemplates.js';
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-const DATA_DIR = path.resolve(__dirname, '../../data');
-const PROSPECTS_FILE = path.join(DATA_DIR, 'prospects.json');
+const SUPABASE_URL = config.supabase.url;
+const SUPABASE_KEY = config.supabase.anonKey;
 
-function ensureDataFile() {
-  if (!fs.existsSync(DATA_DIR)) {
-    fs.mkdirSync(DATA_DIR, { recursive: true });
+/**
+ * Helper to call Supabase PostgREST API with authorization headers
+ */
+async function supabaseFetch(endpoint, options = {}) {
+  const url = `${SUPABASE_URL}/rest/v1${endpoint}`;
+  const headers = {
+    apikey: SUPABASE_KEY,
+    Authorization: `Bearer ${SUPABASE_KEY}`,
+    'Content-Type': 'application/json',
+    ...(options.headers || {}),
+  };
+
+  const response = await fetch(url, {
+    ...options,
+    headers,
+  });
+
+  const contentType = response.headers.get('content-type') || '';
+  let data = null;
+  if (contentType.includes('application/json')) {
+    data = await response.json();
+  } else {
+    data = await response.text();
   }
-  if (!fs.existsSync(PROSPECTS_FILE)) {
-    fs.writeFileSync(PROSPECTS_FILE, JSON.stringify([], null, 2), 'utf8');
-  }
+
+  return { ok: response.ok, status: response.status, data };
 }
 
-export function getProspects() {
-  ensureDataFile();
-  try {
-    const raw = fs.readFileSync(PROSPECTS_FILE, 'utf8');
-    return JSON.parse(raw);
-  } catch (e) {
+/**
+ * Calculates the next due timestamp for subsequent outreach steps.
+ * Skips weekends (Saturday & Sunday) and sets the time in US Eastern Time.
+ */
+export function calculateNextDueAt(currentStep, baseDate = new Date()) {
+  if (currentStep >= 4) {
+    return null; // Sequence complete
+  }
+
+  // Business days delay:
+  // Step 1 -> Step 2: 2 business days
+  // Step 2 -> Step 3: 3 business days
+  // Step 3 -> Step 4: 3 business days
+  const daysToAdd = currentStep === 1 ? 2 : 3;
+
+  let dt = DateTime.fromJSDate(baseDate).setZone(config.timezone);
+  let added = 0;
+
+  while (added < daysToAdd) {
+    dt = dt.plus({ days: 1 });
+    // Luxon weekday: 1 is Monday, 5 is Friday, 6 is Saturday, 7 is Sunday
+    if (dt.weekday <= 5) {
+      added++;
+    }
+  }
+
+  // Randomize sending hour between 10:00 AM and 11:30 AM EST
+  const randomMinutes = Math.floor(Math.random() * 90);
+  dt = dt.set({ hour: 10, minute: 0, second: 0, millisecond: 0 }).plus({ minutes: randomMinutes });
+
+  return dt.toUTC().toISO();
+}
+
+/**
+ * Fetch all prospects from Supabase
+ */
+export async function getProspects({ status, limit = 100 } = {}) {
+  let query = '/prospects?select=*&order=created_at.desc';
+  if (status) {
+    query += `&status=eq.${encodeURIComponent(status)}`;
+  }
+  if (limit) {
+    query += `&limit=${Number(limit)}`;
+  }
+
+  const res = await supabaseFetch(query);
+  if (!res.ok) {
+    console.error('[OutreachService] Failed to fetch prospects:', res.data);
     return [];
   }
+  return res.data || [];
 }
 
-function saveProspects(prospects) {
-  ensureDataFile();
-  fs.writeFileSync(PROSPECTS_FILE, JSON.stringify(prospects, null, 2), 'utf8');
+/**
+ * Fetch a single prospect by ID or Email
+ */
+export async function getProspectById(idOrEmail) {
+  if (!idOrEmail) return null;
+  const target = String(idOrEmail).trim();
+  const query = `/prospects?select=*&or=(id.eq.${encodeURIComponent(target)},email.eq.${encodeURIComponent(target.toLowerCase())})&limit=1`;
+  
+  const res = await supabaseFetch(query);
+  if (!res.ok || !res.data || res.data.length === 0) {
+    return null;
+  }
+  return res.data[0];
 }
 
-export function addProspect({ doctorName, clinicName, email, city, treatment, adUrl, phone }) {
-  const prospects = getProspects();
+/**
+ * Add a new clinic prospect to Supabase
+ */
+export async function addProspect({ doctorName, clinicName, email, city, treatment, notes }) {
   const normalizedEmail = (email || '').trim().toLowerCase();
+  if (!normalizedEmail) {
+    return { success: false, message: 'Valid email is required' };
+  }
 
-  const existing = prospects.find((p) => p.email.toLowerCase() === normalizedEmail);
+  // Check if exists
+  const existing = await getProspectById(normalizedEmail);
   if (existing) {
     return { success: false, message: 'Prospect with this email already exists', prospect: existing };
   }
 
-  const newProspect = {
-    id: `prp_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
-    doctorName: (doctorName || '').trim(),
-    clinicName: (clinicName || '').trim(),
+  const payload = {
+    doctor_name: (doctorName || '').trim() || null,
+    clinic_name: (clinicName || '').trim() || null,
     email: normalizedEmail,
-    city: (city || '').trim(),
+    city: (city || '').trim() || null,
     treatment: (treatment || 'Morpheus8').trim(),
-    adUrl: (adUrl || '').trim(),
-    phone: (phone || '').trim(),
-    status: 'active', // active, replied, converted, unsubscribed
-    currentStep: 0,
-    history: [],
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
+    status: 'pending',
+    current_step: 0,
+    notes: (notes || '').trim() || null,
   };
 
-  prospects.push(newProspect);
-  saveProspects(prospects);
-  return { success: true, prospect: newProspect };
+  const res = await supabaseFetch('/prospects', {
+    method: 'POST',
+    headers: { Prefer: 'return=representation' },
+    body: JSON.stringify(payload),
+  });
+
+  if (!res.ok || !res.data || res.data.length === 0) {
+    console.error('[OutreachService] Failed to insert prospect:', res.data);
+    return { success: false, error: res.data?.message || 'Database insert failed' };
+  }
+
+  console.log(`[OutreachService] Successfully created prospect ${normalizedEmail} (ID: ${res.data[0].id})`);
+  return { success: true, prospect: res.data[0] };
 }
 
-export function getProspectById(id) {
-  const prospects = getProspects();
-  return prospects.find((p) => p.id === id || p.email === id.toLowerCase());
+/**
+ * Update prospect record
+ */
+export async function updateProspect(id, updates) {
+  const res = await supabaseFetch(`/prospects?id=eq.${encodeURIComponent(id)}`, {
+    method: 'PATCH',
+    headers: { Prefer: 'return=representation' },
+    body: JSON.stringify({ ...updates, updated_at: new Date().toISOString() }),
+  });
+
+  if (!res.ok || !res.data || res.data.length === 0) {
+    console.error(`[OutreachService] Failed to update prospect ${id}:`, res.data);
+    return null;
+  }
+  return res.data[0];
 }
 
-export function renderStepHtml(stepNumber, prospect) {
+/**
+ * Fetch all active prospects due for their next follow-up
+ */
+export async function getDueProspects(limit = 10) {
+  const nowISO = new Date().toISOString();
+  const query = `/prospects?select=*&status=eq.active&next_due_at=lte.${encodeURIComponent(nowISO)}&current_step=lt.4&order=next_due_at.asc&limit=${Number(limit)}`;
+  const res = await supabaseFetch(query);
+  if (!res.ok) {
+    console.error('[OutreachService] Failed to fetch due prospects:', res.data);
+    return [];
+  }
+  return res.data || [];
+}
+
+/**
+ * Render email content and subject based on step number
+ */
+export function renderStepContent(stepNumber, prospect) {
   const data = {
-    doctorName: prospect.doctorName,
-    clinicName: prospect.clinicName,
+    doctorName: prospect.doctor_name,
+    clinicName: prospect.clinic_name,
     city: prospect.city,
     treatment: prospect.treatment,
     prospectEmail: prospect.email,
+    originalSubject: prospect.original_subject,
   };
 
   switch (Number(stepNumber)) {
     case 1:
-      return {
-        subject: `Quick question regarding your ${prospect.city ? prospect.city + ' ' : ''}ad inquiries`,
-        html: outreachStep1Template(data),
-      };
+      return outreachStep1Template(data);
     case 2:
-      return {
-        subject: `30-sec audio proof: SureGreet AI for ${prospect.clinicName || 'your clinic'}`,
-        html: outreachStep2Template(data),
-      };
+      return outreachStep2Template(data);
     case 3:
-      return {
-        subject: `Clinic economics: The $4,500/mo cost of missed calls at ${prospect.clinicName || 'your practice'}`,
-        html: outreachStep3Template(data),
-      };
+      return outreachStep3Template(data);
     case 4:
-      return {
-        subject: `Closing your file / quick update for ${prospect.clinicName || 'your clinic'}`,
-        html: outreachStep4Template(data),
-      };
+      return outreachStep4Template(data);
     default:
       throw new Error(`Invalid step number: ${stepNumber}. Must be 1, 2, 3, or 4.`);
   }
 }
 
+/**
+ * Dispatch an outreach email step with RFC 2822 / 5322 MIME threading
+ */
 export async function sendOutreachStep({ prospectId, stepNumber }) {
-  const prospects = getProspects();
-  const prospect = prospects.find((p) => p.id === prospectId || p.email === prospectId.toLowerCase());
+  const prospect = await getProspectById(prospectId);
+  if (!prospect) {
+    return { success: false, error: 'Prospect not found in Supabase' };
+  }
 
+  // Safety protection against emailing unsubscriptions or replied doctors
+  if (prospect.status === 'unsubscribed') {
+    return { success: false, error: 'Prospect is unsubscribed. Aborting.' };
+  }
+  if (prospect.status === 'replied') {
+    return { success: false, error: 'Prospect has already replied. Sequence paused.' };
+  }
+
+  const step = Number(stepNumber);
+  const rendered = renderStepContent(step, prospect);
+
+  // RFC 5322 Message-ID construction
+  const messageId = `<sg-${prospect.id}-step${step}-${Date.now()}@suregreet.ai>`;
+
+  let inReplyTo = null;
+  let references = null;
+
+  if (step > 1) {
+    inReplyTo = prospect.last_message_id || prospect.initial_message_id;
+    const initialId = prospect.initial_message_id || inReplyTo;
+    references = initialId === inReplyTo ? initialId : `${initialId} ${inReplyTo}`;
+  }
+
+  console.log(`[Outreach MIME] Dispatching Step ${step} to ${prospect.email}`);
+  if (inReplyTo) {
+    console.log(`[Outreach MIME Threading] In-Reply-To: ${inReplyTo} | References: ${references}`);
+  }
+
+  const emailRes = await sendEmail({
+    to: prospect.email,
+    subject: rendered.subject,
+    text: rendered.text,
+    html: rendered.html,
+    messageId,
+    inReplyTo,
+    references,
+  });
+
+  if (!emailRes?.success) {
+    return { success: false, error: emailRes?.error || 'Email dispatch failed' };
+  }
+
+  // Calculate schedule for next step
+  const nextDueAt = calculateNextDueAt(step, new Date());
+  const finalStatus = step >= 4 ? 'completed' : 'active';
+
+  const updates = {
+    status: finalStatus,
+    current_step: step,
+    last_sent_at: new Date().toISOString(),
+    next_due_at: nextDueAt,
+    last_message_id: messageId,
+    initial_message_id: prospect.initial_message_id || messageId,
+    original_subject: prospect.original_subject || rendered.subject,
+  };
+
+  const updatedProspect = await updateProspect(prospect.id, updates);
+
+  return {
+    success: true,
+    step,
+    prospect: updatedProspect,
+    messageId,
+    emailResult: emailRes,
+  };
+}
+
+/**
+ * Mark prospect as replied (stops any future follow-up)
+ */
+export async function markProspectReplied(idOrEmail) {
+  const prospect = await getProspectById(idOrEmail);
   if (!prospect) {
     return { success: false, error: 'Prospect not found' };
   }
 
-  if (prospect.status === 'unsubscribed') {
-    return { success: false, error: 'Prospect has opted out of communication' };
-  }
-
-  const { subject, html } = renderStepHtml(stepNumber, prospect);
-
-  const emailRes = await sendEmail({
-    to: prospect.email,
-    subject,
-    html,
+  const updated = await updateProspect(prospect.id, {
+    status: 'replied',
+    next_due_at: null,
   });
 
-  if (emailRes?.success) {
-    prospect.currentStep = Number(stepNumber);
-    prospect.updatedAt = new Date().toISOString();
-    prospect.history.push({
-      step: Number(stepNumber),
-      subject,
-      sentAt: new Date().toISOString(),
-      provider: emailRes.provider || 'default',
-    });
-    saveProspects(prospects);
+  const msg = `🎯 <b>PROSPECT REPLIED!</b>\n\nClinic: <b>${prospect.clinic_name || 'N/A'}</b>\nDoctor: ${prospect.doctor_name || 'N/A'}\nEmail: <code>${prospect.email}</code>\nStatus: Sequence stopped. Ready for discovery call booking!`;
+  await sendTelegram(msg);
 
-    console.log(`[Outreach Engine] Dispatched Step ${stepNumber} to ${prospect.email}`);
-    return { success: true, prospect, emailResult: emailRes };
-  } else {
-    return { success: false, error: emailRes?.error || 'Email dispatch failed' };
-  }
+  return { success: true, prospect: updated };
 }
 
-export function unsubscribeProspect(email) {
-  const prospects = getProspects();
-  const normalized = (email || '').trim().toLowerCase();
-  let updated = false;
-
-  for (const p of prospects) {
-    if (p.email === normalized) {
-      p.status = 'unsubscribed';
-      p.updatedAt = new Date().toISOString();
-      updated = true;
-    }
+/**
+ * CAN-SPAM Unsubscribe Handler
+ */
+export async function unsubscribeProspect(email) {
+  const prospect = await getProspectById(email);
+  if (!prospect) {
+    return { success: false, error: 'Prospect not found' };
   }
 
-  if (updated) {
-    saveProspects(prospects);
+  const updated = await updateProspect(prospect.id, {
+    status: 'unsubscribed',
+    next_due_at: null,
+  });
+
+  console.log(`[Outreach] Unsubscribed prospect ${prospect.email}`);
+  return { success: true, prospect: updated };
+}
+
+/**
+ * Activate a prospect: sends Step 1 immediately and schedules Step 2
+ */
+export async function activateProspect(idOrEmail) {
+  const prospect = await getProspectById(idOrEmail);
+  if (!prospect) {
+    return { success: false, error: 'Prospect not found' };
   }
-  return { success: updated, email: normalized };
+
+  return await sendOutreachStep({ prospectId: prospect.id, stepNumber: 1 });
 }
