@@ -465,3 +465,149 @@ export function automationErrorAlertTemplate({
 </html>`;
 }
 
+export function customerOneHourReminderTemplate({ attendeeName, title, meetingUrl, startTime }) {
+  return `<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"></head>
+<body style="margin:0;padding:0;background-color:#f8fafc;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;color:#1e293b;">
+  <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background-color:#f8fafc;padding:30px 10px;">
+    <tr>
+      <td align="center">
+        <table role="presentation" width="560" cellspacing="0" cellpadding="0" style="background-color:#ffffff;border-radius:12px;overflow:hidden;border:1px solid #e2e8f0;box-shadow:0 4px 16px rgba(0,0,0,0.06);">
+          <tr>
+            <td style="background:linear-gradient(135deg, #2563eb, #1d4ed8);padding:30px 24px;text-align:center;">
+              <span style="display:inline-block;background:rgba(255,255,255,0.2);color:#ffffff;padding:4px 12px;border-radius:16px;font-size:11px;font-weight:700;letter-spacing:1px;text-transform:uppercase;margin-bottom:8px;">Starting In 60 Minutes</span>
+              <h1 style="margin:0;color:#ffffff;font-size:22px;font-weight:700;">🔔 Your Session Starts Soon</h1>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding:28px 24px;">
+              <p style="margin:0 0 16px;font-size:15px;line-height:1.6;color:#334155;">Hi <strong>${attendeeName || 'there'}</strong> 👋,</p>
+              <p style="margin:0 0 20px;font-size:15px;line-height:1.6;color:#334155;">
+                This is a quick 1-hour ping for our upcoming call: <strong>${title || 'Strategy Session'}</strong>.
+              </p>
+
+              <div style="background-color:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;padding:18px;margin-bottom:24px;text-align:center;">
+                <p style="margin:0 0 6px;color:#1e40af;font-size:13px;font-weight:600;text-transform:uppercase;">Scheduled Start Time</p>
+                <p style="margin:0 0 16px;color:#0f172a;font-size:18px;font-weight:700;">${startTime || 'In 60 Minutes'}</p>
+                <a href="${meetingUrl}" target="_blank" style="display:inline-block;background-color:#2563eb;color:#ffffff;text-decoration:none;padding:12px 28px;border-radius:6px;font-size:14px;font-weight:700;box-shadow:0 2px 8px rgba(37,99,235,0.3);">
+                  👉 Click Here to Join Video Meeting
+                </a>
+              </div>
+
+              <p style="margin:0;font-size:13px;color:#64748b;line-height:1.5;">
+                💡 <em>Tip: If you're on mobile or need to reschedule last-minute, reply directly to this email and let me know.</em>
+              </p>
+            </td>
+          </tr>
+          <tr>
+            <td style="background-color:#f8fafc;padding:16px 24px;border-top:1px solid #e2e8f0;text-align:center;">
+              <p style="margin:0;color:#94a3b8;font-size:12px;">SureGreet AI • High-Conversion Voice Systems</p>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>`;
+}
+
+export function patientAppointmentConfirmationTemplate({ callerName, clinicName, treatmentName, appointmentTime, directionsUrl }) {
+  return `<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"></head>
+<body style="margin:0;padding:0;background-color:#fdfbf7;font-family:Georgia,serif;color:#292524;">
+  <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background-color:#fdfbf7;padding:36px 12px;">
+    <tr>
+      <td align="center">
+        <table role="presentation" width="580" cellspacing="0" cellpadding="0" style="background-color:#ffffff;border-radius:12px;overflow:hidden;border:1px solid #e7e5e4;box-shadow:0 4px 20px rgba(0,0,0,0.04);">
+          <tr>
+            <td style="background:#1c1917;padding:36px 28px;text-align:center;">
+              <h1 style="margin:0;color:#f5f5f4;font-size:24px;font-weight:400;letter-spacing:1px;">${clinicName || 'SureGreet Medical'}</h1>
+              <p style="margin:8px 0 0;color:#a8a29e;font-size:13px;letter-spacing:0.5px;text-transform:uppercase;">Appointment Confirmation</p>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding:32px 28px;">
+              <p style="margin:0 0 16px;font-size:16px;line-height:1.6;">Dear ${callerName || 'Patient'},</p>
+              <p style="margin:0 0 24px;font-size:15px;line-height:1.7;color:#57534e;">
+                Thank you for speaking with our clinic coordinator. Your consultation for <strong>${treatmentName || 'Treatment Consultation'}</strong> has been officially confirmed on our schedule.
+              </p>
+
+              <div style="background-color:#f5f5f4;border-radius:8px;padding:20px;margin-bottom:24px;">
+                <table style="width:100%;border-collapse:collapse;font-size:14px;">
+                  <tr><td style="padding:6px 0;color:#78716c;width:120px;">Time:</td><td style="font-weight:bold;color:#1c1917;">${appointmentTime || 'Confirmed on Call'}</td></tr>
+                  <tr><td style="padding:6px 0;color:#78716c;">Treatment:</td><td style="font-weight:bold;color:#1c1917;">${treatmentName || 'Consultation'}</td></tr>
+                  ${directionsUrl ? `<tr><td style="padding:6px 0;color:#78716c;">Location:</td><td><a href="${directionsUrl}" style="color:#0284c7;text-decoration:none;">View Clinic Map & Directions</a></td></tr>` : ''}
+                </table>
+              </div>
+
+              <p style="margin:0;font-size:13px;color:#78716c;line-height:1.6;">
+                Please arrive 10 minutes prior to complete any intake details. If you need to make changes, simply reply to this email or call our desk.
+              </p>
+            </td>
+          </tr>
+          <tr>
+            <td style="background-color:#f5f5f4;padding:18px 28px;border-top:1px solid #e7e5e4;text-align:center;">
+              <p style="margin:0;color:#a8a29e;font-size:11px;">Powered by SureGreet AI Voice Reception</p>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>`;
+}
+
+export function callerFollowUpDemoTemplate({ callerPhone, demoVideoUrl, bookingUrl, clinicName }) {
+  return `<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"></head>
+<body style="margin:0;padding:0;background-color:#0f172a;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;color:#f8fafc;">
+  <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background-color:#0f172a;padding:36px 12px;">
+    <tr>
+      <td align="center">
+        <table role="presentation" width="580" cellspacing="0" cellpadding="0" style="background-color:#1e293b;border-radius:12px;overflow:hidden;border:1px solid #334155;box-shadow:0 8px 30px rgba(0,0,0,0.4);">
+          <tr>
+            <td style="background:linear-gradient(135deg, #0ea5e9, #0284c7);padding:32px 24px;text-align:center;">
+              <h1 style="margin:0;color:#ffffff;font-size:22px;font-weight:700;">📞 Thanks for Calling ${clinicName || 'SureGreet AI'}!</h1>
+              <p style="margin:6px 0 0;color:#e0f2fe;font-size:13px;">Here is the information you requested</p>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding:28px 24px;">
+              <p style="margin:0 0 16px;font-size:15px;line-height:1.6;color:#cbd5e1;">Hi there,</p>
+              <p style="margin:0 0 20px;font-size:14px;line-height:1.7;color:#cbd5e1;">
+                Thanks for checking in with our AI receptionist. As discussed on the call, here is the full breakdown and 60-second video demo showing how our automated booking and consultation systems work:
+              </p>
+
+              <div style="text-align:center;margin:24px 0;">
+                <a href="${demoVideoUrl || 'https://suregreet.ai'}" target="_blank" style="display:inline-block;background-color:#0ea5e9;color:#ffffff;text-decoration:none;padding:12px 28px;border-radius:6px;font-weight:700;font-size:14px;">
+                  ▶️ Watch 60-Second Video Demo
+                </a>
+              </div>
+
+              ${bookingUrl ? `
+              <div style="background-color:#0f172a;border-radius:8px;padding:18px;border:1px solid #334155;text-align:center;margin-top:20px;">
+                <p style="margin:0 0 10px;font-size:13px;color:#94a3b8;">Ready to schedule your appointment or lock in your pilot?</p>
+                <a href="${bookingUrl}" target="_blank" style="color:#38bdf8;font-weight:bold;font-size:14px;text-decoration:underline;">
+                  👉 Pick a Time on Our Live Calendar
+                </a>
+              </div>` : ''}
+            </td>
+          </tr>
+          <tr>
+            <td style="background-color:#0f172a;padding:18px 24px;border-top:1px solid #334155;text-align:center;">
+              <p style="margin:0;color:#64748b;font-size:12px;">SureGreet AI • 24/7 Voice & Speed-to-Lead Automation</p>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>`;
+}
+
