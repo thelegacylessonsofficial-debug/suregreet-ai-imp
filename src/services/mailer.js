@@ -37,7 +37,7 @@ export async function sendEmail({ to, subject, html, text }) {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          from: process.env.RESEND_FROM || 'SureGreet AI <onboarding@resend.dev>',
+          from: config.resendFrom || process.env.RESEND_FROM || 'Archit | SureGreet AI <onboarding@resend.dev>',
           to: Array.isArray(to) ? to : [to],
           subject,
           html,
