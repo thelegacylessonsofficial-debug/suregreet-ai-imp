@@ -25,24 +25,34 @@ function getTransporter() {
   return transporter;
 }
 
-export async function sendEmail({ to, subject, html, text }) {
+export async function sendEmail({ to, subject, html, text, headers = {}, inReplyTo, references, messageId }) {
+  // Normalize threading headers
+  const customHeaders = { ...headers };
+  if (inReplyTo) customHeaders['In-Reply-To'] = inReplyTo;
+  if (references) customHeaders['References'] = references;
+
   // 1. Try Resend HTTP API (Port 443 — bypasses any cloud SMTP port blocking)
   const resendApiKey = process.env.RESEND_API_KEY;
   if (resendApiKey) {
     try {
+      const resendPayload = {
+        from: config.resendFrom || process.env.RESEND_FROM || 'Archit | SureGreet AI <onboarding@resend.dev>',
+        to: Array.isArray(to) ? to : [to],
+        subject,
+        html,
+        text: text || '',
+      };
+      if (Object.keys(customHeaders).length > 0) {
+        resendPayload.headers = customHeaders;
+      }
+
       const res = await fetch('https://api.resend.com/emails', {
         method: 'POST',
         headers: {
           Authorization: `Bearer ${resendApiKey}`,
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({
-          from: config.resendFrom || process.env.RESEND_FROM || 'Archit | SureGreet AI <onboarding@resend.dev>',
-          to: Array.isArray(to) ? to : [to],
-          subject,
-          html,
-          text: text || '',
-        }),
+        body: JSON.stringify(resendPayload),
       });
       const data = await res.json();
       if (res.ok) {
@@ -61,17 +71,23 @@ export async function sendEmail({ to, subject, html, text }) {
 
   if (!mailClient) {
     console.log(`[Mailer Mock] Email to: ${to} | Subject: "${subject}"`);
-    return { mock: true, success: true };
+    return { mock: true, success: true, messageId: messageId || `<mock-${Date.now()}@suregreet.ai>` };
   }
 
   try {
-    const info = await mailClient.sendMail({
+    const mailOptions = {
       from: config.smtp.from,
       to,
       subject,
       html,
       text: text || '',
-    });
+      headers: customHeaders,
+    };
+    if (inReplyTo) mailOptions.inReplyTo = inReplyTo;
+    if (references) mailOptions.references = references;
+    if (messageId) mailOptions.messageId = messageId;
+
+    const info = await mailClient.sendMail(mailOptions);
     console.log(`[Mailer:SMTP] Email sent successfully to: ${to} (MessageId: ${info.messageId})`);
     return { success: true, messageId: info.messageId, provider: 'smtp' };
   } catch (err) {
