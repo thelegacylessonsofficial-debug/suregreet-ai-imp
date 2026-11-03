@@ -7,6 +7,7 @@ import { retellToolRouter } from './routes/retellToolWebhook.js';
 import { leadCallbackRouter } from './routes/leadCallbackWebhook.js';
 import { telegramRouter } from './routes/telegramWebhook.js';
 import { outreachRouter } from './routes/outreachRoutes.js';
+import { scraperRouter } from './routes/scraperRoutes.js';
 import { initReminderCron, runDailyReminders, runHourlyOneHourReminders } from './cron/reminderCron.js';
 import { initAccountabilityCron } from './cron/accountabilityCron.js';
 import { initOutreachCron, runOutreachQueueWorker } from './cron/outreachCron.js';
@@ -47,6 +48,10 @@ app.get('/', (req, res) => {
       'GET /outreach/due',
       'GET /outreach/preview',
       'ALL /outreach/run-queue',
+      'POST /scraper/inspect',
+      'POST /scraper/ingest',
+      'POST /scraper/bulk',
+      'GET /scraper/dashboard',
       'GET /set-webhook',
       'GET /alerts/recent',
       'ALL /test/trigger-alert',
@@ -99,6 +104,7 @@ app.use(['/webhook/retell-tool-call', '/retell-tool-call'], retellToolRouter);
 app.use(['/webhook/suregreet-lead-callback', '/suregreet-lead-callback'], leadCallbackRouter);
 app.use(['/webhook/telegram', '/telegram'], telegramRouter);
 app.use('/outreach', outreachRouter);
+app.use('/scraper', scraperRouter);
 
 // Manual trigger for testing 24h reminders immediately
 app.all('/test/run-reminders', async (req, res) => {
