@@ -4,7 +4,14 @@ import { config } from '../config.js';
 import { getCalAcceptedBookings } from '../services/calcom.js';
 import { sendEmail } from '../services/mailer.js';
 import { sendAutomationAlert } from '../services/alertService.js';
-import { customerReminderTemplate, ownerDailySummaryTemplate } from '../templates/emailTemplates.js';
+import {
+  customerReminderTemplate,
+  ownerDailySummaryTemplate,
+  customerOneHourReminderTemplate,
+} from '../templates/emailTemplates.js';
+
+// Cache to prevent duplicate 1-hour reminders
+const sentOneHourCache = new Set();
 
 export async function runDailyReminders() {
   console.log('[Cron] Running Daily 24h Reminders check...');
@@ -74,9 +81,59 @@ export async function runDailyReminders() {
   return { count: tomorrowBookings.length };
 }
 
+export async function runHourlyOneHourReminders() {
+  console.log('[Cron] Running Hourly 1h Urgent Reminders check...');
+  const now = DateTime.utc();
+
+  const bookings = await getCalAcceptedBookings();
+  let sentCount = 0;
+
+  for (const b of bookings) {
+    if (!b || (!b.startTime && !b.start)) continue;
+
+    const rawStart = b.startTime || b.start;
+    const bookingStart = DateTime.fromISO(rawStart).toUTC();
+    const minutesUntilStart = bookingStart.diff(now, 'minutes').minutes;
+
+    const bookingId = String(b.id || b.bookingId);
+
+    // Target meetings starting between 45 and 75 minutes from now
+    if (minutesUntilStart >= 45 && minutesUntilStart <= 75) {
+      if (sentOneHourCache.has(bookingId)) {
+        continue;
+      }
+
+      const attendee = b.attendees?.[0] || {};
+      const attendeeEmail = attendee.email || '';
+      const attendeeName = attendee.name || 'Client';
+      const title = b.title || b.eventType?.title || 'Discovery Call';
+      const meetingUrl = b.metadata?.videoCallUrl || b.location || 'Video Call Link will be provided';
+      const formattedTime = DateTime.fromISO(rawStart).setZone(config.timezone).toFormat('hh:mm a') + ' EST';
+
+      if (attendeeEmail) {
+        await sendEmail({
+          to: attendeeEmail,
+          subject: `🔔 Starting in 60 Minutes: ${title}`,
+          html: customerOneHourReminderTemplate({
+            attendeeName,
+            title,
+            meetingUrl,
+            startTime: formattedTime,
+          }),
+        });
+
+        sentOneHourCache.add(bookingId);
+        sentCount++;
+        console.log(`[Cron:1h] Dispatched 60-min reminder to ${attendeeEmail} for booking #${bookingId}`);
+      }
+    }
+  }
+
+  return { checked: bookings.length, sentCount };
+}
+
 export function initReminderCron() {
-  // Cron schedule: 9:00 AM every day
-  // Syntax: minute (0) hour (9) day-of-month (*) month (*) day-of-week (*)
+  // 1. Daily 24h Reminder Cron at 09:00 AM EST every day
   cron.schedule(
     '0 9 * * *',
     async () => {
@@ -98,5 +155,23 @@ export function initReminderCron() {
     }
   );
 
-  console.log(`[Cron] Scheduled 24h Daily Reminders for 09:00 AM (${config.timezone}) every day.`);
+  // 2. Hourly 1h Urgent Reminder Cron at minute 15 of every hour
+  cron.schedule(
+    '15 * * * *',
+    async () => {
+      try {
+        await runHourlyOneHourReminders();
+      } catch (err) {
+        console.error('[Cron] Error during 1h reminder job:', err);
+        await sendAutomationAlert({
+          automationName: 'Cal.com 1h Urgent Reminders Cron',
+          action: 'runHourlyOneHourReminders',
+          error: err,
+          severity: 'MEDIUM',
+        });
+      }
+    }
+  );
+
+  console.log(`[Cron] Initialized 24h reminders (09:00 AM EST) and 1h reminders (every hour :15).`);
 }
