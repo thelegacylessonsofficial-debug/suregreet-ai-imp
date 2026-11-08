@@ -80,13 +80,13 @@ export function generateCoFounderReply(userText) {
     textLower === 'task'
   ) {
     return (
-      "🚨 *#IMP DAILY TASKS (SureGreet AI Day 4)*\n\n" +
-      "1. 🎙️ *Retell Voice Check*: Test prompt, low-latency voice & live transfer for production.\n" +
-      "2. 🌐 *SureGreet Website*: Production-ready checklist (custom domain + Cal.com integration).\n" +
-      "3. 💡 *Demo Video & Content Ideas*: 5 high-converting video angles for Loom/IG/YouTube.\n" +
-      "4. 🏥 *Demo MedSpa Website*: Luxe Aesthetics Miami demo site built (open demo_medspa/index.html).\n" +
-      "5. 📚 *Learn Sales (Min 4 Hours)*: Deep study of Hormozi CLOSER framework & MedSpa objection drills.\n\n" +
-      "Hourly accountability reminders are active. What are you executing right now? 🔥"
+      "🚨 *#IMP DAILY TASKS (SureGreet AI Sprint)*\n\n" +
+      "1. ⚖️ *Legal Compliance*: 1-Page B2B Agreement & TCPA/HIPAA disclaimers completed in `legal/`.\n" +
+      "2. 💳 *Payment Method*: Wise USD ACH & Stripe Invoice guide ready in `operations/payment_processing_guide.md`.\n" +
+      "3. 🎙️ *Retell Credits & Number*: Verified $10 trial credit & 60s phone number setup guide.\n" +
+      "4. 📊 *Lead Follow-Up CRM*: Pipeline tracker & 3-step follow-up scripts live in `leads/agency_crm.md`.\n" +
+      "5. 📹 *Record 75s Demo Video*: Open `demo_medspa/index.html` on Loom and hit record!\n\n" +
+      "All backend assets are built. Your only remaining blocker is hitting Record on Loom! 🔥"
     );
   } else if (textLower.includes('/status') || textLower.includes('status')) {
     return (
