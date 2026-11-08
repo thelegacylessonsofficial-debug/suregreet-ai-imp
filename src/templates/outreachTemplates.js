@@ -5,16 +5,20 @@ export function getUnsubscribeUrl(prospectEmail) {
   return `${base}/outreach/unsubscribe?email=${encodeURIComponent(prospectEmail || '')}`;
 }
 
-export function formatSalutation(doctorName, clinicName) {
+export function formatSalutation(doctorName, clinicName, niche = 'medspa') {
   if (!doctorName || !doctorName.trim()) {
-    return clinicName ? `Dr. at ${clinicName}` : 'Doctor';
+    if (niche === 'hvac') {
+      return clinicName ? `Operations Lead at ${clinicName}` : 'there';
+    }
+    return clinicName ? `Medical Director at ${clinicName}` : 'Doctor';
   }
   let clean = doctorName.trim();
-  // If already starts with Dr. or Doctor, keep it
   if (/^dr\.?\s+/i.test(clean)) {
     return clean;
   }
-  // If "First Last", extract "Dr. Last"
+  if (niche === 'hvac') {
+    return clean.split(/\s+/)[0];
+  }
   const parts = clean.split(/\s+/);
   if (parts.length > 1) {
     const lastName = parts[parts.length - 1];
@@ -24,195 +28,216 @@ export function formatSalutation(doctorName, clinicName) {
 }
 
 /**
- * Step 1: The 75-Second Front Desk Speed-to-Lead Audit
+ * Step 1: Controlled Imperfection Micro-Audit (Strictly 45 to 65 words)
+ * Harvey Rules: Zero AI fluff, lowercase after dash, mid-thought pivot, 0 pitch in email 1.
  */
-export function outreachStep1Template({ doctorName, clinicName, city, treatment, prospectEmail }) {
-  const salutation = formatSalutation(doctorName, clinicName);
-  const clinic = clinicName ? clinicName.trim() : 'your clinic';
-  const treat = treatment ? treatment.trim() : 'aesthetic';
-  const locationStr = city ? ` in ${city.trim()}` : '';
+export function outreachStep1Template({
+  doctorName,
+  clinicName,
+  city,
+  treatment,
+  prospectEmail,
+  specificObservation,
+  niche = 'medspa',
+}) {
+  const salutation = formatSalutation(doctorName, clinicName, niche);
+  const clinic = clinicName ? clinicName.trim() : 'your team';
+  const treat = treatment ? treatment.trim() : niche === 'hvac' ? 'emergency repair' : 'Morpheus8';
+  const isHvac = niche === 'hvac';
   const unsubUrl = getUnsubscribeUrl(prospectEmail);
-  const subject = `quick question - ${clinic} inquiries`;
+
+  const subject = isHvac ? `quick question - ${clinic} calls` : `quick question - ${clinic} inquiries`;
+
+  let hook = specificObservation;
+  if (!hook) {
+    hook = isHvac
+      ? `Saw your repair page routes emergency calls to a static form instead of live dispatch.`
+      : `Saw your site makes patients fill out a static form for ${treat} instead of booking directly.`;
+  } else {
+    // If hook is long, tighten it
+    hook = hook.replace(/\s+into your calendar/i, '');
+  }
+
+  const pivotQuestion = isHvac
+    ? `Quick question — when an AC breaks after 7 PM, does someone answer live or do they hit voicemail?`
+    : `Quick question — when an inquiry comes in after 6 PM, does someone call in 2 minutes, or wait until morning?`;
+
+  const assetPitch = isHvac
+    ? `Put together a 60-second demo of our AI voice dispatcher answering in 2 rings.`
+    : `Put together a 60-second demo showing our AI receptionist booking consults 24/7.`;
 
   const text = `Hey ${salutation},
 
-I submitted a test inquiry on your ${treat} page${locationStr} yesterday evening after hours.
+${hook}
 
-Your front desk was closed for the night, but industry data shows 78% of high-intent aesthetic patients book with whichever clinic calls or texts them back in under 5 minutes.
+${pivotQuestion}
 
-I recorded a 75-second video showing how SureGreet AI calls back after-hours ad leads in under 30 seconds, answers pricing questions, and collects booking deposits directly into your calendar:
+${assetPitch}
 
-https://suregreet.ai
-
-Open to me sending over the full speed-to-lead audit for ${clinic}?
+Worth a quick look?
 
 Best,
 Archit
-Founder, SureGreet AI
-https://suregreet.ai
 
 --
-If you'd rather not receive these clinic audits, opt out here:
-${unsubUrl}`;
+Opt out: ${unsubUrl}`;
 
-  const html = `<div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; font-size: 14px; line-height: 1.6; color: #111827; max-width: 580px;">
-  <p style="margin: 0 0 16px 0;">Hey ${salutation},</p>
-  <p style="margin: 0 0 16px 0;">I submitted a test inquiry on your ${treat} page${locationStr} yesterday evening after hours.</p>
-  <p style="margin: 0 0 16px 0;">Your front desk was closed for the night, but industry data shows 78% of high-intent aesthetic patients book with whichever clinic calls or texts them back in under 5 minutes.</p>
-  <p style="margin: 0 0 16px 0;">I recorded a 75-second video showing how SureGreet AI calls back after-hours ad leads in under 30 seconds, answers pricing questions, and collects booking deposits directly into your calendar:</p>
-  <p style="margin: 0 0 16px 0;"><a href="https://suregreet.ai" style="color: #2563eb; text-decoration: underline;">https://suregreet.ai</a></p>
-  <p style="margin: 0 0 16px 0;">Open to me sending over the full speed-to-lead audit for ${clinic}?</p>
-  <p style="margin: 0 0 4px 0;">Best,</p>
-  <p style="margin: 0 0 4px 0;"><strong>Archit</strong></p>
-  <p style="margin: 0 0 24px 0; color: #4b5563;">Founder, SureGreet AI<br><a href="https://suregreet.ai" style="color: #4b5563;">https://suregreet.ai</a></p>
-  <p style="margin: 24px 0 0 0; font-size: 11px; color: #9ca3af; border-top: 1px solid #e5e7eb; padding-top: 12px;">If you'd rather not receive these clinic audits, <a href="${unsubUrl}" style="color: #9ca3af; text-decoration: underline;">opt out here</a>.</p>
+  const html = `<div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; font-size: 14px; line-height: 1.6; color: #111827; max-width: 520px;">
+  <p style="margin: 0 0 12px 0;">Hey ${salutation},</p>
+  <p style="margin: 0 0 12px 0;">${hook}</p>
+  <p style="margin: 0 0 12px 0;">${pivotQuestion}</p>
+  <p style="margin: 0 0 12px 0;">${assetPitch}</p>
+  <p style="margin: 0 0 12px 0;">Worth a quick look?</p>
+  <p style="margin: 0 0 2px 0;">Best,</p>
+  <p style="margin: 0 0 16px 0;"><strong>Archit</strong></p>
+  <p style="margin: 16px 0 0 0; font-size: 11px; color: #9ca3af; border-top: 1px solid #e5e7eb; padding-top: 8px;">Opt out: <a href="${unsubUrl}" style="color: #9ca3af;">unsubscribe</a></p>
 </div>`;
 
   return { subject, text, html };
 }
 
 /**
- * Step 2: The 30-Second Voice AI Audio Demo & Proof (Threaded Re:)
+ * Step 2: 30-Second Audio Proof (Threaded Re: - Strictly 45 to 65 words)
  */
-export function outreachStep2Template({ doctorName, clinicName, treatment, prospectEmail, originalSubject }) {
-  const salutation = formatSalutation(doctorName, clinicName);
-  const clinic = clinicName ? clinicName.trim() : 'your clinic';
-  const treat = treatment ? treatment.trim() : 'Morpheus8 & injectables';
+export function outreachStep2Template({
+  doctorName,
+  clinicName,
+  treatment,
+  prospectEmail,
+  originalSubject,
+  niche = 'medspa',
+}) {
+  const salutation = formatSalutation(doctorName, clinicName, niche);
+  const clinic = clinicName ? clinicName.trim() : 'your team';
+  const treat = treatment ? treatment.trim() : niche === 'hvac' ? 'emergency service' : 'Morpheus8';
+  const isHvac = niche === 'hvac';
   const unsubUrl = getUnsubscribeUrl(prospectEmail);
   const cleanSubject = (originalSubject || `quick question - ${clinic} inquiries`).replace(/^Re:\s*/i, '');
   const subject = `Re: ${cleanSubject}`;
 
+  const demoSnippet = isHvac
+    ? `Recorded a 30-second live audio clip of our AI dispatcher collecting emergency AC details and booking the tech:`
+    : `Recorded a 30-second live audio clip of our AI receptionist answering ${treat} pricing and booking a consult:`;
+
   const text = `Hey ${salutation},
 
-Following up on my note from earlier this week regarding your front desk response time at ${clinic}.
+Quick follow-up on my note from Tuesday.
 
-Most clinic owners tell me they don't want a robotic phone tree turning high-ticket patients away.
-
-Here is an actual 30-second live audio recording of SureGreet AI answering a patient asking about ${treat} pricing and scheduling directly into the clinic's calendar:
-
+${demoSnippet}
 https://suregreet.ai#demo
 
-We are taking on 2 pilot clinics this month at zero upfront cost to prove out the patient acquisition lift in exchange for a video testimonial.
+Taking on 2 pilot ${isHvac ? 'contractors' : 'clinics'} at zero upfront cost to prove out the booking lift.
 
-Would 10 minutes on Thursday or Friday work for a quick walkthrough?
+Would 10 minutes Thursday work to hear how it sounds?
 
 Best,
 Archit
-SureGreet AI
-https://suregreet.ai
 
 --
-Opt out:
-${unsubUrl}`;
+Opt out: ${unsubUrl}`;
 
-  const html = `<div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; font-size: 14px; line-height: 1.6; color: #111827; max-width: 580px;">
-  <p style="margin: 0 0 16px 0;">Hey ${salutation},</p>
-  <p style="margin: 0 0 16px 0;">Following up on my note from earlier this week regarding your front desk response time at ${clinic}.</p>
-  <p style="margin: 0 0 16px 0;">Most clinic owners tell me they don't want a robotic phone tree turning high-ticket patients away.</p>
-  <p style="margin: 0 0 16px 0;">Here is an actual 30-second live audio recording of SureGreet AI answering a patient asking about ${treat} pricing and scheduling directly into the clinic's calendar:</p>
-  <p style="margin: 0 0 16px 0;"><a href="https://suregreet.ai#demo" style="color: #2563eb; text-decoration: underline;">https://suregreet.ai#demo</a></p>
-  <p style="margin: 0 0 16px 0;">We are taking on 2 pilot clinics this month at zero upfront cost to prove out the patient acquisition lift in exchange for a video testimonial.</p>
-  <p style="margin: 0 0 16px 0;">Would 10 minutes on Thursday or Friday work for a quick walkthrough?</p>
-  <p style="margin: 0 0 4px 0;">Best,</p>
-  <p style="margin: 0 0 4px 0;"><strong>Archit</strong></p>
-  <p style="margin: 0 0 24px 0; color: #4b5563;">SureGreet AI</p>
-  <p style="margin: 24px 0 0 0; font-size: 11px; color: #9ca3af; border-top: 1px solid #e5e7eb; padding-top: 12px;">Opt out: <a href="${unsubUrl}" style="color: #9ca3af; text-decoration: underline;">click here</a>.</p>
+  const html = `<div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; font-size: 14px; line-height: 1.6; color: #111827; max-width: 520px;">
+  <p style="margin: 0 0 12px 0;">Hey ${salutation},</p>
+  <p style="margin: 0 0 12px 0;">Quick follow-up on my note from Tuesday.</p>
+  <p style="margin: 0 0 12px 0;">${demoSnippet}<br><a href="https://suregreet.ai#demo" style="color: #2563eb; text-decoration: underline;">https://suregreet.ai#demo</a></p>
+  <p style="margin: 0 0 12px 0;">Taking on 2 pilot ${isHvac ? 'contractors' : 'clinics'} at zero upfront cost to prove out the booking lift.</p>
+  <p style="margin: 0 0 12px 0;">Would 10 minutes Thursday work to hear how it sounds?</p>
+  <p style="margin: 0 0 2px 0;">Best,</p>
+  <p style="margin: 0 0 16px 0;"><strong>Archit</strong></p>
+  <p style="margin: 16px 0 0 0; font-size: 11px; color: #9ca3af; border-top: 1px solid #e5e7eb; padding-top: 8px;">Opt out: <a href="${unsubUrl}" style="color: #9ca3af;">unsubscribe</a></p>
 </div>`;
 
   return { subject, text, html };
 }
 
 /**
- * Step 3: The Economic Math ($4,500 Missed Revenue Breakdown, Threaded Re:)
+ * Step 3: Economic Math (Threaded Re: - Strictly 45 to 65 words)
  */
-export function outreachStep3Template({ doctorName, clinicName, treatment, prospectEmail, originalSubject }) {
-  const salutation = formatSalutation(doctorName, clinicName);
-  const clinic = clinicName ? clinicName.trim() : 'your clinic';
-  const treat = treatment ? treatment.trim() : 'aesthetic procedure';
+export function outreachStep3Template({
+  doctorName,
+  clinicName,
+  treatment,
+  prospectEmail,
+  originalSubject,
+  niche = 'medspa',
+}) {
+  const salutation = formatSalutation(doctorName, clinicName, niche);
+  const clinic = clinicName ? clinicName.trim() : 'your team';
+  const treat = treatment ? treatment.trim() : niche === 'hvac' ? 'emergency HVAC' : 'Morpheus8';
+  const isHvac = niche === 'hvac';
   const unsubUrl = getUnsubscribeUrl(prospectEmail);
   const cleanSubject = (originalSubject || `quick question - ${clinic} inquiries`).replace(/^Re:\s*/i, '');
   const subject = `Re: ${cleanSubject}`;
 
+  const mathBody = isHvac
+    ? `Quick napkin math — average emergency HVAC repair is $2,500+. If only 2 after-hours callers a month hit voicemail and call a competitor, that is $5,000+ in leaked revenue.`
+    : `Quick napkin math — average ${treat} package is $1,500+. If only 2 evening ad leads a week drop off on a form and call a competitor, that is $12,000/mo in lost patient revenue.`;
+
   const text = `Hey ${salutation},
 
-Wanted to share the quick math on why after-hours speed-to-lead makes or breaks medspa ad ROI for ${clinic}:
+${mathBody}
 
-• Average patient lifetime value for ${treat}: $1,500+
-• Average missed after-hours or weekend inquiries: 3 to 5 per week
-• Net revenue lost to competing clinics: $4,500 – $7,500 / month
+Happy to plug our voice agent into your lines for 14 days to capture those calls at zero upfront cost.
 
-SureGreet AI sits in front of your phone lines 24/7/365. It never calls in sick, answers in under 2 seconds, and collects booking deposits directly into your system.
-
-Let's run a 14-day risk-free pilot on your after-hours calls. If it doesn't capture at least 3 extra consultations, you don't pay a dime.
-
-Open to seeing how it works on your actual phone line?
+Worth a quick 5-minute chat?
 
 Best,
 Archit
-SureGreet AI
-https://suregreet.ai
 
 --
-Opt out:
-${unsubUrl}`;
+Opt out: ${unsubUrl}`;
 
-  const html = `<div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; font-size: 14px; line-height: 1.6; color: #111827; max-width: 580px;">
-  <p style="margin: 0 0 16px 0;">Hey ${salutation},</p>
-  <p style="margin: 0 0 16px 0;">Wanted to share the quick math on why after-hours speed-to-lead makes or breaks medspa ad ROI for ${clinic}:</p>
-  <p style="margin: 0 0 8px 16px;">• Average patient lifetime value for ${treat}: $1,500+</p>
-  <p style="margin: 0 0 8px 16px;">• Average missed after-hours or weekend inquiries: 3 to 5 per week</p>
-  <p style="margin: 0 0 16px 16px;">• Net revenue lost to competing clinics: $4,500 – $7,500 / month</p>
-  <p style="margin: 0 0 16px 0;">SureGreet AI sits in front of your phone lines 24/7/365. It never calls in sick, answers in under 2 seconds, and collects booking deposits directly into your system.</p>
-  <p style="margin: 0 0 16px 0;">Let's run a 14-day risk-free pilot on your after-hours calls. If it doesn't capture at least 3 extra consultations, you don't pay a dime.</p>
-  <p style="margin: 0 0 16px 0;">Open to seeing how it works on your actual phone line?</p>
-  <p style="margin: 0 0 4px 0;">Best,</p>
-  <p style="margin: 0 0 4px 0;"><strong>Archit</strong></p>
-  <p style="margin: 0 0 24px 0; color: #4b5563;">SureGreet AI</p>
-  <p style="margin: 24px 0 0 0; font-size: 11px; color: #9ca3af; border-top: 1px solid #e5e7eb; padding-top: 12px;">Opt out: <a href="${unsubUrl}" style="color: #9ca3af; text-decoration: underline;">click here</a>.</p>
+  const html = `<div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; font-size: 14px; line-height: 1.6; color: #111827; max-width: 520px;">
+  <p style="margin: 0 0 12px 0;">Hey ${salutation},</p>
+  <p style="margin: 0 0 12px 0;">${mathBody}</p>
+  <p style="margin: 0 0 12px 0;">Happy to plug our voice agent into your lines for 14 days to capture those calls at zero upfront cost.</p>
+  <p style="margin: 0 0 12px 0;">Worth a quick 5-minute chat?</p>
+  <p style="margin: 0 0 2px 0;">Best,</p>
+  <p style="margin: 0 0 16px 0;"><strong>Archit</strong></p>
+  <p style="margin: 16px 0 0 0; font-size: 11px; color: #9ca3af; border-top: 1px solid #e5e7eb; padding-top: 8px;">Opt out: <a href="${unsubUrl}" style="color: #9ca3af;">unsubscribe</a></p>
 </div>`;
 
   return { subject, text, html };
 }
 
 /**
- * Step 4: Clean Breakup Email (Threaded Re:)
+ * Step 4: The Clean Breakup (Threaded Re: - Under 55 words)
  */
-export function outreachStep4Template({ doctorName, clinicName, prospectEmail, originalSubject }) {
-  const salutation = formatSalutation(doctorName, clinicName);
-  const clinic = clinicName ? clinicName.trim() : 'your clinic';
+export function outreachStep4Template({
+  doctorName,
+  clinicName,
+  prospectEmail,
+  originalSubject,
+  niche = 'medspa',
+}) {
+  const salutation = formatSalutation(doctorName, clinicName, niche);
+  const clinic = clinicName ? clinicName.trim() : 'your business';
   const unsubUrl = getUnsubscribeUrl(prospectEmail);
   const cleanSubject = (originalSubject || `quick question - ${clinic} inquiries`).replace(/^Re:\s*/i, '');
   const subject = `Re: ${cleanSubject}`;
 
   const text = `Hey ${salutation},
 
-Assuming that capturing missed after-hours patient inquiries isn't a priority for ${clinic} right now.
+Assuming after-hours speed-to-lead isn't a priority for ${clinic} right now — totally understand.
 
-I won't follow up further so I don't clutter your inbox.
+I will close your file so I don't clutter your inbox.
 
-If you ever want to eliminate missed patient calls and speed up ad lead conversion on autopilot, you can always test our live voice reception demo here: https://suregreet.ai.
+If you ever want to capture after-hours inquiries automatically, feel free to reach back out anytime.
 
-Wishing you and the clinic team continued success this quarter.
-
-Best regards,
-Archit Deshmukh
-Founder, SureGreet AI
-https://suregreet.ai
+Best,
+Archit
 
 --
-Opt out:
-${unsubUrl}`;
+Opt out: ${unsubUrl}`;
 
-  const html = `<div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; font-size: 14px; line-height: 1.6; color: #111827; max-width: 580px;">
-  <p style="margin: 0 0 16px 0;">Hey ${salutation},</p>
-  <p style="margin: 0 0 16px 0;">Assuming that capturing missed after-hours patient inquiries isn't a priority for ${clinic} right now.</p>
-  <p style="margin: 0 0 16px 0;">I won't follow up further so I don't clutter your inbox.</p>
-  <p style="margin: 0 0 16px 0;">If you ever want to eliminate missed patient calls and speed up ad lead conversion on autopilot, you can always test our live voice reception demo here: <a href="https://suregreet.ai" style="color: #2563eb; text-decoration: underline;">https://suregreet.ai</a>.</p>
-  <p style="margin: 0 0 16px 0;">Wishing you and the clinic team continued success this quarter.</p>
-  <p style="margin: 0 0 4px 0;">Best regards,</p>
-  <p style="margin: 0 0 4px 0;"><strong>Archit Deshmukh</strong></p>
-  <p style="margin: 0 0 24px 0; color: #4b5563;">Founder, SureGreet AI<br><a href="https://suregreet.ai" style="color: #4b5563;">https://suregreet.ai</a></p>
-  <p style="margin: 24px 0 0 0; font-size: 11px; color: #9ca3af; border-top: 1px solid #e5e7eb; padding-top: 12px;">Opt out: <a href="${unsubUrl}" style="color: #9ca3af; text-decoration: underline;">click here</a>.</p>
+  const html = `<div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; font-size: 14px; line-height: 1.6; color: #111827; max-width: 520px;">
+  <p style="margin: 0 0 12px 0;">Hey ${salutation},</p>
+  <p style="margin: 0 0 12px 0;">Assuming after-hours speed-to-lead isn't a priority for ${clinic} right now — totally understand.</p>
+  <p style="margin: 0 0 12px 0;">I will close your file so I don't clutter your inbox.</p>
+  <p style="margin: 0 0 12px 0;">If you ever want to capture after-hours inquiries automatically, feel free to reach back out anytime.</p>
+  <p style="margin: 0 0 2px 0;">Best,</p>
+  <p style="margin: 0 0 16px 0;"><strong>Archit</strong></p>
+  <p style="margin: 16px 0 0 0; font-size: 11px; color: #9ca3af; border-top: 1px solid #e5e7eb; padding-top: 8px;">Opt out: <a href="${unsubUrl}" style="color: #9ca3af;">unsubscribe</a></p>
 </div>`;
 
   return { subject, text, html };
