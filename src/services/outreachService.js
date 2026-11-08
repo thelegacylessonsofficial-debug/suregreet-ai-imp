@@ -191,6 +191,8 @@ export function renderStepContent(stepNumber, prospect) {
     treatment: prospect.treatment,
     prospectEmail: prospect.email,
     originalSubject: prospect.original_subject,
+    specificObservation: prospect.specific_observation,
+    niche: prospect.niche || 'medspa',
   };
 
   switch (Number(stepNumber)) {
