@@ -495,58 +495,39 @@ scraperRouter.get('/dashboard', async (req, res) => {
           statsBadge.innerText = data.committedCount + ' Committed to Supabase';
           cardsList.innerHTML = data.leads.map(lead => {
             const hasHook = lead.specificObservation;
-            return `
-              <div class="bg-gray-950 border border-gray-800 rounded-xl p-4 space-y-3">
-                <div class="flex items-start justify-between">
-                  <div>
-                    <h4 class="font-bold text-white text-sm">\${lead.clinicName || 'Practice'}</h4>
-                    <p class="text-[11px] text-gray-400">\${lead.doctorName || 'Lead'} • \${lead.city || city}</p>
-                  </div>
-                  <span class="text-[10px] font-semibold px-2 py-0.5 rounded \${
-                    lead.dbStatus === 'saved'
-                      ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
-                      : lead.dbStatus === 'duplicate'
-                      ? 'bg-amber-500/10 text-amber-400 border border-amber-500/20'
-                      : 'bg-gray-800 text-gray-400'
-                  }">
-                    \${lead.dbStatus === 'saved' ? '✓ Saved to CRM' : lead.dbStatus === 'duplicate' ? 'Already in CRM' : 'No Email'}
-                  </span>
-                </div>
+            const badgeClass = lead.dbStatus === 'saved'
+              ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
+              : lead.dbStatus === 'duplicate'
+              ? 'bg-amber-500/10 text-amber-400 border border-amber-500/20'
+              : 'bg-gray-800 text-gray-400';
+            const badgeText = lead.dbStatus === 'saved' ? '✓ Saved to CRM' : lead.dbStatus === 'duplicate' ? 'Already in CRM' : 'No Email';
 
-                <div class="text-xs space-y-1.5 border-t border-gray-800/60 pt-2.5">
-                  <div class="flex items-center justify-between text-gray-400">
-                    <span>Email:</span>
-                    <span class="text-blue-400 font-mono truncate max-w-[200px]">\${lead.email || 'None found'}</span>
-                  </div>
-                  <div class="flex items-center justify-between text-gray-400">
-                    <span>Phone:</span>
-                    <span class="text-gray-300 font-mono">\${lead.phone || 'N/A'}</span>
-                  </div>
-                  <div class="flex items-center justify-between text-gray-400">
-                    <span>Procedure / Service:</span>
-                    <span class="text-purple-300 font-medium">\${lead.treatment || 'High-Ticket'}</span>
-                  </div>
-                </div>
+            let hookHtml = '';
+            if (hasHook) {
+              hookHtml = '<div class="bg-blue-950/30 border border-blue-500/20 rounded-lg p-2.5 text-[11px] text-blue-200 space-y-1">' +
+                '<div class="font-semibold text-blue-400 flex items-center gap-1"><span>💡 The Auditor Observation:</span></div>' +
+                '<p class="italic text-gray-300">\\"' + (lead.specificObservation || '') + '\\"</p></div>';
+            }
 
-                \${hasHook ? `
-                  <div class="bg-blue-950/30 border border-blue-500/20 rounded-lg p-2.5 text-[11px] text-blue-200 space-y-1">
-                    <div class="font-semibold text-blue-400 flex items-center gap-1">
-                      <span>💡 The Auditor Observation:</span>
-                    </div>
-                    <p class="italic text-gray-300">"\${lead.specificObservation}"</p>
-                  </div>
-                ` : ''}
-
-                <div class="pt-2 border-t border-gray-800/60 flex items-center justify-between text-[11px]">
-                  <a href="/outreach/preview" target="_blank" class="text-blue-400 hover:underline">
-                    Preview Harvey Email →
-                  </a>
-                  <a href="\${lead.url}" target="_blank" class="text-gray-500 hover:text-gray-300">
-                    Visit Site ↗
-                  </a>
-                </div>
-              </div>
-            `;
+            return '<div class="bg-gray-950 border border-gray-800 rounded-xl p-4 space-y-3">' +
+              '<div class="flex items-start justify-between">' +
+                '<div>' +
+                  '<h4 class="font-bold text-white text-sm">' + (lead.clinicName || 'Practice') + '</h4>' +
+                  '<p class="text-[11px] text-gray-400">' + (lead.doctorName || 'Lead') + ' • ' + (lead.city || city) + '</p>' +
+                '</div>' +
+                '<span class="text-[10px] font-semibold px-2 py-0.5 rounded ' + badgeClass + '">' + badgeText + '</span>' +
+              '</div>' +
+              '<div class="text-xs space-y-1.5 border-t border-gray-800/60 pt-2.5">' +
+                '<div class="flex items-center justify-between text-gray-400"><span>Email:</span><span class="text-blue-400 font-mono truncate max-w-[200px]">' + (lead.email || 'None found') + '</span></div>' +
+                '<div class="flex items-center justify-between text-gray-400"><span>Phone:</span><span class="text-gray-300 font-mono">' + (lead.phone || 'N/A') + '</span></div>' +
+                '<div class="flex items-center justify-between text-gray-400"><span>Procedure / Service:</span><span class="text-purple-300 font-medium">' + (lead.treatment || 'High-Ticket') + '</span></div>' +
+              '</div>' +
+              hookHtml +
+              '<div class="pt-2 border-t border-gray-800/60 flex items-center justify-between text-[11px]">' +
+                '<a href="/outreach/preview" target="_blank" class="text-blue-400 hover:underline">Preview Harvey Email →</a>' +
+                '<a href="' + (lead.url || '#') + '" target="_blank" class="text-gray-500 hover:text-gray-300">Visit Site ↗</a>' +
+              '</div>' +
+            '</div>';
           }).join('');
 
           resultsContainer.classList.remove('hidden');
