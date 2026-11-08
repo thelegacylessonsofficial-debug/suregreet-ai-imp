@@ -79,6 +79,21 @@ function countWords(str) {
   return body.split(/\s+/).filter(Boolean).length;
 }
 
+function escapeQuotes(str) {
+  if (!str) return '';
+  return String(str).replace(/'/g, "\\'").replace(/"/g, '&quot;');
+}
+
+function escapeHtml(str) {
+  if (!str) return '';
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
+
 function renderProspectsHtml(list) {
   const total = list.length;
   const pendingCount = list.filter((p) => p.status === 'pending').length;
