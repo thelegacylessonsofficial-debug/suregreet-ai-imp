@@ -160,7 +160,11 @@ export async function getProspects({ status, limit = 100 } = {}) {
 export async function getProspectById(idOrEmail) {
   if (!idOrEmail) return null;
   const target = String(idOrEmail).trim();
-  const query = `/prospects?select=*&or=(id.eq.${encodeURIComponent(target)},email.eq.${encodeURIComponent(target.toLowerCase())})&limit=1`;
+  const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(target);
+  
+  const query = isUUID
+    ? `/prospects?select=*&id=eq.${encodeURIComponent(target)}&limit=1`
+    : `/prospects?select=*&email=eq.${encodeURIComponent(target.toLowerCase())}&limit=1`;
   
   const res = await supabaseFetch(query);
   if (!res.ok || !res.data || res.data.length === 0) {
