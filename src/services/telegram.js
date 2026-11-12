@@ -80,13 +80,13 @@ export function generateCoFounderReply(userText) {
     textLower === 'task'
   ) {
     return (
-      "🚨 *#IMP DAILY TASKS (SureGreet AI Sprint)*\n\n" +
-      "1. ⚖️ *Legal Compliance*: 1-Page B2B Agreement & TCPA/HIPAA disclaimers completed in `legal/`.\n" +
-      "2. 💳 *Payment Method*: Wise USD ACH & Stripe Invoice guide ready in `operations/payment_processing_guide.md`.\n" +
-      "3. 🎙️ *Retell Credits & Number*: Verified $10 trial credit & 60s phone number setup guide.\n" +
-      "4. 📊 *Lead Follow-Up CRM*: Pipeline tracker & 3-step follow-up scripts live in `leads/agency_crm.md`.\n" +
-      "5. 📹 *Record 75s Demo Video*: Open `demo_medspa/index.html` on Loom and hit record!\n\n" +
-      "All backend assets are built. Your only remaining blocker is hitting Record on Loom! 🔥"
+      "🚨 *PHASE 2: OUTBOUND WAR ROOM (Product 100% Frozen)*\n\n" +
+      "Code & setup are DONE. Zero development allowed.\n\n" +
+      "🎯 *TODAY'S 3 NON-NEGOTIABLE RGAs:*\n" +
+      "1. 📹 *Record 75s Loom*: Open demo_medspa/index.html & record your screen demo.\n" +
+      "2. 📲 *Send 5 Audits*: DM/email the 5 clinics in leads/agency_crm.md.\n" +
+      "3. 🎙️ *10 Front-Desk Calls*: Dial 10 clinic lines with the gatekeeper script.\n\n" +
+      "Stop building. Start closing. Let's get Client #1! 🔥"
     );
   } else if (textLower.includes('/status') || textLower.includes('status')) {
     return (
