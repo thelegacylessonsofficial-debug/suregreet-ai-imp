@@ -15,7 +15,7 @@ const SUPABASE_KEY = config.supabase.anonKey;
 /**
  * Helper to call Supabase PostgREST API with authorization headers
  */
-async function supabaseFetch(endpoint, options = {}) {
+export async function supabaseFetch(endpoint, options = {}) {
   const url = `${SUPABASE_URL}/rest/v1${endpoint}`;
   const headers = {
     apikey: SUPABASE_KEY,
@@ -38,6 +38,67 @@ async function supabaseFetch(endpoint, options = {}) {
   }
 
   return { ok: response.ok, status: response.status, data };
+}
+
+/**
+ * Record a booking in Supabase public.bookings
+ */
+export async function recordSupabaseBooking({
+  calBookingId,
+  eventType = '15-Min Strategy Session',
+  startTime,
+  endTime,
+  attendeeName,
+  attendeeEmail,
+  attendeePhone,
+  status = 'confirmed',
+  notes = '',
+  metadata = {},
+}) {
+  try {
+    const res = await supabaseFetch('/bookings', {
+      method: 'POST',
+      headers: { Prefer: 'return=representation' },
+      body: JSON.stringify({
+        cal_booking_id: String(calBookingId || `book-${Date.now()}`),
+        event_type: eventType,
+        start_time: startTime,
+        end_time: endTime || null,
+        attendee_name: attendeeName,
+        attendee_email: attendeeEmail,
+        attendee_phone: attendeePhone || null,
+        status: status,
+        notes: notes || '',
+        metadata: metadata || {},
+      }),
+    });
+    return res.data?.[0] || null;
+  } catch (err) {
+    console.error('[Supabase] Failed to record booking:', err);
+    return null;
+  }
+}
+
+/**
+ * Auto-freezes any matching prospect in Supabase public.prospects so cold outreach immediately ceases
+ */
+export async function autoFreezeBookedProspect(email, bookingDetails = '') {
+  if (!email) return null;
+  try {
+    const prospect = await getProspectById(email);
+    if (!prospect) return null;
+
+    const updated = await updateProspect(prospect.id, {
+      status: 'replied',
+      next_due_at: null,
+      notes: `${prospect.notes || ''}\n[${new Date().toISOString()}] Booked Discovery Call via Calendar: ${bookingDetails}`.trim(),
+    });
+    console.log(`[Outreach] Auto-froze prospect ${prospect.id} (${email}) - Cold outreach stopped.`);
+    return updated;
+  } catch (err) {
+    console.error(`[Outreach] Auto-freeze error for ${email}:`, err.message);
+    return null;
+  }
 }
 
 /**
