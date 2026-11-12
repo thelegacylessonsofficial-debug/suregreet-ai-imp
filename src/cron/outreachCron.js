@@ -76,10 +76,13 @@ export async function runOutreachQueueWorker({ force = false } = {}) {
         continue;
       }
 
-      // Apply randomized sending jitter (30 to 90 seconds in production, 2s if forced in testing)
+      // Apply randomized sending jitter (8 to 19 minutes in production pacing, 2s if forced in testing)
       if (i > 0) {
-        const jitterSeconds = force ? 2 : Math.floor(Math.random() * (90 - 30 + 1) + 30);
-        console.log(`[Outreach Worker] Jitter wait of ${jitterSeconds}s before sending to ${prospect.email}...`);
+        const minWait = process.env.DISPATCHER_MIN_WAIT_SEC ? Number(process.env.DISPATCHER_MIN_WAIT_SEC) : (force ? 2 : 480);
+        const maxWait = process.env.DISPATCHER_MAX_WAIT_SEC ? Number(process.env.DISPATCHER_MAX_WAIT_SEC) : (force ? 5 : 1140);
+        const jitterSeconds = Math.floor(Math.random() * (maxWait - minWait + 1) + minWait);
+        const jitterMins = (jitterSeconds / 60).toFixed(1);
+        console.log(`[The Dispatcher] Pacing wait of ${jitterSeconds}s (${jitterMins} mins) before sending to ${prospect.email}...`);
         await new Promise((resolve) => setTimeout(resolve, jitterSeconds * 1000));
       }
 
