@@ -2,6 +2,7 @@ import express from 'express';
 import cors from 'cors';
 import { config } from './config.js';
 import { calcomRouter } from './routes/calcomWebhook.js';
+import { calendarFirstRouter } from './routes/calendarFirstBooking.js';
 import { retellRouter } from './routes/retellWebhook.js';
 import { retellToolRouter } from './routes/retellToolWebhook.js';
 import { leadCallbackRouter } from './routes/leadCallbackWebhook.js';
@@ -35,6 +36,8 @@ app.get('/', (req, res) => {
     bot: '@SureGreetaiArchit_bot',
     time: new Date().toISOString(),
     endpoints: [
+      'POST /webhook/calendar-first-booking',
+      'POST /api/booking/calendar-first',
       'POST /webhook/calcom-booking-webhook',
       'POST /webhook/retell-post-call-webhook',
       'POST /webhook/retell-tool-call',
@@ -98,6 +101,7 @@ app.all('/test/trigger-alert', async (req, res) => {
 });
 
 // Webhook & Feature Routes
+app.use(['/webhook/calendar-first-booking', '/api/booking/calendar-first'], calendarFirstRouter);
 app.use(['/webhook/calcom-booking-webhook', '/calcom-booking-webhook'], calcomRouter);
 app.use(['/webhook/retell-post-call-webhook', '/retell-post-call-webhook'], retellRouter);
 app.use(['/webhook/retell-tool-call', '/retell-tool-call'], retellToolRouter);
