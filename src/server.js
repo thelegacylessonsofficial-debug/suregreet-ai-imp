@@ -1,5 +1,6 @@
 import express from 'express';
 import cors from 'cors';
+import path from 'path';
 import { config } from './config.js';
 import { calcomRouter } from './routes/calcomWebhook.js';
 import { calendarFirstRouter } from './routes/calendarFirstBooking.js';
@@ -9,6 +10,7 @@ import { leadCallbackRouter } from './routes/leadCallbackWebhook.js';
 import { telegramRouter } from './routes/telegramWebhook.js';
 import { outreachRouter } from './routes/outreachRoutes.js';
 import { scraperRouter } from './routes/scraperRoutes.js';
+import { inboxRouter } from './routes/inboxWebhook.js';
 import { initReminderCron, runDailyReminders, runHourlyOneHourReminders } from './cron/reminderCron.js';
 import { initAccountabilityCron } from './cron/accountabilityCron.js';
 import { initOutreachCron, runOutreachQueueWorker } from './cron/outreachCron.js';
@@ -27,6 +29,16 @@ app.use(
 );
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
+app.use(express.static('public'));
+
+// Live Agency & Demo Endpoints
+app.get('/agency', (req, res) => {
+  res.sendFile(path.join(process.cwd(), 'public', 'index.html'));
+});
+
+app.get('/demo-medspa', (req, res) => {
+  res.sendFile(path.join(process.cwd(), 'public', 'demo-medspa.html'));
+});
 
 // Healthcheck
 app.get('/', (req, res) => {
@@ -43,6 +55,9 @@ app.get('/', (req, res) => {
       'POST /webhook/retell-tool-call',
       'POST /webhook/suregreet-lead-callback',
       'POST /webhook/telegram',
+      'POST /webhook/inbox-reply',
+      'POST /inbox/test-triage',
+      'GET /inbox/dashboard',
       'GET /outreach/prospects',
       'POST /outreach/add',
       'POST /outreach/activate',
@@ -109,6 +124,7 @@ app.use(['/webhook/suregreet-lead-callback', '/suregreet-lead-callback'], leadCa
 app.use(['/webhook/telegram', '/telegram'], telegramRouter);
 app.use('/outreach', outreachRouter);
 app.use('/scraper', scraperRouter);
+app.use(['/webhook/inbox-reply', '/inbox'], inboxRouter);
 
 // Manual trigger for testing 24h reminders immediately
 app.all('/test/run-reminders', async (req, res) => {
