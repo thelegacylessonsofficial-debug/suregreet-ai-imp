@@ -67,7 +67,7 @@ export async function searchContactByPhone(phone) {
   }
 }
 
-export async function createOrUpdateContactFromBooking({ customerName, customerEmail, customerPhone }) {
+export async function createOrUpdateContactFromBooking({ customerName, customerEmail, customerPhone, companyName, bottleneckNotes }) {
   if (!config.hubspot.accessToken) {
     console.warn('[HubSpot] Skipped: HUBSPOT_ACCESS_TOKEN not set.');
     return null;
@@ -81,6 +81,8 @@ export async function createOrUpdateContactFromBooking({ customerName, customerE
     firstname,
     lastname,
     phone: customerPhone || '',
+    company: companyName || '',
+    message: bottleneckNotes ? `Bottleneck: ${bottleneckNotes}` : undefined,
     hs_lead_status: 'OPEN',
     lifecyclestage: 'opportunity',
   };
@@ -110,6 +112,51 @@ export async function createOrUpdateContactFromBooking({ customerName, customerE
       console.error('[HubSpot] Error creating contact:', err.response?.data || err.message);
       return null;
     }
+  }
+}
+
+/**
+ * Creates an associated Deal in HubSpot CRM for booked discovery calls
+ */
+export async function createDealForBooking({ contactId, customerName, companyName, bookingTime, amount = 1000 }) {
+  if (!config.hubspot.accessToken) {
+    console.warn('[HubSpot] Skipped Deal: HUBSPOT_ACCESS_TOKEN not set.');
+    return null;
+  }
+
+  const dealName = `${companyName || customerName} — SureGreet Inbound Retainer`;
+  const properties = {
+    dealname: dealName,
+    dealstage: 'appointmentscheduled',
+    pipeline: 'default',
+    amount: String(amount),
+    description: `Discovery Call scheduled for ${bookingTime || 'Upcoming'}. Automated calendar-first booking.`,
+  };
+
+  try {
+    const res = await hubspotClient.post('/crm/v3/objects/deals', { properties });
+    const dealId = res.data.id;
+    console.log(`[HubSpot] Deal created (ID: ${dealId}) for ${dealName}`);
+
+    // Associate Deal with Contact
+    if (contactId && dealId) {
+      try {
+        await hubspotClient.put(`/crm/v4/objects/deals/${dealId}/associations/contacts/${contactId}`, [
+          {
+            associationCategory: 'HUBSPOT_DEFINED',
+            associationTypeId: 3, // Deal to Contact association in HubSpot
+          },
+        ]);
+        console.log(`[HubSpot] Deal ${dealId} successfully associated with Contact ${contactId}`);
+      } catch (assocErr) {
+        console.warn(`[HubSpot] Association warning:`, assocErr.response?.data || assocErr.message);
+      }
+    }
+
+    return res.data;
+  } catch (err) {
+    console.error('[HubSpot] Error creating deal:', err.response?.data || err.message);
+    return null;
   }
 }
 
