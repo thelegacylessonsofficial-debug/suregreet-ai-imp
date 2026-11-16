@@ -464,12 +464,35 @@ callsRouter.get(['/', '/dashboard'], async (req, res) => {
         notes: document.getElementById('logNotes').value,
       };
 
+      const urlKey = new URLSearchParams(window.location.search).get('key');
+      if (urlKey) {
+        localStorage.setItem('suregreet_admin_key', urlKey);
+      }
+      const adminKey = urlKey || localStorage.getItem('suregreet_admin_key') || '';
+
+      const headers = { 'Content-Type': 'application/json', 'Accept': 'application/json' };
+      if (adminKey) headers['x-admin-key'] = adminKey;
+
+      const endpoint = '/calls/log-outbound' + (adminKey ? '?key=' + encodeURIComponent(adminKey) : '');
+
       try {
-        const res = await fetch('/calls/log-outbound', {
+        const res = await fetch(endpoint, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          headers,
           body: JSON.stringify(payload)
         });
+
+        if (!res.ok) {
+          let errMsg = 'HTTP ' + res.status;
+          try {
+            const errData = await res.json();
+            errMsg = errData.message || errData.error || errMsg;
+          } catch(e) {
+            if (res.status === 401) errMsg = 'Authentication required. Please reload the page to log in.';
+          }
+          throw new Error(errMsg);
+        }
 
         const data = await res.json();
         btn.disabled = false;
