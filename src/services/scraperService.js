@@ -274,11 +274,16 @@ export async function scrapeClinicWebsite(inputUrl) {
   const primaryEmail = Array.from(rawEmails)[0] || null;
   const primaryPhone = Array.from(rawPhones)[0] || null;
 
+  const isHvacSite = /hvac|air conditioning|heating|plumbing|furnace|duct|refrigeration|contractor/i.test(homepageHtml + ' ' + clinicName);
+  const defaultTitle = isHvacSite
+    ? (clinicName ? `Owner / Operations Lead at ${clinicName}` : 'Owner / Operations Lead')
+    : (clinicName ? `Medical Director at ${clinicName}` : 'Doctor');
+
   return {
     success: true,
     url: baseUrl,
     clinicName,
-    doctorName: doctorName || (clinicName ? `Medical Director at ${clinicName}` : 'Doctor'),
+    doctorName: doctorName || defaultTitle,
     email: primaryEmail,
     allEmails: Array.from(rawEmails),
     phone: primaryPhone,
