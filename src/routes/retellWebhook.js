@@ -3,6 +3,7 @@ import { DateTime } from 'luxon';
 import { config } from '../config.js';
 import { sendEmail } from '../services/mailer.js';
 import { sendAutomationAlert } from '../services/alertService.js';
+import { supabaseFetch } from '../services/outreachService.js';
 import {
   searchContactByPhone,
   createContactFromCall,
@@ -66,8 +67,30 @@ retellRouter.post('/', async (req, res) => {
     call_outcome: callOutcome,
   });
 
-  // Background Processing (Sheets, HubSpot, Email)
+  // Background Processing (Sheets, HubSpot, Email, Supabase)
   (async () => {
+    // 0. Supabase Call Log Ingest
+    try {
+      await supabaseFetch('/call_logs', {
+        method: 'POST',
+        headers: { Prefer: 'return=representation' },
+        body: JSON.stringify({
+          call_type: 'inbound_ai',
+          caller_phone: callerPhone,
+          duration: `${duration} min`,
+          outcome: callOutcome,
+          sentiment: sentiment,
+          summary: callSummary,
+          transcript: transcript,
+          recording_url: recordingUrl,
+          metadata: { callId, startMillis, callDate },
+        }),
+      });
+      console.log(`[Retell Webhook] Call ${callId} logged in Supabase public.call_logs`);
+    } catch (dbErr) {
+      console.warn('[Retell Webhook] Supabase call_logs write error:', dbErr.message);
+    }
+
     // 1. Google Sheets Append
     try {
       await appendCallLogToSheet({
