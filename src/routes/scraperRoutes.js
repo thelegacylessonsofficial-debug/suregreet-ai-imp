@@ -439,6 +439,48 @@ scraperRouter.get('/dashboard', async (req, res) => {
       }
     }
 
+    // Persist and retrieve admin key if present in URL
+    const urlKey = new URLSearchParams(window.location.search).get('key');
+    if (urlKey) {
+      localStorage.setItem('suregreet_admin_key', urlKey);
+    }
+    const adminKey = urlKey || localStorage.getItem('suregreet_admin_key') || '';
+
+    function getAuthUrl(endpoint) {
+      if (!adminKey) return endpoint;
+      const delim = endpoint.includes('?') ? '&' : '?';
+      return endpoint + delim + 'key=' + encodeURIComponent(adminKey);
+    }
+
+    function getAuthHeaders(extra = {}) {
+      const h = { 'Content-Type': 'application/json', 'Accept': 'application/json', ...extra };
+      if (adminKey) h['x-admin-key'] = adminKey;
+      return h;
+    }
+
+    async function safeFetchJson(url, options = {}) {
+      const fullUrl = getAuthUrl(url);
+      const res = await fetch(fullUrl, {
+        ...options,
+        credentials: 'include',
+        headers: getAuthHeaders(options.headers || {})
+      });
+
+      if (!res.ok) {
+        let errMessage = 'Request failed (HTTP ' + res.status + ')';
+        try {
+          const errData = await res.json();
+          errMessage = errData.message || errData.error || errMessage;
+        } catch (e) {
+          if (res.status === 401) {
+            errMessage = 'Authentication required. Please refresh this page and log in (admin / suregreet2026!).';
+          }
+        }
+        throw new Error(errMessage);
+      }
+      return await res.json();
+    }
+
     async function runAutonomousHuntClient() {
       const niche = document.getElementById('huntNiche').value;
       const city = document.getElementById('huntCity').value.trim();
@@ -478,12 +520,10 @@ scraperRouter.get('/dashboard', async (req, res) => {
       }, 5500);
 
       try {
-        const res = await fetch('/scraper/hunt', {
+        const data = await safeFetchJson('/scraper/hunt', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ city, niche, limit })
         });
-        const data = await res.json();
 
         clearInterval(timerInterval);
         btn.disabled = false;
@@ -574,9 +614,8 @@ scraperRouter.get('/dashboard', async (req, res) => {
       }, 600);
 
       try {
-        const res = await fetch('/scraper/ingest', {
+        const data = await safeFetchJson('/scraper/ingest', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ url })
         });
         clearInterval(progressInterval);
@@ -584,7 +623,6 @@ scraperRouter.get('/dashboard', async (req, res) => {
         percent.innerText = '100%';
         text.innerText = 'Extraction complete!';
 
-        const data = await res.json();
         btn.disabled = false;
         btn.innerHTML = '<span>⚡</span><span>Scrape & Audit</span>';
 
@@ -636,12 +674,10 @@ scraperRouter.get('/dashboard', async (req, res) => {
       resBox.innerText = 'Initiating sequential crawl with 1.2s anti-rate-limit delays...';
 
       try {
-        const res = await fetch('/scraper/bulk', {
+        const data = await safeFetchJson('/scraper/bulk', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ urls: text })
         });
-        const data = await res.json();
         btn.disabled = false;
         btn.innerHTML = '<span>🚀</span><span>Start Bulk Ingestion</span>';
         resBox.innerText = JSON.stringify(data, null, 2);
