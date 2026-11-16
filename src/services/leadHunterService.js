@@ -216,12 +216,21 @@ export async function huntAndEnrichLead({ url, city, niche = 'medspa', doctorOve
 
   const primaryTreatment = treatmentOverride || audit.primaryService || scraped.treatment;
 
+  // 4. Construct direct email or fallback domain email so clinics with verified phones are never discarded
+  let finalEmail = scraped.email;
+  if (!finalEmail && scraped.url) {
+    try {
+      const hostname = new URL(scraped.url).hostname.replace(/^www\./, '');
+      finalEmail = `info@${hostname}`;
+    } catch (e) {}
+  }
+
   return {
     success: true,
     url: scraped.url,
     clinicName: scraped.clinicName,
     doctorName: decisionMaker,
-    email: scraped.email,
+    email: finalEmail,
     allEmails: scraped.allEmails,
     phone: scraped.phone,
     city: city || scraped.city,
