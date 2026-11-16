@@ -533,7 +533,23 @@ scraperRouter.get('/dashboard', async (req, res) => {
 
         if (data.leads && data.leads.length > 0) {
           statsBadge.innerText = data.committedCount + ' Committed to Supabase';
-          cardsList.innerHTML = data.leads.map(lead => {
+
+          const crmUrl = getAuthUrl('/outreach/prospects');
+          let bannerHtml = '<div class="p-4 bg-emerald-950/40 border border-emerald-500/30 rounded-2xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 mb-4 shadow-lg">' +
+            '<div>' +
+              '<div class="flex items-center gap-2">' +
+                '<span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>' +
+                '<h4 class="text-sm font-bold text-white">' + data.committedCount + ' New Leads Committed to Pipeline CRM</h4>' +
+              '</div>' +
+              '<p class="text-xs text-gray-400 mt-0.5">Leads are saved in Supabase as pending. Open the CRM to review doctor observations or trigger outreach.</p>' +
+            '</div>' +
+            '<a href="' + crmUrl + '" class="px-4 py-2 bg-emerald-500 hover:bg-emerald-400 text-black font-extrabold rounded-xl text-xs transition shadow-md shadow-emerald-500/20 whitespace-nowrap flex items-center gap-1.5">' +
+              '<span>📊 View in Pipeline CRM</span>' +
+              '<span>→</span>' +
+            '</a>' +
+          '</div>';
+
+          cardsList.innerHTML = bannerHtml + data.leads.map(lead => {
             const hasHook = lead.specificObservation;
             const badgeClass = lead.dbStatus === 'saved'
               ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
