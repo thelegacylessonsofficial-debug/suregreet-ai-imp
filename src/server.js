@@ -11,6 +11,7 @@ import { telegramRouter } from './routes/telegramWebhook.js';
 import { outreachRouter } from './routes/outreachRoutes.js';
 import { scraperRouter } from './routes/scraperRoutes.js';
 import { inboxRouter } from './routes/inboxWebhook.js';
+import { callsRouter } from './routes/callsDashboard.js';
 import { initReminderCron, runDailyReminders, runHourlyOneHourReminders } from './cron/reminderCron.js';
 import { initAccountabilityCron } from './cron/accountabilityCron.js';
 import { initOutreachCron, runOutreachQueueWorker } from './cron/outreachCron.js';
@@ -48,6 +49,8 @@ app.get('/', (req, res) => {
     bot: '@SureGreetaiArchit_bot',
     time: new Date().toISOString(),
     endpoints: [
+      'GET /calls',
+      'POST /calls/log-outbound',
       'POST /webhook/calendar-first-booking',
       'POST /api/booking/calendar-first',
       'POST /webhook/calcom-booking-webhook',
@@ -125,6 +128,7 @@ app.use(['/webhook/telegram', '/telegram'], telegramRouter);
 app.use('/outreach', outreachRouter);
 app.use('/scraper', scraperRouter);
 app.use(['/webhook/inbox-reply', '/inbox'], inboxRouter);
+app.use(['/calls', '/dashboard/calls'], callsRouter);
 
 // Manual trigger for testing 24h reminders immediately
 app.all('/test/run-reminders', async (req, res) => {
