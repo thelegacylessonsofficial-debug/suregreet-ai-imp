@@ -54,4 +54,10 @@ export const config = {
     tabName: process.env.GOOGLE_SHEET_TAB_NAME || '📞 Call Logs',
     serviceAccountPath: process.env.GOOGLE_SERVICE_ACCOUNT_PATH || './service-account.json',
   },
+
+  // Agency Dashboard Security / Admin Credentials
+  admin: {
+    username: process.env.ADMIN_USER || 'admin',
+    password: process.env.ADMIN_PASSWORD || 'suregreet2026!',
+  },
 };
