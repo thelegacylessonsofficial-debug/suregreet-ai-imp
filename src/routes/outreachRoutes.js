@@ -94,6 +94,21 @@ function escapeHtml(str) {
     .replace(/'/g, '&#039;');
 }
 
+function formatUsPhone(raw) {
+  if (!raw) return '';
+  const digits = String(raw).replace(/\D/g, '');
+  let tenDigits = digits;
+  if (digits.length === 11 && digits.startsWith('1')) {
+    tenDigits = digits.slice(1);
+  } else if (digits.length > 10) {
+    tenDigits = digits.slice(-10);
+  }
+  if (tenDigits.length === 10) {
+    return `(${tenDigits.slice(0, 3)}) ${tenDigits.slice(3, 6)}-${tenDigits.slice(6)}`;
+  }
+  return raw;
+}
+
 function renderProspectsHtml(list) {
   const total = list.length;
   const pendingCount = list.filter((p) => p.status === 'pending').length;
@@ -248,6 +263,7 @@ function renderProspectsHtml(list) {
             <tr>
               <th class="py-3.5 px-4 font-semibold">Business & Location</th>
               <th class="py-3.5 px-4 font-semibold">Decision Maker</th>
+              <th class="py-3.5 px-4 font-semibold text-emerald-400">📞 Phone (1-Click Call)</th>
               <th class="py-3.5 px-4 font-semibold">Contact Email</th>
               <th class="py-3.5 px-4 font-semibold">High-Ticket Offer</th>
               <th class="py-3.5 px-4 font-semibold text-center">Sequence Progress</th>
@@ -308,7 +324,7 @@ function renderProspectsHtml(list) {
                   .join('<span class="text-gray-700 text-[10px]">―</span>');
 
                 return `
-                <tr class="hover:bg-gray-800/40 transition prospect-row" data-status="${p.status}" data-search="${(p.clinic_name + ' ' + p.doctor_name + ' ' + p.city + ' ' + p.treatment + ' ' + p.email + ' ' + (p.niche || '')).toLowerCase()}">
+                <tr class="hover:bg-gray-800/40 transition prospect-row" data-status="${p.status}" data-search="${(p.clinic_name + ' ' + p.doctor_name + ' ' + p.city + ' ' + p.treatment + ' ' + p.email + ' ' + (p.phone || '') + ' ' + (p.niche || '')).toLowerCase()}">
                   <td class="py-3.5 px-4">
                     <div class="flex items-center gap-2">
                       <span class="font-bold text-white text-sm">${p.clinic_name || 'N/A'}</span>
@@ -334,6 +350,23 @@ function renderProspectsHtml(list) {
                       </div>
                       <div class="font-semibold text-white">${p.doctor_name || 'Operations Lead'}</div>
                     </div>
+                  </td>
+
+                  <!-- 1-Click Dial Phone Cell -->
+                  <td class="py-3.5 px-4 whitespace-nowrap">
+                    ${
+                      p.phone
+                        ? `<div class="flex items-center gap-1.5">
+                            <a href="tel:${String(p.phone).replace(/[^0-9+]/g, '')}" class="inline-flex items-center gap-1.5 px-2.5 py-1.5 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 rounded-xl font-mono font-bold text-xs transition shadow-sm group" title="Click to dial">
+                              <span class="group-hover:scale-110 transition">📞</span>
+                              <span>${formatUsPhone(p.phone)}</span>
+                            </a>
+                            <button onclick="navigator.clipboard.writeText('${String(p.phone).replace(/[^0-9+]/g, '')}'); alert('Copied ${formatUsPhone(p.phone)} to clipboard!');" class="p-1.5 text-gray-400 hover:text-white bg-gray-950 hover:bg-gray-800 border border-gray-800 rounded-lg transition text-[11px]" title="Copy phone number">
+                              📋
+                            </button>
+                          </div>`
+                        : `<span class="text-gray-500 text-xs italic">No phone on file</span>`
+                    }
                   </td>
 
                   <td class="py-3.5 px-4">
