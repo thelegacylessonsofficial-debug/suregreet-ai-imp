@@ -159,6 +159,10 @@ function renderProspectsHtml(list) {
       </div>
 
       <div class="flex items-center gap-2.5">
+        <button onclick="window.location.reload()" class="px-3.5 py-2 text-xs font-semibold bg-gray-900 hover:bg-gray-800 text-gray-200 border border-gray-700/80 rounded-xl transition flex items-center gap-1.5 shadow-sm">
+          <span>🔄</span>
+          <span>Refresh Table</span>
+        </button>
         <a href="/scraper/dashboard" class="px-3.5 py-2 text-xs font-semibold bg-blue-600 hover:bg-blue-700 text-white rounded-xl transition flex items-center gap-1.5 shadow-lg shadow-blue-600/20">
           <span>⚡</span>
           <span>Lead Hunter Studio</span>
