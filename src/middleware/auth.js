@@ -74,8 +74,15 @@ export function requireAdminAuth(req, res, next) {
   // 6. Access Denied -> Challenge browser with HTTP 401 & WWW-Authenticate
   res.setHeader('WWW-Authenticate', 'Basic realm="SureGreet AI Agency Portal", charset="UTF-8"');
 
-  const acceptsHtml = req.accepts('html');
-  if (acceptsHtml) {
+  // ONLY send HTML for direct browser GET navigations (never for AJAX/fetch or POST requests)
+  const isDirectBrowserNav =
+    req.method === 'GET' &&
+    req.accepts('html') &&
+    !req.xhr &&
+    !req.headers['accept']?.includes('application/json') &&
+    !req.headers['content-type']?.includes('application/json');
+
+  if (isDirectBrowserNav) {
     return res.status(401).send(`<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -124,8 +131,9 @@ export function requireAdminAuth(req, res, next) {
   }
 
   return res.status(401).json({
+    success: false,
     status: 'error',
     code: 'UNAUTHORIZED',
-    message: 'Authentication required to access SureGreet AI internal agency resources.',
+    message: 'Authentication required. Please refresh the page and enter your credentials (admin / suregreet2026!).',
   });
 }
