@@ -475,16 +475,48 @@ function renderProspectsHtml(list) {
       document.getElementById('previewModal').classList.add('hidden');
     }
 
+    const urlKey = new URLSearchParams(window.location.search).get('key');
+    if (urlKey) {
+      localStorage.setItem('suregreet_admin_key', urlKey);
+    }
+    const adminKey = urlKey || localStorage.getItem('suregreet_admin_key') || '';
+
+    function getAuthUrl(endpoint) {
+      if (!adminKey) return endpoint;
+      const delim = endpoint.includes('?') ? '&' : '?';
+      return endpoint + delim + 'key=' + encodeURIComponent(adminKey);
+    }
+
+    function getAuthHeaders(extra = {}) {
+      const h = { 'Content-Type': 'application/json', 'Accept': 'application/json', ...extra };
+      if (adminKey) h['x-admin-key'] = adminKey;
+      return h;
+    }
+
     async function confirmActivate(id, drName, clinicName) {
       const ok = confirm('Activate cold outreach for ' + drName + ' at ' + clinicName + '?\\n\\nThis will dispatch Step 1 and schedule follow-ups inside US business hours.');
       if (!ok) return;
 
       try {
-        const res = await fetch('/outreach/activate', {
+        const fullUrl = getAuthUrl('/outreach/activate');
+        const res = await fetch(fullUrl, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          headers: getAuthHeaders(),
           body: JSON.stringify({ prospectId: id })
         });
+
+        if (!res.ok) {
+          let errMsg = 'HTTP ' + res.status;
+          try {
+            const errData = await res.json();
+            errMsg = errData.message || errData.error || errMsg;
+          } catch (e) {
+            if (res.status === 401) errMsg = 'Authentication required. Please reload the page to log in.';
+          }
+          throw new Error(errMsg);
+        }
+
         const data = await res.json();
         if (data.status === 'success') {
           alert('✅ Activated! Step 1 dispatched to ' + drName + '.');
@@ -493,7 +525,7 @@ function renderProspectsHtml(list) {
           alert('Error: ' + (data.error || 'Failed to activate'));
         }
       } catch (e) {
-        alert('Network error: ' + e.message);
+        alert('Action failed: ' + e.message);
       }
     }
 
