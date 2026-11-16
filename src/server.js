@@ -17,6 +17,7 @@ import { initAccountabilityCron } from './cron/accountabilityCron.js';
 import { initOutreachCron, runOutreachQueueWorker } from './cron/outreachCron.js';
 import { setTelegramWebhook, sendTelegram } from './services/telegram.js';
 import { sendAutomationAlert, getRecentAlerts } from './services/alertService.js';
+import { requireAdminAuth } from './middleware/auth.js';
 
 const app = express();
 
@@ -94,6 +95,9 @@ app.get('/set-webhook', async (req, res) => {
   res.json({ success: Boolean(result?.ok), telegram_response: result });
 });
 
+// Protected Sentinel & Testing Endpoints
+app.use(['/alerts', '/test'], requireAdminAuth);
+
 // Alerts Sentinel Endpoints
 app.get('/alerts/recent', (req, res) => {
   res.json({
@@ -118,17 +122,20 @@ app.all('/test/trigger-alert', async (req, res) => {
   });
 });
 
-// Webhook & Feature Routes
+// Public Webhooks & External API Integrations (Unauthenticated for Retell, Cal.com, etc.)
 app.use(['/webhook/calendar-first-booking', '/api/booking/calendar-first'], calendarFirstRouter);
 app.use(['/webhook/calcom-booking-webhook', '/calcom-booking-webhook'], calcomRouter);
 app.use(['/webhook/retell-post-call-webhook', '/retell-post-call-webhook'], retellRouter);
 app.use(['/webhook/retell-tool-call', '/retell-tool-call'], retellToolRouter);
 app.use(['/webhook/suregreet-lead-callback', '/suregreet-lead-callback'], leadCallbackRouter);
 app.use(['/webhook/telegram', '/telegram'], telegramRouter);
-app.use('/outreach', outreachRouter);
-app.use('/scraper', scraperRouter);
-app.use(['/webhook/inbox-reply', '/inbox'], inboxRouter);
-app.use(['/calls', '/dashboard/calls'], callsRouter);
+app.use('/webhook/inbox-reply', inboxRouter);
+
+// Secured Agency Dashboards & Management Endpoints (HTTP Basic Auth / Admin Key Required)
+app.use('/outreach', requireAdminAuth, outreachRouter);
+app.use('/scraper', requireAdminAuth, scraperRouter);
+app.use('/inbox', requireAdminAuth, inboxRouter);
+app.use(['/calls', '/dashboard/calls'], requireAdminAuth, callsRouter);
 
 // Manual trigger for testing 24h reminders immediately
 app.all('/test/run-reminders', async (req, res) => {
