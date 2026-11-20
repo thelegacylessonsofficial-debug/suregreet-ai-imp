@@ -230,7 +230,7 @@ function renderProspectsHtml(list, authKey = '') {
               <tr>
                 <th class="py-3.5 px-4 font-semibold">Doctor / DM</th>
                 <th class="py-3.5 px-4 font-semibold">Clinic & Location</th>
-                <th class="py-3.5 px-4 font-semibold text-[var(--accent-emerald)]">1-Click Phone Dial</th>
+                <th class="py-3.5 px-4 font-semibold text-[var(--accent-emerald)]">1-Click Phone Dial & Direct Email</th>
                 <th class="py-3.5 px-4 font-semibold">Sequence Pipeline</th>
                 <th class="py-3.5 px-4 font-semibold">Offer / Service</th>
                 <th class="py-3.5 px-4 font-semibold text-center">Live Status</th>
@@ -303,21 +303,36 @@ function renderProspectsHtml(list, authKey = '') {
                       </div>
                     </td>
 
-                    <!-- 1-Click Dial Phone Cell -->
+                    <!-- 1-Click Dial Phone & Direct Email Cell -->
                     <td class="py-3.5 px-4 whitespace-nowrap">
-                      ${
-                        p.phone
-                          ? `<div class="flex items-center gap-1.5">
-                              <a href="tel:${String(p.phone).replace(/[^0-9+]/g, '')}" class="inline-flex items-center gap-1.5 px-2.5 py-1.5 bg-[var(--accent-emerald-subtle)] hover:bg-[var(--accent-emerald)]/20 text-[var(--accent-emerald)] border border-[var(--accent-emerald)]/30 rounded-xl font-mono font-bold text-xs transition shadow-sm group" title="Click to dial immediately">
-                                <span class="group-hover:scale-110 transition">${getSvgIcon('phone', 'w-3 h-3')}</span>
-                                <span>${formatUsPhone(p.phone)}</span>
-                              </a>
-                              <button onclick="copyToClipboard('${String(p.phone).replace(/[^0-9+]/g, '')}', 'Phone number copied!')" class="p-1.5 text-[var(--text-muted)] hover:text-[var(--text-primary)] bg-[var(--bg-surface)] hover:bg-[var(--bg-hover)] border border-[var(--border-subtle)] rounded-lg transition text-[11px]" title="Copy phone number">
-                                ${getSvgIcon('copy', 'w-3 h-3')}
-                              </button>
-                            </div>`
-                          : `<span class="text-[var(--text-muted)] text-xs italic">No phone on file</span>`
-                      }
+                      <div class="flex items-center gap-2">
+                        ${
+                          p.phone
+                            ? `<div class="flex items-center gap-1">
+                                <a href="tel:${String(p.phone).replace(/[^0-9+]/g, '')}" class="inline-flex items-center gap-1.5 px-2.5 py-1.5 bg-[var(--accent-emerald-subtle)] hover:bg-[var(--accent-emerald)]/20 text-[var(--accent-emerald)] border border-[var(--accent-emerald)]/30 rounded-xl font-mono font-bold text-xs transition shadow-sm group" title="Click to dial immediately">
+                                  <span class="group-hover:scale-110 transition">${getSvgIcon('phone', 'w-3 h-3')}</span>
+                                  <span>${formatUsPhone(p.phone)}</span>
+                                </a>
+                                <button onclick="copyToClipboard('${String(p.phone).replace(/[^0-9+]/g, '')}', 'Phone number copied!')" class="p-1.5 text-[var(--text-muted)] hover:text-[var(--text-primary)] bg-[var(--bg-surface)] hover:bg-[var(--bg-hover)] border border-[var(--border-subtle)] rounded-lg transition text-[11px]" title="Copy phone number">
+                                  ${getSvgIcon('copy', 'w-3 h-3')}
+                                </button>
+                              </div>`
+                            : `<span class="text-[var(--text-muted)] text-xs italic">No phone</span>`
+                        }
+                        ${
+                          p.email
+                            ? `<div class="flex items-center gap-1">
+                                <a href="mailto:${escapeHtml(p.email)}" class="inline-flex items-center gap-1 px-2.5 py-1.5 bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 rounded-xl font-mono text-xs transition shadow-sm group" title="Direct Email: ${escapeHtml(p.email)}">
+                                  <span>✉️</span>
+                                  <span class="max-w-[170px] truncate">${escapeHtml(p.email)}</span>
+                                </a>
+                                <button onclick="copyToClipboard('${escapeHtml(p.email)}', 'Email address copied!')" class="p-1.5 text-[var(--text-muted)] hover:text-[var(--text-primary)] bg-[var(--bg-surface)] hover:bg-[var(--bg-hover)] border border-[var(--border-subtle)] rounded-lg transition text-[11px]" title="Copy email address">
+                                  ${getSvgIcon('copy', 'w-3 h-3')}
+                                </button>
+                              </div>`
+                            : `<span class="text-[var(--text-muted)] text-xs italic">No email</span>`
+                        }
+                      </div>
                     </td>
 
                     <!-- Sequence Pipeline (4 Steps) -->

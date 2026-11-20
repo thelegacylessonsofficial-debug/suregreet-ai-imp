@@ -206,24 +206,74 @@ scraperRouter.get('/dashboard', async (req, res) => {
         </div>
       </div>
 
-      <!-- Quick Preset City Badges -->
-      <div class="flex items-center gap-2 flex-wrap text-xs pt-1">
-        <span class="text-[var(--text-muted)] text-[11px] font-semibold">Verified Markets:</span>
-        <button type="button" onclick="setHuntPreset('Miami, FL', this)" class="market-preset-btn px-3 py-1.5 rounded-xl bg-cyan-500/15 text-cyan-300 border border-cyan-500/40 font-bold transition flex items-center gap-1.5 shadow-sm shadow-cyan-500/10 active cursor-pointer">
-          <span>📍 Miami, FL</span>
-        </button>
-        <button type="button" onclick="setHuntPreset('Dallas, TX', this)" class="market-preset-btn px-3 py-1.5 rounded-xl bg-[var(--bg-surface)] hover:bg-[var(--bg-hover)] text-[var(--text-secondary)] border border-[var(--border-subtle)] font-medium transition flex items-center gap-1.5 cursor-pointer">
-          <span>📍 Dallas, TX</span>
-        </button>
-        <button type="button" onclick="setHuntPreset('Austin, TX', this)" class="market-preset-btn px-3 py-1.5 rounded-xl bg-[var(--bg-surface)] hover:bg-[var(--bg-hover)] text-[var(--text-secondary)] border border-[var(--border-subtle)] font-medium transition flex items-center gap-1.5 cursor-pointer">
-          <span>📍 Austin, TX</span>
-        </button>
-        <button type="button" onclick="setHuntPreset('Phoenix, AZ', this)" class="market-preset-btn px-3 py-1.5 rounded-xl bg-[var(--bg-surface)] hover:bg-[var(--bg-hover)] text-[var(--text-secondary)] border border-[var(--border-subtle)] font-medium transition flex items-center gap-1.5 cursor-pointer">
-          <span>📍 Phoenix, AZ</span>
-        </button>
-        <button type="button" onclick="setHuntPreset('Atlanta, GA', this)" class="market-preset-btn px-3 py-1.5 rounded-xl bg-[var(--bg-surface)] hover:bg-[var(--bg-hover)] text-[var(--text-secondary)] border border-[var(--border-subtle)] font-medium transition flex items-center gap-1.5 cursor-pointer">
-          <span>📍 Atlanta, GA</span>
-        </button>
+      <!-- Quick Preset City Badges & Regional Directory -->
+      <div class="space-y-2.5 pt-1">
+        <div class="flex items-center gap-2 flex-wrap text-xs">
+          <span class="text-[var(--text-muted)] text-[11px] font-semibold">Top US Markets:</span>
+          <button type="button" onclick="setHuntPreset('Miami, FL', this)" class="market-preset-btn px-2.5 py-1.5 rounded-xl bg-cyan-500/15 text-cyan-300 border border-cyan-500/40 font-bold transition flex items-center gap-1 shadow-sm shadow-cyan-500/10 active cursor-pointer">
+            <span>📍 Miami, FL</span>
+          </button>
+          <button type="button" onclick="setHuntPreset('Dallas, TX', this)" class="market-preset-btn px-2.5 py-1.5 rounded-xl bg-[var(--bg-surface)] hover:bg-[var(--bg-hover)] text-[var(--text-secondary)] border border-[var(--border-subtle)] font-medium transition flex items-center gap-1 cursor-pointer">
+            <span>📍 Dallas, TX</span>
+          </button>
+          <button type="button" onclick="setHuntPreset('Houston, TX', this)" class="market-preset-btn px-2.5 py-1.5 rounded-xl bg-[var(--bg-surface)] hover:bg-[var(--bg-hover)] text-[var(--text-secondary)] border border-[var(--border-subtle)] font-medium transition flex items-center gap-1 cursor-pointer">
+            <span>📍 Houston, TX</span>
+          </button>
+          <button type="button" onclick="setHuntPreset('Austin, TX', this)" class="market-preset-btn px-2.5 py-1.5 rounded-xl bg-[var(--bg-surface)] hover:bg-[var(--bg-hover)] text-[var(--text-secondary)] border border-[var(--border-subtle)] font-medium transition flex items-center gap-1 cursor-pointer">
+            <span>📍 Austin, TX</span>
+          </button>
+          <button type="button" onclick="setHuntPreset('Phoenix, AZ', this)" class="market-preset-btn px-2.5 py-1.5 rounded-xl bg-[var(--bg-surface)] hover:bg-[var(--bg-hover)] text-[var(--text-secondary)] border border-[var(--border-subtle)] font-medium transition flex items-center gap-1 cursor-pointer">
+            <span>📍 Phoenix, AZ</span>
+          </button>
+          <button type="button" onclick="setHuntPreset('Atlanta, GA', this)" class="market-preset-btn px-2.5 py-1.5 rounded-xl bg-[var(--bg-surface)] hover:bg-[var(--bg-hover)] text-[var(--text-secondary)] border border-[var(--border-subtle)] font-medium transition flex items-center gap-1 cursor-pointer">
+            <span>📍 Atlanta, GA</span>
+          </button>
+          <button type="button" onclick="setHuntPreset('Los Angeles, CA', this)" class="market-preset-btn px-2.5 py-1.5 rounded-xl bg-[var(--bg-surface)] hover:bg-[var(--bg-hover)] text-[var(--text-secondary)] border border-[var(--border-subtle)] font-medium transition flex items-center gap-1 cursor-pointer">
+            <span>📍 Los Angeles, CA</span>
+          </button>
+          <button type="button" onclick="setHuntPreset('Orlando, FL', this)" class="market-preset-btn px-2.5 py-1.5 rounded-xl bg-[var(--bg-surface)] hover:bg-[var(--bg-hover)] text-[var(--text-secondary)] border border-[var(--border-subtle)] font-medium transition flex items-center gap-1 cursor-pointer">
+            <span>📍 Orlando, FL</span>
+          </button>
+          <button type="button" onclick="setHuntPreset('Tampa, FL', this)" class="market-preset-btn px-2.5 py-1.5 rounded-xl bg-[var(--bg-surface)] hover:bg-[var(--bg-hover)] text-[var(--text-secondary)] border border-[var(--border-subtle)] font-medium transition flex items-center gap-1 cursor-pointer">
+            <span>📍 Tampa, FL</span>
+          </button>
+          <button type="button" onclick="setHuntPreset('Denver, CO', this)" class="market-preset-btn px-2.5 py-1.5 rounded-xl bg-[var(--bg-surface)] hover:bg-[var(--bg-hover)] text-[var(--text-secondary)] border border-[var(--border-subtle)] font-medium transition flex items-center gap-1 cursor-pointer">
+            <span>📍 Denver, CO</span>
+          </button>
+          <button type="button" onclick="setHuntPreset('Chicago, IL', this)" class="market-preset-btn px-2.5 py-1.5 rounded-xl bg-[var(--bg-surface)] hover:bg-[var(--bg-hover)] text-[var(--text-secondary)] border border-[var(--border-subtle)] font-medium transition flex items-center gap-1 cursor-pointer">
+            <span>📍 Chicago, IL</span>
+          </button>
+          <button type="button" onclick="setHuntPreset('New York, NY', this)" class="market-preset-btn px-2.5 py-1.5 rounded-xl bg-[var(--bg-surface)] hover:bg-[var(--bg-hover)] text-[var(--text-secondary)] border border-[var(--border-subtle)] font-medium transition flex items-center gap-1 cursor-pointer">
+            <span>📍 New York, NY</span>
+          </button>
+        </div>
+
+        <div class="flex items-center gap-2 pt-0.5">
+          <span class="text-[var(--text-muted)] text-[11px] font-semibold">Regional Directory:</span>
+          <select id="marketQuickPicker" onchange="setHuntPreset(this.value)" class="bg-[var(--bg-surface)] border border-[var(--border-subtle)] text-[11px] font-semibold rounded-xl px-3 py-1.5 text-cyan-300 focus:outline-none focus:border-cyan-500 transition cursor-pointer">
+            <option value="" disabled selected>— Select from 12+ High-Ticket US Metros —</option>
+            <optgroup label="Florida & Southeast (Sunbelt)">
+              <option value="Miami, FL">Miami, FL (Aesthetics & Surgery Capital)</option>
+              <option value="Orlando, FL">Orlando, FL (Central Florida)</option>
+              <option value="Tampa, FL">Tampa, FL (Gulf Coast)</option>
+              <option value="Atlanta, GA">Atlanta, GA (Buckhead / Metro)</option>
+            </optgroup>
+            <optgroup label="Texas (High-Density Private Practices)">
+              <option value="Dallas, TX">Dallas / Fort Worth, TX (High Net-Worth)</option>
+              <option value="Houston, TX">Houston, TX (Galleria / River Oaks)</option>
+              <option value="Austin, TX">Austin, TX (Tech / Rapid Growth)</option>
+            </optgroup>
+            <optgroup label="West & Mountain">
+              <option value="Phoenix, AZ">Phoenix / Scottsdale, AZ (Year-Round Aesthetic Hub)</option>
+              <option value="Los Angeles, CA">Los Angeles / Beverly Hills, CA (Premier Aesthetic Capital)</option>
+              <option value="Denver, CO">Denver, CO (Cherry Creek / Metro)</option>
+            </optgroup>
+            <optgroup label="Midwest & Northeast">
+              <option value="Chicago, IL">Chicago, IL (Gold Coast / Mag Mile)</option>
+              <option value="New York, NY">New York, NY (Manhattan / TriBeCa)</option>
+            </optgroup>
+          </select>
+        </div>
       </div>
 
       <!-- Live Hunting Status Console -->
@@ -315,16 +365,16 @@ scraperRouter.get('/dashboard', async (req, res) => {
               <div id="resDoctor" class="text-[var(--text-primary)] font-medium">Dr. Carlos Riveros</div>
             </div>
             <div>
-              <span class="text-[var(--text-muted)] text-[10px] uppercase font-semibold">Direct Email</span>
-              <div id="resEmail" class="text-cyan-400 font-mono truncate">coralgables@...</div>
-            </div>
-            <div>
               <span class="text-[var(--text-muted)] text-[10px] uppercase font-semibold">Procedure / Service</span>
               <div id="resTreatment" class="text-purple-300 font-medium">Morpheus8</div>
             </div>
             <div>
               <span class="text-[var(--text-muted)] text-[10px] uppercase font-semibold">Front Desk Phone</span>
-              <div id="resPhone" class="text-[var(--text-primary)] font-mono">(305) 356-7402</div>
+              <div id="resPhone" class="text-[var(--text-primary)] font-mono font-bold">(305) 356-7402</div>
+            </div>
+            <div>
+              <span class="text-[var(--text-muted)] text-[10px] uppercase font-semibold">Direct Email</span>
+              <div id="resEmail" class="text-cyan-400 font-mono truncate">coralgables@...</div>
             </div>
           </div>
 
@@ -386,17 +436,27 @@ scraperRouter.get('/dashboard', async (req, res) => {
       }
 
       function setHuntPreset(city, btnEl) {
+        if (!city) return;
         document.getElementById('huntCity').value = city;
 
         // Visual selection indicator on preset badges
+        let matchedBtn = btnEl;
         document.querySelectorAll('.market-preset-btn').forEach(btn => {
           btn.classList.remove('bg-cyan-500/15', 'text-cyan-300', 'border-cyan-500/40', 'font-bold', 'shadow-sm', 'shadow-cyan-500/10', 'active');
           btn.classList.add('bg-[var(--bg-surface)]', 'text-[var(--text-secondary)]', 'border-[var(--border-subtle)]', 'font-medium');
+          if (!matchedBtn && btn.innerText.toLowerCase().includes(city.split(',')[0].toLowerCase())) {
+            matchedBtn = btn;
+          }
         });
 
-        if (btnEl) {
-          btnEl.classList.remove('bg-[var(--bg-surface)]', 'text-[var(--text-secondary)]', 'border-[var(--border-subtle)]', 'font-medium');
-          btnEl.classList.add('bg-cyan-500/15', 'text-cyan-300', 'border-cyan-500/40', 'font-bold', 'shadow-sm', 'shadow-cyan-500/10', 'active');
+        if (matchedBtn) {
+          matchedBtn.classList.remove('bg-[var(--bg-surface)]', 'text-[var(--text-secondary)]', 'border-[var(--border-subtle)]', 'font-medium');
+          matchedBtn.classList.add('bg-cyan-500/15', 'text-cyan-300', 'border-cyan-500/40', 'font-bold', 'shadow-sm', 'shadow-cyan-500/10', 'active');
+        }
+
+        const picker = document.getElementById('marketQuickPicker');
+        if (picker && picker.value !== city) {
+          picker.value = city;
         }
 
         showToast('Market Selected', 'Ready to hunt ' + city + '. Click Launch Hunter or press Enter.', 'info');
@@ -532,10 +592,18 @@ scraperRouter.get('/dashboard', async (req, res) => {
                     '</button>' +
                   '</div>' +
                 '</div>' +
-                '<div class="text-xs space-y-1.5 border-t border-[var(--border-subtle)] pt-2.5">' +
-                  '<div class="flex items-center justify-between text-[var(--text-muted)]"><span>Email:</span><span class="text-cyan-400 font-mono truncate max-w-[200px]">' + (lead.email || 'None found') + '</span></div>' +
-                  '<div class="flex items-center justify-between text-[var(--text-muted)]"><span>Phone:</span><span class="text-[var(--text-primary)] font-mono">' + (lead.phone || 'N/A') + '</span></div>' +
-                  '<div class="flex items-center justify-between text-[var(--text-muted)]"><span>Procedure:</span><span class="text-purple-300 font-medium">' + (lead.treatment || 'High-Ticket') + '</span></div>' +
+                '<div class="text-xs space-y-2 border-t border-[var(--border-subtle)] pt-2.5">' +
+                  '<div class="flex items-center justify-between gap-2 p-2 rounded-xl bg-[var(--bg-card)]/60 border border-[var(--border-subtle)]/70 text-[11px]">' +
+                    '<div class="flex items-center gap-1.5 font-mono text-[var(--text-primary)] font-bold">' +
+                      '<span>📞</span>' +
+                      (lead.phone ? '<a href="tel:' + String(lead.phone).replace(/[^0-9+]/g, '') + '" class="hover:text-emerald-400 transition" title="Click to dial">' + lead.phone + '</a>' : '<span class="text-[var(--text-muted)] italic font-normal">No phone</span>') +
+                    '</div>' +
+                    '<div class="flex items-center gap-1.5 font-mono text-cyan-400">' +
+                      '<span>✉️</span>' +
+                      (lead.email ? '<a href="mailto:' + lead.email + '" class="hover:underline truncate max-w-[190px]" title="Click to email ' + lead.email + '">' + lead.email + '</a>' : '<span class="text-[var(--text-muted)] italic">No email</span>') +
+                    '</div>' +
+                  '</div>' +
+                  '<div class="flex items-center justify-between text-[var(--text-muted)] text-[11px]"><span>Procedure:</span><span class="text-purple-300 font-medium">' + (lead.treatment || 'High-Ticket') + '</span></div>' +
                 '</div>' +
                 hookHtml +
                 '<div class="pt-2 border-t border-[var(--border-subtle)] flex items-center justify-between text-[11px]">' +

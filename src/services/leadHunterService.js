@@ -69,6 +69,38 @@ const CURATED_TARGETS = {
       { title: 'Skin IQ Medspa Atlanta', url: 'https://skiniqmedspa.com', city: 'Atlanta, GA' },
       { title: 'Aya Medical Spa Atlanta', url: 'https://ayaskincare.com', city: 'Atlanta, GA' },
     ],
+    houston: [
+      { title: 'SkinCeuticals SkinLab Houston', url: 'https://skinlabhouston.com', city: 'Houston, TX' },
+      { title: 'Clinic 45 Medical Spa Houston', url: 'https://clinic45.com', city: 'Houston, TX' },
+      { title: 'Heights Med Spa Houston', url: 'https://heightsmedspa.com', city: 'Houston, TX' },
+      { title: 'DermaTouch RN MedSpa Houston', url: 'https://dermatouchrn.com', city: 'Houston, TX' },
+    ],
+    'los angeles': [
+      { title: 'Beverly Hills Rejuvenation Center LA', url: 'https://bhrcenter.com', city: 'Los Angeles, CA' },
+      { title: 'Westside Aesthetics Los Angeles', url: 'https://westsideaesthetics.com', city: 'Los Angeles, CA' },
+      { title: 'Motykie Med Spa Beverly Hills', url: 'https://motykiemedspa.com', city: 'Los Angeles, CA' },
+    ],
+    orlando: [
+      { title: 'LightTouch Med Spa Orlando', url: 'https://lighttouchmedspa.com', city: 'Orlando, FL' },
+      { title: 'Fiala Aesthetics Medical Spa Orlando', url: 'https://medspaorlando.com', city: 'Orlando, FL' },
+      { title: 'Winter Park Laser & MedSpa Orlando', url: 'https://winterparklaser.com', city: 'Orlando, FL' },
+    ],
+    tampa: [
+      { title: 'Tampa Bay Body Sculpting MedSpa', url: 'https://tampabaybodysculpting.com', city: 'Tampa, FL' },
+      { title: 'Academic Alliance Medspa Tampa', url: 'https://academicaesthetics.com', city: 'Tampa, FL' },
+    ],
+    denver: [
+      { title: 'Atagi Plastic Surgery & Skin Denver', url: 'https://atagimd.com', city: 'Denver, CO' },
+      { title: 'The Med Spa at Cherry Creek Denver', url: 'https://cherrycreekmedspa.com', city: 'Denver, CO' },
+    ],
+    chicago: [
+      { title: 'Gold Coast Plastic Surgery & Medspa Chicago', url: 'https://goldcoastplasticsurgery.com', city: 'Chicago, IL' },
+      { title: 'Whole Beauty Medical Spa Chicago', url: 'https://wholebeauty.com', city: 'Chicago, IL' },
+    ],
+    'new york': [
+      { title: 'Tribeca MedSpa NYC', url: 'https://tribecamedspa.com', city: 'New York, NY' },
+      { title: 'Skin Spa New York', url: 'https://skinspanewyork.com', city: 'New York, NY' },
+    ],
   },
   hvac: {
     phoenix: [
@@ -98,6 +130,14 @@ const CURATED_TARGETS = {
       { title: 'PV Heating, Cooling & Plumbing Atlanta', url: 'https://pvhvac.com', city: 'Atlanta, GA' },
       { title: 'Anchor Heating & Air 24/7 Emergency Atlanta', url: 'https://www.anchorac.com', city: 'Atlanta, GA' },
       { title: 'Reliable Heating & Air Atlanta', url: 'https://reliableair.com', city: 'Atlanta, GA' },
+    ],
+    tampa: [
+      { title: 'Cornerstone Pros Air Conditioning Tampa', url: 'https://cornerstonepros.com', city: 'Tampa, FL' },
+      { title: 'Air Hawk Heating and Cooling Tampa', url: 'https://airhawkac.com', city: 'Tampa, FL' },
+    ],
+    houston: [
+      { title: 'Airteam HVAC Houston', url: 'https://airteam.com', city: 'Houston, TX' },
+      { title: 'Custom Comfort Air Houston', url: 'https://customcomfortair.com', city: 'Houston, TX' },
     ],
   },
 };
@@ -213,7 +253,12 @@ export async function searchLocalBusinesses({ query, city = 'Miami, FL', niche =
   // Strategy 3: Curated Geographic High-Ticket Targets if cloud datacenter IP was blocked
   if (rawResults.length === 0) {
     console.log('[LeadHunter] Search engines blocked datacenter IP. Using curated regional target clinics...');
-    const cityKey = (city.toLowerCase().split(',')[0] || '').trim();
+    let cityKey = (city.toLowerCase().split(',')[0] || '').trim();
+    if (cityKey === 'nyc' || cityKey === 'manhattan') cityKey = 'new york';
+    if (cityKey === 'la') cityKey = 'los angeles';
+    if (cityKey === 'dfw' || cityKey === 'fort worth') cityKey = 'dallas';
+    if (cityKey === 'scottsdale') cityKey = 'phoenix';
+
     const curatedList =
       CURATED_TARGETS[niche]?.[cityKey] ||
       (niche === 'hvac' ? CURATED_TARGETS.hvac.phoenix : CURATED_TARGETS.medspa.miami);
