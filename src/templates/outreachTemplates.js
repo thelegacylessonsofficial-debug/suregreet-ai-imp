@@ -256,6 +256,47 @@ export function generateHarveyScript({
 }
 
 /**
+ * Generate full 4-step automated outreach sequence
+ */
+export function generateFullSequence(params = {}) {
+  const step1 = generateHarveyScript({ ...params, framework: params.framework || 'pas' });
+  const step2 = generateHarveyScript({ ...params, framework: 'bump' });
+  const step3 = generateHarveyScript({ ...params, framework: 'bab' });
+  const step4 = generateHarveyScript({ ...params, framework: 'breakup' });
+
+  return [
+    {
+      step: 1,
+      name: 'Cold Hook (Micro-Audit)',
+      timing: 'Day 1',
+      desc: 'Initial touch highlighting booking friction or after-hours gap',
+      ...step1,
+    },
+    {
+      step: 2,
+      name: 'Proof & 30s Voice Demo',
+      timing: '+2 Biz Days',
+      desc: 'Threaded Re: follow-up offering a 30-second live test line',
+      ...step2,
+    },
+    {
+      step: 3,
+      name: 'Revenue Leak Automation',
+      timing: '+3 Biz Days',
+      desc: 'Economic napkin math ($12k/mo lost consults) & 14-day zero-risk trial',
+      ...step3,
+    },
+    {
+      step: 4,
+      name: 'Clean Breakup',
+      timing: '+3 Biz Days',
+      desc: 'Threaded Re: polite closure leaving the door open',
+      ...step4,
+    },
+  ];
+}
+
+/**
  * Legacy wrappers for sequence worker compatibility (Steps 1 to 4)
  */
 export function outreachStep1Template(params) {

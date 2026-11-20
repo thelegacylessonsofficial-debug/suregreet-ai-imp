@@ -10,10 +10,12 @@ export function renderLeadBotsHubHtml() {
     <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-[var(--border-subtle)] pb-4">
       <div>
         <div class="flex items-center gap-2">
-          <h2 class="text-lg font-bold text-[var(--text-primary)] tracking-tight">SureGreet AI — Lead Bots Control Hub</h2>
-          <span class="px-2 py-0.5 rounded-full text-[10px] font-bold font-mono bg-cyan-500/10 text-cyan-400 border border-cyan-500/20">4 Live Bots</span>
+          <h2 class="text-lg font-bold text-[var(--text-primary)] tracking-tight">SureGreet AI — Agency Operator Command Center</h2>
+          <span class="px-2.5 py-0.5 rounded-full text-[10px] font-bold font-mono bg-cyan-500/10 text-cyan-400 border border-cyan-500/20">4 Hired Operators Active</span>
         </div>
-        <p class="text-xs text-[var(--text-secondary)] mt-1">Autonomous 24/7 AI Voice, 30s Speed-to-Lead Callback, Calendar-First Booking, and Inbox LAARC Closer engines.</p>
+        <p class="text-xs text-[var(--text-secondary)] mt-1">
+          Autonomous Agency Team Roster: Lead Sourcing Hunter • Harvey Outbound Campaigner • 24/7 Voice Setter • Inbound LAARC Closer.
+        </p>
       </div>
 
       <div class="flex items-center gap-2">
@@ -24,43 +26,142 @@ export function renderLeadBotsHubHtml() {
       </div>
     </div>
 
-    <!-- 4 Bots Grid -->
+    <!-- 4 Operators Grid -->
     <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
 
-      <!-- BOT 1: 24/7 Voice Receptionist (Sarah) -->
+      <!-- OPERATOR 1: Lead Sourcing & Diagnostic Auditor -->
       <div class="p-5 rounded-2xl bg-[var(--bg-card)] border border-[var(--border-subtle)] space-y-4 shadow-xl">
         <div class="flex items-start justify-between">
           <div class="flex items-center gap-3">
-            <div class="w-10 h-10 rounded-xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-400 shadow-sm">
-              ${getSvgIcon('phone', 'w-5 h-5')}
+            <div class="w-10 h-10 rounded-xl bg-cyan-500/10 border border-cyan-500/20 flex items-center justify-center text-cyan-400 shadow-sm font-bold text-xs font-mono">
+              OP-1
             </div>
             <div>
-              <h3 class="font-bold text-sm text-[var(--text-primary)]">24/7 Inbound Voice Receptionist (Sarah)</h3>
-              <p class="text-xs text-[var(--text-secondary)]">Retell AI Webhook & Cal.com Live Scheduler</p>
+              <div class="flex items-center gap-2">
+                <h3 class="font-bold text-sm text-[var(--text-primary)]">The Lead Sourcing Operator</h3>
+                <span class="text-[10px] font-mono px-2 py-0.5 rounded bg-cyan-500/10 text-cyan-300 font-semibold border border-cyan-500/20">Lead Hunter</span>
+              </div>
+              <p class="text-xs text-[var(--text-secondary)]">Autonomous Business Extraction & Jina AI Friction Diagnostics</p>
             </div>
           </div>
           <span class="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
             <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 pulse-dot"></span>
-            Live
+            Sourcing Active
           </span>
         </div>
 
         <div class="p-3.5 rounded-xl bg-[var(--bg-card-subtle)] border border-[var(--border-subtle)] space-y-2 text-xs font-mono">
           <div class="flex justify-between items-center">
-            <span class="text-[var(--text-muted)]">Agent Engine:</span>
-            <span class="text-[var(--text-primary)]">Retell AI (Sarah Voice)</span>
+            <span class="text-[var(--text-muted)]">Engine & Protocol:</span>
+            <span class="text-[var(--text-primary)]">DuckDuckGo + Jina AI Reader (r.jina.ai)</span>
           </div>
           <div class="flex justify-between items-center">
-            <span class="text-[var(--text-muted)]">Webhook Route:</span>
-            <span class="text-cyan-400">/webhook/retell-post-call-webhook</span>
+            <span class="text-[var(--text-muted)]">Target Metros:</span>
+            <span class="text-cyan-400">Miami, Dallas, Phoenix, Austin, Atlanta</span>
           </div>
           <div class="flex justify-between items-center">
-            <span class="text-[var(--text-muted)]">Cal.com Tool Call:</span>
-            <span class="text-emerald-400">Active (/retell-tool-call)</span>
+            <span class="text-[var(--text-muted)]">Cost Structure:</span>
+            <span class="text-emerald-400">$0 / Month • Zero Scraper Subscriptions</span>
           </div>
           <div class="flex justify-between items-center">
-            <span class="text-[var(--text-muted)]">Target Response:</span>
-            <span class="text-[var(--text-primary)]">&lt; 2 Rings (24/7/365)</span>
+            <span class="text-[var(--text-muted)]">Daily KPI:</span>
+            <span class="text-[var(--text-primary)]">50–100 Qualified Leads / Day</span>
+          </div>
+        </div>
+
+        <div class="flex gap-2">
+          <a href="/scraper/dashboard" class="flex-1 py-2 rounded-xl bg-cyan-500 hover:opacity-90 text-black font-bold text-xs text-center transition flex items-center justify-center gap-1.5 shadow-md shadow-cyan-500/15">
+            ${getSvgIcon('bolt', 'w-3.5 h-3.5')}
+            <span>Open Autonomous Lead Hunter</span>
+          </a>
+        </div>
+      </div>
+
+      <!-- OPERATOR 2: Outbound Email Specialist (The Harvey Outreach Engine) -->
+      <div class="p-5 rounded-2xl bg-[var(--bg-card)] border border-[var(--border-subtle)] space-y-4 shadow-xl">
+        <div class="flex items-start justify-between">
+          <div class="flex items-center gap-3">
+            <div class="w-10 h-10 rounded-xl bg-purple-500/10 border border-purple-500/20 flex items-center justify-center text-purple-400 shadow-sm font-bold text-xs font-mono">
+              OP-2
+            </div>
+            <div>
+              <div class="flex items-center gap-2">
+                <h3 class="font-bold text-sm text-[var(--text-primary)]">The Outbound Campaign Operator</h3>
+                <span class="text-[10px] font-mono px-2 py-0.5 rounded bg-purple-500/10 text-purple-300 font-semibold border border-purple-500/20">Harvey Engine</span>
+              </div>
+              <p class="text-xs text-[var(--text-secondary)]">Multi-Touch RFC Sequence & Revenue Leak Math</p>
+            </div>
+          </div>
+          <span class="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-purple-500/10 text-purple-400 border border-purple-500/20">
+            <span class="w-1.5 h-1.5 rounded-full bg-purple-400 pulse-dot"></span>
+            Queue Armed
+          </span>
+        </div>
+
+        <div class="p-3.5 rounded-xl bg-[var(--bg-card-subtle)] border border-[var(--border-subtle)] space-y-2 text-xs font-mono">
+          <div class="flex justify-between items-center">
+            <span class="text-[var(--text-muted)]">Copy Frameworks:</span>
+            <span class="text-[var(--text-primary)]">PAS, QVC, BAB (Napkin Math), Bump, Breakup</span>
+          </div>
+          <div class="flex justify-between items-center">
+            <span class="text-[var(--text-muted)]">Anti-AI Gate:</span>
+            <span class="text-emerald-400">Strictly &lt; 65 Words • 0 Em-Dashes • 0 Clichés</span>
+          </div>
+          <div class="flex justify-between items-center">
+            <span class="text-[var(--text-muted)]">Sending Hours:</span>
+            <span class="text-purple-300">Mon–Fri 9:00 AM – 4:30 PM EST</span>
+          </div>
+          <div class="flex justify-between items-center">
+            <span class="text-[var(--text-muted)]">Sequence Timing:</span>
+            <span class="text-[var(--text-primary)]">Day 1 → +2 Biz Days → +3 Biz Days → +3 Biz Days</span>
+          </div>
+        </div>
+
+        <div class="flex gap-2">
+          <a href="/outreach/preview" class="flex-1 py-2 rounded-xl bg-purple-500 hover:opacity-90 text-white font-bold text-xs text-center transition flex items-center justify-center gap-1.5 shadow-md shadow-purple-500/15">
+            ${getSvgIcon('mail', 'w-3.5 h-3.5')}
+            <span>Open 4-Step Script Studio</span>
+          </a>
+        </div>
+      </div>
+
+      <!-- OPERATOR 3: 24/7 Voice Setter & Speed-to-Lead Specialist -->
+      <div class="p-5 rounded-2xl bg-[var(--bg-card)] border border-[var(--border-subtle)] space-y-4 shadow-xl">
+        <div class="flex items-start justify-between">
+          <div class="flex items-center gap-3">
+            <div class="w-10 h-10 rounded-xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-400 shadow-sm font-bold text-xs font-mono">
+              OP-3
+            </div>
+            <div>
+              <div class="flex items-center gap-2">
+                <h3 class="font-bold text-sm text-[var(--text-primary)]">The Voice & Phone Setter Operator</h3>
+                <span class="text-[10px] font-mono px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-300 font-semibold border border-emerald-500/20">Sarah Voice</span>
+              </div>
+              <p class="text-xs text-[var(--text-secondary)]">Retell AI Inbound Receptionist & 30s Callback Dispatcher</p>
+            </div>
+          </div>
+          <span class="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+            <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 pulse-dot"></span>
+            Voice Live
+          </span>
+        </div>
+
+        <div class="p-3.5 rounded-xl bg-[var(--bg-card-subtle)] border border-[var(--border-subtle)] space-y-2 text-xs font-mono">
+          <div class="flex justify-between items-center">
+            <span class="text-[var(--text-muted)]">Voice Engine:</span>
+            <span class="text-[var(--text-primary)]">Retell AI (Sarah Voice Model)</span>
+          </div>
+          <div class="flex justify-between items-center">
+            <span class="text-[var(--text-muted)]">Calendar Sync:</span>
+            <span class="text-emerald-400">Cal.com Tool Call Active (/retell-tool-call)</span>
+          </div>
+          <div class="flex justify-between items-center">
+            <span class="text-[var(--text-muted)]">Answer Cadence:</span>
+            <span class="text-[var(--text-primary)]">&lt; 2 Rings (24/7/365 Coverage)</span>
+          </div>
+          <div class="flex justify-between items-center">
+            <span class="text-[var(--text-muted)]">Callback Speed:</span>
+            <span class="text-cyan-400">&lt; 30 Seconds Post Form Fill</span>
           </div>
         </div>
 
@@ -78,115 +179,19 @@ export function renderLeadBotsHubHtml() {
         </div>
       </div>
 
-      <!-- BOT 2: Instant 30-Second Lead Callback Bot -->
+      <!-- OPERATOR 4: Chief of Inbox Triage & Closer (LAARC Methodology) -->
       <div class="p-5 rounded-2xl bg-[var(--bg-card)] border border-[var(--border-subtle)] space-y-4 shadow-xl">
         <div class="flex items-start justify-between">
           <div class="flex items-center gap-3">
-            <div class="w-10 h-10 rounded-xl bg-cyan-500/10 border border-cyan-500/20 flex items-center justify-center text-cyan-400 shadow-sm">
-              ${getSvgIcon('bolt', 'w-5 h-5')}
+            <div class="w-10 h-10 rounded-xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-400 shadow-sm font-bold text-xs font-mono">
+              OP-4
             </div>
             <div>
-              <h3 class="font-bold text-sm text-[var(--text-primary)]">Instant 30s Speed-to-Lead Callback Bot</h3>
-              <p class="text-xs text-[var(--text-secondary)]">Triggers outbound AI call upon website form intake</p>
-            </div>
-          </div>
-          <span class="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-cyan-500/10 text-cyan-400 border border-cyan-500/20">
-            <span class="w-1.5 h-1.5 rounded-full bg-cyan-400 pulse-dot"></span>
-            Armed
-          </span>
-        </div>
-
-        <div class="p-3.5 rounded-xl bg-[var(--bg-card-subtle)] border border-[var(--border-subtle)] space-y-2 text-xs font-mono">
-          <div class="flex justify-between items-center">
-            <span class="text-[var(--text-muted)]">Intake Route:</span>
-            <span class="text-cyan-400">POST /webhook/suregreet-lead-callback</span>
-          </div>
-          <div class="flex justify-between items-center">
-            <span class="text-[var(--text-muted)]">Honeypot Shield:</span>
-            <span class="text-emerald-400">Active (Spambot Rejection)</span>
-          </div>
-          <div class="flex justify-between items-center">
-            <span class="text-[var(--text-muted)]">HubSpot & Slack Sync:</span>
-            <span class="text-[var(--text-primary)]">Instant Push</span>
-          </div>
-        </div>
-
-        <!-- Interactive 30s Callback Test Form -->
-        <div class="space-y-2.5">
-          <div class="grid grid-cols-2 gap-2">
-            <input type="text" id="testCallbackName" placeholder="Lead Name" value="Dr. Carlos Riveros" class="bg-[var(--bg-card-subtle)] border border-[var(--border-subtle)] text-xs rounded-xl px-3 py-2 text-[var(--text-primary)] focus:outline-none focus:border-cyan-500">
-            <input type="text" id="testCallbackPhone" placeholder="+1 (US Phone E.164)" value="+13053567402" class="bg-[var(--bg-card-subtle)] border border-[var(--border-subtle)] text-xs rounded-xl px-3 py-2 text-[var(--text-primary)] font-mono focus:outline-none focus:border-cyan-500">
-          </div>
-          <div class="flex gap-2">
-            <select id="testCallbackIndustry" class="w-1/2 bg-[var(--bg-card-subtle)] border border-[var(--border-subtle)] text-xs rounded-xl px-3 py-2 text-[var(--text-primary)]">
-              <option value="Aesthetic Medical Spa">Aesthetic MedSpa</option>
-              <option value="Emergency HVAC Contractor">Emergency HVAC</option>
-            </select>
-            <button onclick="dispatchTestLeadCallback()" class="flex-1 py-2 rounded-xl bg-cyan-500 hover:opacity-90 text-black font-bold text-xs transition flex items-center justify-center gap-1.5 shadow-md shadow-cyan-500/15">
-              ${getSvgIcon('bolt', 'w-3.5 h-3.5')}
-              <span>Dispatch 30s Callback</span>
-            </button>
-          </div>
-          <div id="callbackOutput" class="hidden p-3 rounded-xl bg-[var(--bg-surface)] border border-[var(--border-subtle)] text-[11px] font-mono text-[var(--text-secondary)] whitespace-pre-wrap max-h-36 overflow-y-auto custom-scrollbar"></div>
-        </div>
-      </div>
-
-      <!-- BOT 3: Calendar-First Smart Booking Widget -->
-      <div class="p-5 rounded-2xl bg-[var(--bg-card)] border border-[var(--border-subtle)] space-y-4 shadow-xl">
-        <div class="flex items-start justify-between">
-          <div class="flex items-center gap-3">
-            <div class="w-10 h-10 rounded-xl bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center text-indigo-400 shadow-sm">
-              ${getSvgIcon('pipeline', 'w-5 h-5')}
-            </div>
-            <div>
-              <h3 class="font-bold text-sm text-[var(--text-primary)]">Calendar-First Smart Booking Widget</h3>
-              <p class="text-xs text-[var(--text-secondary)]">Zero-friction slot lock with 24h & 1h reminder engines</p>
-            </div>
-          </div>
-          <span class="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-indigo-500/10 text-indigo-400 border border-indigo-500/20">
-            <span class="w-1.5 h-1.5 rounded-full bg-indigo-400 pulse-dot"></span>
-            Cron Active
-          </span>
-        </div>
-
-        <div class="p-3.5 rounded-xl bg-[var(--bg-card-subtle)] border border-[var(--border-subtle)] space-y-2 text-xs font-mono">
-          <div class="flex justify-between items-center">
-            <span class="text-[var(--text-muted)]">API Endpoint:</span>
-            <span class="text-indigo-400">POST /api/booking/calendar-first</span>
-          </div>
-          <div class="flex justify-between items-center">
-            <span class="text-[var(--text-muted)]">Cal.com Webhook:</span>
-            <span class="text-emerald-400">POST /webhook/calcom-booking-webhook</span>
-          </div>
-          <div class="flex justify-between items-center">
-            <span class="text-[var(--text-muted)]">Auto-Freeze Outreach:</span>
-            <span class="text-emerald-400">Instant on Booking Lock</span>
-          </div>
-        </div>
-
-        <div class="space-y-2">
-          <div class="grid grid-cols-2 gap-2">
-            <button onclick="testBookingCron('24h')" class="py-2 px-3 rounded-xl bg-[var(--bg-card-subtle)] hover:bg-[var(--bg-hover)] border border-[var(--border-subtle)] text-[var(--text-primary)] text-xs font-semibold transition text-center">
-              Test 24h Reminder Cron
-            </button>
-            <button onclick="testBookingCron('1h')" class="py-2 px-3 rounded-xl bg-[var(--bg-card-subtle)] hover:bg-[var(--bg-hover)] border border-[var(--border-subtle)] text-[var(--text-primary)] text-xs font-semibold transition text-center">
-              Test 1h Urgent Reminder
-            </button>
-          </div>
-          <div id="bookingCronOutput" class="hidden p-3 rounded-xl bg-[var(--bg-surface)] border border-[var(--border-subtle)] text-[11px] font-mono text-[var(--text-secondary)] whitespace-pre-wrap max-h-36 overflow-y-auto custom-scrollbar"></div>
-        </div>
-      </div>
-
-      <!-- BOT 4: Autonomous Inbox Triage & LAARC Closer -->
-      <div class="p-5 rounded-2xl bg-[var(--bg-card)] border border-[var(--border-subtle)] space-y-4 shadow-xl">
-        <div class="flex items-start justify-between">
-          <div class="flex items-center gap-3">
-            <div class="w-10 h-10 rounded-xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-400 shadow-sm">
-              ${getSvgIcon('inbox', 'w-5 h-5')}
-            </div>
-            <div>
-              <h3 class="font-bold text-sm text-[var(--text-primary)]">Autonomous Inbox Triage & LAARC Closer</h3>
-              <p class="text-xs text-[var(--text-secondary)]">Objection classification & tailored Cal.com closer drafting</p>
+              <div class="flex items-center gap-2">
+                <h3 class="font-bold text-sm text-[var(--text-primary)]">The Deal Closer & Triage Operator</h3>
+                <span class="text-[10px] font-mono px-2 py-0.5 rounded bg-amber-500/10 text-amber-300 font-semibold border border-amber-500/20">LAARC Closer</span>
+              </div>
+              <p class="text-xs text-[var(--text-secondary)]">Sentiment Classification & Objection Rebuttals</p>
             </div>
           </div>
           <span class="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/10 text-amber-400 border border-amber-500/20">
@@ -197,16 +202,20 @@ export function renderLeadBotsHubHtml() {
 
         <div class="p-3.5 rounded-xl bg-[var(--bg-card-subtle)] border border-[var(--border-subtle)] space-y-2 text-xs font-mono">
           <div class="flex justify-between items-center">
-            <span class="text-[var(--text-muted)]">Inbound Reply Webhook:</span>
-            <span class="text-amber-400">POST /webhook/inbox-reply</span>
-          </div>
-          <div class="flex justify-between items-center">
             <span class="text-[var(--text-muted)]">Methodology:</span>
             <span class="text-[var(--text-primary)]">LAARC (Listen, Acknowledge, Assess, Respond, Close)</span>
           </div>
           <div class="flex justify-between items-center">
             <span class="text-[var(--text-muted)]">Telegram Bot Alert:</span>
             <span class="text-emerald-400">Instant VIP Notification</span>
+          </div>
+          <div class="flex justify-between items-center">
+            <span class="text-[var(--text-muted)]">Reply Cadence:</span>
+            <span class="text-[var(--text-primary)]">&lt; 5 Minutes from Inbound Reply</span>
+          </div>
+          <div class="flex justify-between items-center">
+            <span class="text-[var(--text-muted)]">Conversion Target:</span>
+            <span class="text-amber-400">45%+ Objection to Discovery Booking</span>
           </div>
         </div>
 
