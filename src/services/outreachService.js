@@ -176,7 +176,19 @@ export async function getProspectById(idOrEmail) {
 /**
  * Add a new clinic prospect to Supabase
  */
-export async function addProspect({ doctorName, clinicName, email, city, treatment, notes }) {
+export async function addProspect({
+  doctorName,
+  clinicName,
+  email,
+  city,
+  treatment,
+  notes,
+  phone,
+  specific_observation,
+  recommended_angle,
+  website_url,
+  niche,
+}) {
   const normalizedEmail = (email || '').trim().toLowerCase();
   if (!normalizedEmail) {
     return { success: false, message: 'Valid email is required' };
@@ -197,6 +209,11 @@ export async function addProspect({ doctorName, clinicName, email, city, treatme
     status: 'pending',
     current_step: 0,
     notes: (notes || '').trim() || null,
+    phone: phone ? String(phone).trim() : null,
+    specific_observation: specific_observation || null,
+    recommended_angle: recommended_angle || null,
+    website_url: website_url || null,
+    niche: niche || 'medspa',
   };
 
   const res = await supabaseFetch('/prospects', {

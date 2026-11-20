@@ -167,7 +167,7 @@ function detectAdPixels(html) {
 /**
  * Scrape a clinic website and extract doctor name, email, phone, treatments, and ad signals
  */
-export async function scrapeClinicWebsite(inputUrl) {
+export async function scrapeClinicWebsite(inputUrl, options = {}) {
   const baseUrl = normalizeUrl(inputUrl);
   if (!baseUrl) {
     return { success: false, error: 'Invalid URL provided' };
@@ -237,46 +237,48 @@ export async function scrapeClinicWebsite(inputUrl) {
   // 5. Extract Doctor Name from Homepage
   let doctorName = extractDoctorName(homepageHtml, $home);
 
-  // 6. Deep Crawl Sub-pages (/about, /team, /contact) if doctor or email is missing
-  const subLinks = new Set();
-  $home('a[href]').each((_, el) => {
-    const href = $home(el).attr('href');
-    if (!href) return;
-    if (/(about|team|provider|doctor|contact|physician|staff)/i.test(href)) {
-      try {
-        const fullUrl = new URL(href, baseUrl).href;
-        if (fullUrl.startsWith(baseUrl)) {
-          subLinks.add(fullUrl);
-        }
-      } catch (e) {}
-    }
-  });
-
-  const candidateSubUrls = Array.from(subLinks).slice(0, 1);
-  for (const subUrl of candidateSubUrls) {
-    if (doctorName && rawEmails.size > 0) break; // We already have enough high-value data
-
-    console.log(`[Lead Scraper] Deep crawling sub-page: ${subUrl}`);
-    const subHtml = await fetchHtml(subUrl, 3000);
-    if (!subHtml) continue;
-
-    const $sub = cheerio.load(subHtml);
-
-    if (!doctorName) {
-      doctorName = extractDoctorName(subHtml, $sub);
-    }
-
-    $sub('a[href^="mailto:"]').each((_, el) => {
-      const raw = $sub(el).attr('href')?.replace(/^mailto:/i, '').split('?')[0];
-      const cleaned = sanitizeEmail(raw);
-      if (cleaned) rawEmails.add(cleaned);
+  // 6. Deep Crawl Sub-pages (/about, /team, /contact) if not in fast batch mode and doctor/email missing
+  if (!options.fast) {
+    const subLinks = new Set();
+    $home('a[href]').each((_, el) => {
+      const href = $home(el).attr('href');
+      if (!href) return;
+      if (/(about|team|provider|doctor|contact|physician|staff)/i.test(href)) {
+        try {
+          const fullUrl = new URL(href, baseUrl).href;
+          if (fullUrl.startsWith(baseUrl)) {
+            subLinks.add(fullUrl);
+          }
+        } catch (e) {}
+      }
     });
 
-    const subEmailMatches = subHtml.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g);
-    if (subEmailMatches) {
-      for (const em of subEmailMatches) {
-        const cleaned = sanitizeEmail(em);
+    const candidateSubUrls = Array.from(subLinks).slice(0, 1);
+    for (const subUrl of candidateSubUrls) {
+      if (doctorName && rawEmails.size > 0) break; // We already have enough high-value data
+
+      console.log(`[Lead Scraper] Deep crawling sub-page: ${subUrl}`);
+      const subHtml = await fetchHtml(subUrl, 2000);
+      if (!subHtml) continue;
+
+      const $sub = cheerio.load(subHtml);
+
+      if (!doctorName) {
+        doctorName = extractDoctorName(subHtml, $sub);
+      }
+
+      $sub('a[href^="mailto:"]').each((_, el) => {
+        const raw = $sub(el).attr('href')?.replace(/^mailto:/i, '').split('?')[0];
+        const cleaned = sanitizeEmail(raw);
         if (cleaned) rawEmails.add(cleaned);
+      });
+
+      const subEmailMatches = subHtml.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g);
+      if (subEmailMatches) {
+        for (const em of subEmailMatches) {
+          const cleaned = sanitizeEmail(em);
+          if (cleaned) rawEmails.add(cleaned);
+        }
       }
     }
   }
