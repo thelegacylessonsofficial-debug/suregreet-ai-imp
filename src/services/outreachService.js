@@ -188,6 +188,10 @@ export async function addProspect({
   recommended_angle,
   website_url,
   niche,
+  harvey_prompt,
+  harvey_draft,
+  harvey_score,
+  harvey_status,
 }) {
   const normalizedEmail = (email || '').trim().toLowerCase();
   if (!normalizedEmail) {
@@ -214,6 +218,10 @@ export async function addProspect({
     recommended_angle: recommended_angle || null,
     website_url: website_url || null,
     niche: niche || 'medspa',
+    harvey_prompt: harvey_prompt || null,
+    harvey_draft: harvey_draft || null,
+    harvey_score: harvey_score || null,
+    harvey_status: harvey_status || null,
   };
 
   const res = await supabaseFetch('/prospects', {

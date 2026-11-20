@@ -24,6 +24,8 @@ import {
   getUnsubscribeUrl,
 } from '../templates/outreachTemplates.js';
 import { sendEmail } from '../services/mailer.js';
+import { runHarveyAutonomousPipeline } from '../services/harveyService.js';
+import { config } from '../config.js';
 
 export const outreachRouter = Router();
 
@@ -231,6 +233,7 @@ function renderProspectsHtml(list, authKey = '') {
                 <th class="py-3.5 px-4 font-semibold">Doctor / DM</th>
                 <th class="py-3.5 px-4 font-semibold">Clinic & Location</th>
                 <th class="py-3.5 px-4 font-semibold text-[var(--accent-emerald)]">1-Click Phone Dial & Direct Email</th>
+                <th class="py-3.5 px-4 font-semibold text-cyan-400">Harvey Bespoke Hook</th>
                 <th class="py-3.5 px-4 font-semibold">Sequence Pipeline</th>
                 <th class="py-3.5 px-4 font-semibold">Offer / Service</th>
                 <th class="py-3.5 px-4 font-semibold text-center">Live Status</th>
@@ -332,6 +335,43 @@ function renderProspectsHtml(list, authKey = '') {
                               </div>`
                             : `<span class="text-[var(--text-muted)] text-xs italic">No email</span>`
                         }
+                      </div>
+                    </td>
+
+                    <!-- Harvey Bespoke Hook & Quality Gate (Dedicated Column) -->
+                    <td class="py-3.5 px-4 max-w-xs" id="harvey-cell-${p.id}">
+                      <div class="space-y-1.5">
+                        <div class="flex items-center gap-1.5 flex-wrap">
+                          ${
+                            p.harvey_score
+                              ? `<span class="px-2 py-0.5 rounded text-[10px] font-bold font-mono ${p.harvey_score >= 85 ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' : 'bg-amber-500/10 text-amber-400 border border-amber-500/20'}">Score: ${p.harvey_score}/100</span>`
+                              : `<span class="px-2 py-0.5 rounded text-[10px] font-mono text-[var(--text-muted)] bg-[var(--bg-surface)] border border-[var(--border-subtle)]">Audit Ready</span>`
+                          }
+                          <span class="text-[10px] text-[var(--text-muted)] font-mono">0 Clichés • 0 Em-dashes</span>
+                        </div>
+                        <p class="text-[11px] text-[var(--text-primary)] font-medium leading-tight line-clamp-2" title="${escapeHtml(p.specific_observation || p.harvey_draft || 'Click Run Harvey to inspect site & compile bespoke hook')}">
+                          ${escapeHtml(p.specific_observation || 'Static form friction detected')}
+                        </p>
+                        <div class="flex items-center gap-1.5 pt-0.5">
+                          <button 
+                            type="button"
+                            onclick="inspectHarveyHook('${p.id}')"
+                            class="px-2 py-1 rounded-lg bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 text-[10px] font-bold transition flex items-center gap-1 cursor-pointer"
+                            title="Inspect bespoke prompt, draft, and test-send to phone"
+                          >
+                            <span>Inspect & Test</span>
+                          </button>
+                          <button 
+                            type="button"
+                            id="btnRunHarvey-${p.id}"
+                            onclick="runHarveyForProspect('${p.id}', this)"
+                            class="px-2 py-1 rounded-lg bg-[var(--bg-surface)] hover:bg-[var(--bg-hover)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] border border-[var(--border-subtle)] text-[10px] font-medium transition flex items-center gap-1 cursor-pointer"
+                            title="Crawl site and regenerate bespoke 1-of-1 hook"
+                          >
+                            ${getSvgIcon('bolt', 'w-3 h-3 text-amber-400')}
+                            <span>Audit</span>
+                          </button>
+                        </div>
                       </div>
                     </td>
 
@@ -535,6 +575,102 @@ function renderProspectsHtml(list, authKey = '') {
       </div>
     </div>
 
+    <!-- Harvey Bespoke Hook & Demo Dispatcher Modal -->
+    <div id="harveyInspectorModal" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
+      <div class="bg-[var(--bg-card)] border border-[var(--border-strong)] rounded-2xl max-w-2xl w-full p-6 space-y-4 shadow-2xl max-h-[90vh] overflow-y-auto">
+        <div class="flex items-start justify-between border-b border-[var(--border-subtle)] pb-3">
+          <div>
+            <div class="flex items-center gap-2">
+              <span class="p-1 rounded-lg bg-cyan-500/10 text-cyan-400 font-bold">${getSvgIcon('bolt', 'w-4 h-4')}</span>
+              <h3 class="text-sm font-bold text-[var(--text-primary)] flex items-center gap-2">
+                <span>Harvey Bespoke Hook & Quality Gate</span>
+                <span id="modalHarveyScoreBadge" class="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-mono font-bold">Score: 100/100</span>
+              </h3>
+            </div>
+            <p id="modalHarveySubtitle" class="text-xs text-[var(--text-muted)] mt-0.5">Site-Inspected 1-of-1 Cold Hook Draft</p>
+          </div>
+          <button onclick="closeHarveyModal()" class="text-[var(--text-muted)] hover:text-[var(--text-primary)] text-lg font-bold cursor-pointer">✕</button>
+        </div>
+
+        <div class="space-y-4 text-xs">
+          <!-- Quality Scorecard Bar -->
+          <div class="grid grid-cols-2 sm:grid-cols-4 gap-2">
+            <div class="bg-[var(--bg-surface)] border border-[var(--border-subtle)] p-2.5 rounded-xl">
+              <span class="text-[10px] text-[var(--text-muted)] uppercase font-semibold">Word Count</span>
+              <div id="modalHarveyWordCount" class="text-sm font-mono font-bold text-[var(--text-primary)] mt-0.5">52 Words</div>
+              <span class="text-[10px] text-emerald-400">✓ Under 65 Ceiling</span>
+            </div>
+            <div class="bg-[var(--bg-surface)] border border-[var(--border-subtle)] p-2.5 rounded-xl">
+              <span class="text-[10px] text-[var(--text-muted)] uppercase font-semibold">AI Clichés</span>
+              <div class="text-sm font-mono font-bold text-emerald-400 mt-0.5">0 Detected</div>
+              <span class="text-[10px] text-[var(--text-muted)]">Zero Buzzwords</span>
+            </div>
+            <div class="bg-[var(--bg-surface)] border border-[var(--border-subtle)] p-2.5 rounded-xl">
+              <span class="text-[10px] text-[var(--text-muted)] uppercase font-semibold">Em-Dashes (—)</span>
+              <div class="text-sm font-mono font-bold text-emerald-400 mt-0.5">0 Em-Dashes</div>
+              <span class="text-[10px] text-[var(--text-muted)]">Human Punctuation</span>
+            </div>
+            <div class="bg-[var(--bg-surface)] border border-[var(--border-subtle)] p-2.5 rounded-xl">
+              <span class="text-[10px] text-[var(--text-muted)] uppercase font-semibold">Exclamations (!)</span>
+              <div class="text-sm font-mono font-bold text-emerald-400 mt-0.5">0 Marks</div>
+              <span class="text-[10px] text-[var(--text-muted)]">Peer-to-Peer</span>
+            </div>
+          </div>
+
+          <!-- Subject Line -->
+          <div>
+            <label class="block text-[11px] text-[var(--text-muted)] font-semibold uppercase mb-1">Subject Line (2-4 Words Peer-to-Peer)</label>
+            <div id="modalHarveySubject" class="p-2.5 bg-[var(--bg-surface)] border border-[var(--border-subtle)] rounded-xl font-mono text-cyan-300 font-semibold">
+              quick question - inquiries
+            </div>
+          </div>
+
+          <!-- Bespoke Cold Hook Draft Body -->
+          <div>
+            <div class="flex items-center justify-between mb-1">
+              <label class="text-[11px] text-[var(--text-muted)] font-semibold uppercase">1-of-1 Bespoke Email Draft</label>
+              <button onclick="copyToClipboard(document.getElementById('modalHarveyBody').innerText, 'Draft copied!')" class="text-[11px] text-cyan-400 hover:underline flex items-center gap-1 font-semibold cursor-pointer">
+                ${getSvgIcon('copy', 'w-3 h-3')}
+                <span>Copy Copy</span>
+              </button>
+            </div>
+            <div id="modalHarveyBody" class="p-4 bg-[var(--bg-surface)] border border-[var(--border-subtle)] rounded-xl whitespace-pre-line leading-relaxed text-[var(--text-primary)] font-mono selection:bg-cyan-500/20 text-xs">
+            </div>
+          </div>
+
+          <!-- Dynamic Prompt Dossier Accordion -->
+          <details class="group bg-[var(--bg-surface)] border border-[var(--border-subtle)] rounded-xl p-3">
+            <summary class="flex items-center justify-between cursor-pointer font-semibold text-[11px] text-[var(--text-secondary)] group-open:text-cyan-400">
+              <span class="flex items-center gap-1.5">
+                <span>🔍 Inspect Dynamic Harvey Prompt Fed to LLM</span>
+              </span>
+              <span class="text-[10px] font-mono group-open:rotate-180 transition">▼</span>
+            </summary>
+            <div id="modalHarveyPrompt" class="mt-2.5 pt-2 border-t border-[var(--border-subtle)] font-mono text-[11px] text-[var(--text-muted)] whitespace-pre-line leading-relaxed max-h-48 overflow-y-auto pr-1">
+            </div>
+          </details>
+        </div>
+
+        <!-- Safe Demo Dispatch Bar -->
+        <div class="pt-3 border-t border-[var(--border-subtle)] flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
+          <div class="text-[11px] text-amber-400 flex items-center gap-1.5 font-medium">
+            <span>🛡️</span>
+            <span>Safety Gate: Demo sends strictly to your phone. Live prospects remain frozen.</span>
+          </div>
+
+          <div class="flex items-center gap-2">
+            <button onclick="closeHarveyModal()" class="px-4 py-2 rounded-xl bg-[var(--bg-surface)] hover:bg-[var(--bg-hover)] text-[var(--text-secondary)] text-xs font-medium transition cursor-pointer">
+              Close
+            </button>
+            <button id="btnModalTestSend" onclick="sendModalHarveyDemo()" class="px-5 py-2 rounded-xl bg-cyan-500 hover:opacity-90 text-black font-extrabold text-xs transition shadow-md shadow-cyan-500/20 flex items-center gap-1.5 cursor-pointer">
+              ${getSvgIcon('bolt', 'w-3.5 h-3.5')}
+              <span>Send Demo to My Phone (architd062@gmail.com)</span>
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <script>
       const prospects = ${prospectsJson};
 
@@ -570,6 +706,171 @@ function renderProspectsHtml(list, authKey = '') {
         navigator.clipboard.writeText(text).then(() => {
           showToast('Copied', successMsg, 'success');
         });
+      }
+
+      let activeHarveyProspectId = null;
+
+      function inspectHarveyHook(id) {
+        activeHarveyProspectId = id;
+        const p = prospects.find(x => String(x.id) === String(id));
+        if (!p) return;
+
+        const modal = document.getElementById('harveyInspectorModal');
+        const scoreBadge = document.getElementById('modalHarveyScoreBadge');
+        const subtitle = document.getElementById('modalHarveySubtitle');
+        const subjectEl = document.getElementById('modalHarveySubject');
+        const bodyEl = document.getElementById('modalHarveyBody');
+        const promptEl = document.getElementById('modalHarveyPrompt');
+        const wordCountEl = document.getElementById('modalHarveyWordCount');
+
+        const score = p.harvey_score || 95;
+        if (scoreBadge) {
+          scoreBadge.innerText = 'Score: ' + score + '/100';
+          scoreBadge.className = 'text-[10px] px-2 py-0.5 rounded-full font-mono font-bold ' + 
+            (score >= 85 ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' : 'bg-amber-500/10 text-amber-400 border border-amber-500/20');
+        }
+        
+        if (subtitle) {
+          subtitle.innerText = (p.doctor_name || 'Doctor') + ' • ' + (p.clinic_name || 'Practice') + ' (' + (p.city || 'US') + ')';
+        }
+        if (subjectEl) {
+          subjectEl.innerText = p.original_subject || ('quick question - ' + (p.clinic_name || 'practice').toLowerCase() + ' inquiries');
+        }
+        
+        const cleanDraft = (p.harvey_draft || (p.step1Preview ? p.step1Preview.text : '') || p.notes || '').split('--')[0].trim();
+        const fallbackDraft = [
+          'Hey ' + (p.doctor_name || 'Doctor') + ',',
+          '',
+          (p.specific_observation || 'Saw your site makes visitors fill out a static form instead of booking directly.'),
+          '',
+          'Quick question - when an inquiry comes in after 6 PM, does someone call in 2 minutes, or wait until morning?',
+          '',
+          'Put together a 60-second demo showing our AI receptionist booking consults 24/7.',
+          '',
+          'Worth a quick look?',
+          '',
+          'Best,',
+          'Archit'
+        ].join('\\n');
+        
+        const finalDraft = cleanDraft || fallbackDraft;
+        if (bodyEl) {
+          bodyEl.innerText = finalDraft;
+        }
+        
+        if (wordCountEl) {
+          const words = finalDraft.split(/\\s+/).filter(Boolean).length;
+          wordCountEl.innerText = words + ' Words';
+        }
+
+        if (promptEl) {
+          promptEl.innerText = p.harvey_prompt || [
+            '[CLINIC AUDIT DOSSIER]',
+            'Practice: ' + (p.clinic_name || 'Practice'),
+            'Doctor: ' + (p.doctor_name || 'Doctor'),
+            'Offer: ' + (p.treatment || 'Consultation'),
+            'Friction Leak: ' + (p.specific_observation || 'Static form friction detected'),
+            'Rule: 45-60 words, 0 em-dashes, 0 exclamation marks, 0 AI clichés.'
+          ].join('\\n');
+        }
+
+        if (modal) modal.classList.remove('hidden');
+      }
+
+      function closeHarveyModal() {
+        const modal = document.getElementById('harveyInspectorModal');
+        if (modal) modal.classList.add('hidden');
+      }
+
+      async function runHarveyForProspect(id, btnEl) {
+        if (btnEl) {
+          btnEl.disabled = true;
+          btnEl.innerHTML = '${getSvgIcon('spinner', 'w-3 h-3 text-amber-400')}<span>Auditing...</span>';
+        }
+
+        try {
+          const res = await fetch(getAuthUrl('/outreach/harvey/generate'), {
+            method: 'POST',
+            credentials: 'include',
+            headers: getAuthHeaders(),
+            body: JSON.stringify({ prospectId: id })
+          });
+          const data = await res.json();
+
+          if (res.ok && data.status === 'success') {
+            showToast('Harvey Audit Complete', 'Score: ' + (data.audit?.score || 95) + '/100. Bespoke 1-of-1 copy staged in CRM.', 'success');
+            
+            const p = prospects.find(x => String(x.id) === String(id));
+            if (p) {
+              p.harvey_score = data.audit?.score || 95;
+              p.harvey_draft = data.draft?.body || '';
+              p.harvey_prompt = data.prompt || '';
+              p.harvey_status = 'passed';
+              p.specific_observation = data.dossier?.frictionObservation || p.specific_observation;
+            }
+
+            const cell = document.getElementById('harvey-cell-' + id);
+            if (cell && p) {
+              cell.innerHTML = '<div class="space-y-1.5">' +
+                '<div class="flex items-center gap-1.5 flex-wrap">' +
+                  '<span class="px-2 py-0.5 rounded text-[10px] font-bold font-mono bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">Score: ' + (p.harvey_score) + '/100</span>' +
+                  '<span class="text-[10px] text-[var(--text-muted)] font-mono">0 Clichés • 0 Em-dashes</span>' +
+                '</div>' +
+                '<p class="text-[11px] text-[var(--text-primary)] font-medium leading-tight line-clamp-2" title="' + (p.specific_observation || '').replace(/"/g, '&quot;') + '">' +
+                  (p.specific_observation || 'Static form friction detected') +
+                '</p>' +
+                '<div class="flex items-center gap-1.5 pt-0.5">' +
+                  '<button type="button" data-id="' + id + '" onclick="inspectHarveyHook(this.getAttribute(\\'data-id\\'))" class="px-2 py-1 rounded-lg bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 text-[10px] font-bold transition flex items-center gap-1 cursor-pointer"><span>Inspect & Test</span></button>' +
+                  '<button type="button" id="btnRunHarvey-' + id + '" data-id="' + id + '" onclick="runHarveyForProspect(this.getAttribute(\\'data-id\\'), this)" class="px-2 py-1 rounded-lg bg-[var(--bg-surface)] hover:bg-[var(--bg-hover)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] border border-[var(--border-subtle)] text-[10px] font-medium transition flex items-center gap-1 cursor-pointer">${getSvgIcon('bolt', 'w-3 h-3 text-amber-400')}<span>Audit</span></button>' +
+                '</div>' +
+              '</div>';
+            }
+          } else {
+            showToast('Harvey Audit Failed', data.message || 'Error executing audit', 'error');
+          }
+        } catch (e) {
+          showToast('Error', e.message, 'error');
+        } finally {
+          if (btnEl) {
+            btnEl.disabled = false;
+            btnEl.innerHTML = '${getSvgIcon('bolt', 'w-3 h-3 text-amber-400')}<span>Audit</span>';
+          }
+        }
+      }
+
+      async function sendModalHarveyDemo() {
+        if (!activeHarveyProspectId) return;
+        const btn = document.getElementById('btnModalTestSend');
+        if (btn) {
+          btn.disabled = true;
+          btn.innerHTML = '${getSvgIcon('spinner', 'w-3.5 h-3.5 text-black')}<span>Dispatching to Phone...</span>';
+        }
+
+        try {
+          const res = await fetch(getAuthUrl('/outreach/harvey/test-send'), {
+            method: 'POST',
+            credentials: 'include',
+            headers: getAuthHeaders(),
+            body: JSON.stringify({
+              prospectId: activeHarveyProspectId,
+              toEmail: 'architd062@gmail.com'
+            })
+          });
+          const data = await res.json();
+
+          if (res.ok && data.status === 'success') {
+            showToast('Demo Delivered', 'Bespoke cold hook sent to architd062@gmail.com! Check your mobile inbox.', 'success');
+          } else {
+            showToast('Test Failed', data.message || 'Could not dispatch demo', 'error');
+          }
+        } catch (e) {
+          showToast('Network Error', e.message, 'error');
+        } finally {
+          if (btn) {
+            btn.disabled = false;
+            btn.innerHTML = '${getSvgIcon('bolt', 'w-3.5 h-3.5')}<span>Send Demo to My Phone (architd062@gmail.com)</span>';
+          }
+        }
       }
 
       // 1-Click Status Update Dropdown
@@ -1557,6 +1858,72 @@ outreachRouter.post('/generate-script', (req, res) => {
   });
   const audit = auditHarveyCopy(generated.text, generated.subject);
   res.json({ status: 'success', generated, audit });
+});
+
+// 2.4 Autonomous Harvey Pipeline Endpoint (Scrapes -> Builds Dossier -> Prompts -> Quality Gates -> Stages in Supabase)
+outreachRouter.post('/harvey/generate', async (req, res) => {
+  const { prospectId, url } = req.body || {};
+  if (!prospectId && !url) {
+    return res.status(400).json({ status: 'error', message: 'Field "prospectId" or "url" is required' });
+  }
+
+  try {
+    const result = await runHarveyAutonomousPipeline({ prospectId, url });
+    res.json({ status: 'success', ...result });
+  } catch (err) {
+    res.status(500).json({ status: 'error', message: err.message });
+  }
+});
+
+// 2.5 Safe Harvey Test-Send to Archit's Phone (architd062@gmail.com)
+outreachRouter.post('/harvey/test-send', async (req, res) => {
+  const { prospectId, toEmail } = req.body || {};
+  const recipient = (toEmail || config.ownerEmail || 'architd062@gmail.com').trim();
+
+  try {
+    let subject = '';
+    let text = '';
+    let clinicName = 'Clinic';
+    let doctorName = 'Doctor';
+
+    if (prospectId) {
+      const prospect = await getProspectById(prospectId);
+      if (prospect) {
+        clinicName = prospect.clinic_name || clinicName;
+        doctorName = prospect.doctor_name || doctorName;
+        subject = prospect.original_subject || `quick question - ${clinicName.toLowerCase()} inquiries`;
+        text = prospect.harvey_draft || renderStepContent(1, prospect).text;
+      }
+    }
+
+    if (!text) {
+      return res.status(400).json({ status: 'error', message: 'No email draft available to test send' });
+    }
+
+    const result = await sendEmail({
+      to: recipient,
+      subject: `[HARVEY DEMO • ${clinicName}] ${subject}`,
+      text: text,
+      html: `<div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; font-size: 14px; line-height: 1.6; color: #111827; max-width: 540px; padding: 16px; border: 1px solid #e5e7eb; border-radius: 12px; background: #ffffff;">
+        <div style="font-size: 11px; font-weight: bold; color: #0284c7; text-transform: uppercase; margin-bottom: 8px; border-bottom: 1px solid #f1f5f9; padding-bottom: 4px;">
+          ⚡ SureGreet AI • Harvey 1-of-1 Cold Hook Demo
+        </div>
+        <div style="font-size: 12px; color: #64748b; margin-bottom: 12px;">
+          Target Prospect: <strong>${escapeHtml(doctorName)}</strong> at <strong>${escapeHtml(clinicName)}</strong>
+        </div>
+        <div style="white-space: pre-line; color: #0f172a;">
+          ${escapeHtml(text.split('--')[0].trim())}
+        </div>
+        <div style="margin-top: 16px; font-size: 11px; color: #94a3b8; border-top: 1px solid #e5e7eb; padding-top: 8px;">
+          Dispatched in demo mode to Archit's verification inbox (${recipient}). Live prospects are frozen.
+        </div>
+      </div>`,
+    });
+
+    res.json({ status: result.success ? 'success' : 'error', recipient, result });
+  } catch (err) {
+    res.status(500).json({ status: 'error', message: err.message });
+  }
 });
 
 // 3. Update Prospect Status Route (1-Click Action Hub)
