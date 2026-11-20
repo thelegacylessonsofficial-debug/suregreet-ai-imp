@@ -151,6 +151,10 @@ scraperRouter.get('/dashboard', async (req, res) => {
       </div>
 
       <div class="flex items-center space-x-3">
+        <a href="https://www.facebook.com/ads/library/?active_status=active&ad_type=all&country=US&media_type=all&q=MedSpa%20Miami" id="topMetaAdsBtn" target="_blank" rel="noopener noreferrer" class="text-xs bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 px-3.5 py-2 rounded-xl transition flex items-center gap-1.5 font-semibold cursor-pointer" title="Direct Redirection to Live Active Meta Advertisers">
+          <span>Meta Ads Library</span>
+          ${getSvgIcon('external', 'w-3 h-3 text-cyan-400')}
+        </a>
         <a href="/outreach/prospects" class="text-xs bg-[var(--bg-card)] hover:bg-[var(--bg-hover)] text-[var(--text-primary)] border border-[var(--border-subtle)] px-4 py-2 rounded-xl transition flex items-center gap-1.5 font-semibold">
           <span>View Pipeline CRM</span>
           ${getSvgIcon('external', 'w-3 h-3 text-[var(--text-muted)]')}
@@ -168,7 +172,10 @@ scraperRouter.get('/dashboard', async (req, res) => {
           </h3>
           <p class="text-xs text-[var(--text-secondary)] mt-0.5">Zero-cost search engine extraction + Jina AI Reader analysis for speed-to-lead and booking friction gaps.</p>
         </div>
-        <div class="flex items-center gap-2 text-xs">
+        <div class="flex items-center gap-2.5 text-xs flex-wrap">
+          <a href="https://www.facebook.com/ads/library/?active_status=active&ad_type=all&country=US&media_type=all&q=MedSpa%20Miami" id="cardMetaAdsBtn" target="_blank" rel="noopener noreferrer" class="px-3 py-1.5 rounded-xl bg-cyan-500/15 hover:bg-cyan-500/25 text-cyan-300 border border-cyan-500/40 text-xs font-bold transition flex items-center gap-1.5 shadow-sm shadow-cyan-500/10 cursor-pointer" title="Search Active Paid Advertisers in Meta Ads Library">
+            <span>Meta Ads Library ↗</span>
+          </a>
           <span class="px-2.5 py-1 rounded-lg bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-medium">
             $0 / Month • Zero Scraper Subscriptions
           </span>
@@ -512,7 +519,23 @@ scraperRouter.get('/dashboard', async (req, res) => {
           }
         }
 
+        window.updateMetaAdsRedirection();
         showToast('Market Selected', 'Ready to hunt ' + city + '. Click Launch Hunter or press Enter.', 'info');
+      };
+
+      window.updateMetaAdsRedirection = function() {
+        const nicheEl = document.getElementById('huntNiche');
+        const cityEl = document.getElementById('huntCity');
+        const niche = nicheEl ? nicheEl.value : 'medspa';
+        const rawCity = (cityEl && cityEl.value ? cityEl.value : 'Miami, FL').trim();
+        const cleanCity = rawCity.split(',')[0].trim() || 'Miami';
+        const searchTerm = (niche === 'hvac' ? 'HVAC ' : 'MedSpa ') + cleanCity;
+        const metaUrl = 'https://www.facebook.com/ads/library/?active_status=active&ad_type=all&country=US&media_type=all&q=' + encodeURIComponent(searchTerm);
+
+        const topBtn = document.getElementById('topMetaAdsBtn');
+        const cardBtn = document.getElementById('cardMetaAdsBtn');
+        if (topBtn) topBtn.href = metaUrl;
+        if (cardBtn) cardBtn.href = metaUrl;
       };
 
       window.updateNicheDefaults = function() {
@@ -534,6 +557,7 @@ scraperRouter.get('/dashboard', async (req, res) => {
         }
 
         window.setHuntPreset(targetCity);
+        window.updateMetaAdsRedirection();
       };
 
       async function safeFetchJson(url, options = {}) {
@@ -850,6 +874,20 @@ scraperRouter.get('/dashboard', async (req, res) => {
           showToast('Error', e.message, 'error');
         }
       }
+
+      document.addEventListener('DOMContentLoaded', () => {
+        if (typeof window.updateMetaAdsRedirection === 'function') {
+          window.updateMetaAdsRedirection();
+        }
+        const cityInput = document.getElementById('huntCity');
+        if (cityInput) {
+          cityInput.addEventListener('input', () => {
+            if (typeof window.updateMetaAdsRedirection === 'function') {
+              window.updateMetaAdsRedirection();
+            }
+          });
+        }
+      });
     </script>
   `;
 
