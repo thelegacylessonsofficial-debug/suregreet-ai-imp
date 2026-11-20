@@ -83,7 +83,7 @@ scraperRouter.post('/hunt', async (req, res) => {
       city: city || 'Miami, FL',
       niche: niche || 'medspa',
       query,
-      limit: Math.min(Number(limit) || 5, 10),
+      limit: Math.min(Math.max(Number(limit) || 5, 1), 25),
     });
     res.json(result);
   } catch (err) {
@@ -193,10 +193,11 @@ scraperRouter.get('/dashboard', async (req, res) => {
         <div>
           <label class="block text-[11px] font-semibold uppercase tracking-wider text-[var(--text-muted)] mb-1.5">Batch Extraction Size</label>
           <div class="flex gap-2">
-            <select id="huntLimit" class="flex-1 bg-[var(--bg-surface)] border border-[var(--border-subtle)] rounded-xl px-3.5 py-2.5 text-xs text-[var(--text-primary)] focus:outline-none focus:border-cyan-500 font-medium">
-              <option value="3">3 Qualified Leads</option>
-              <option value="5" selected>5 Qualified Leads</option>
-              <option value="8">8 Qualified Leads</option>
+            <select id="huntLimit" class="flex-1 bg-[var(--bg-surface)] border border-[var(--border-subtle)] rounded-xl px-3.5 py-2.5 text-xs text-cyan-300 focus:outline-none focus:border-cyan-500 font-mono font-bold">
+              <option value="5">5 Qualified Leads</option>
+              <option value="10">10 Qualified Leads</option>
+              <option value="15">15 Qualified Leads</option>
+              <option value="20" selected>20 Qualified Leads (Max Batch)</option>
             </select>
             <button onclick="runAutonomousHuntClient()" id="btnLaunchHunter" type="button" class="bg-cyan-500 hover:opacity-90 text-black font-bold text-xs px-5 py-2.5 rounded-xl transition flex items-center gap-1.5 shadow-lg shadow-cyan-500/20 active:scale-95 cursor-pointer">
               ${getSvgIcon('bolt', 'w-4 h-4')}
@@ -206,7 +207,7 @@ scraperRouter.get('/dashboard', async (req, res) => {
         </div>
       </div>
 
-      <!-- Quick Preset City Badges & Regional Directory -->
+      <!-- Quick Preset City Badges & Regional Directory (20+ Top US Metros) -->
       <div class="space-y-2.5 pt-1">
         <div class="flex items-center gap-2 flex-wrap text-xs">
           <span class="text-[var(--text-muted)] text-[11px] font-semibold">Top US Markets:</span>
@@ -231,46 +232,82 @@ scraperRouter.get('/dashboard', async (req, res) => {
           <button type="button" onclick="setHuntPreset('Los Angeles, CA', this)" class="market-preset-btn px-2.5 py-1.5 rounded-xl bg-[var(--bg-surface)] hover:bg-[var(--bg-hover)] text-[var(--text-secondary)] border border-[var(--border-subtle)] font-medium transition flex items-center gap-1 cursor-pointer">
             <span>📍 Los Angeles, CA</span>
           </button>
+          <button type="button" onclick="setHuntPreset('San Diego, CA', this)" class="market-preset-btn px-2.5 py-1.5 rounded-xl bg-[var(--bg-surface)] hover:bg-[var(--bg-hover)] text-[var(--text-secondary)] border border-[var(--border-subtle)] font-medium transition flex items-center gap-1 cursor-pointer">
+            <span>📍 San Diego, CA</span>
+          </button>
+          <button type="button" onclick="setHuntPreset('San Francisco, CA', this)" class="market-preset-btn px-2.5 py-1.5 rounded-xl bg-[var(--bg-surface)] hover:bg-[var(--bg-hover)] text-[var(--text-secondary)] border border-[var(--border-subtle)] font-medium transition flex items-center gap-1 cursor-pointer">
+            <span>📍 San Francisco, CA</span>
+          </button>
+          <button type="button" onclick="setHuntPreset('Las Vegas, NV', this)" class="market-preset-btn px-2.5 py-1.5 rounded-xl bg-[var(--bg-surface)] hover:bg-[var(--bg-hover)] text-[var(--text-secondary)] border border-[var(--border-subtle)] font-medium transition flex items-center gap-1 cursor-pointer">
+            <span>📍 Las Vegas, NV</span>
+          </button>
+          <button type="button" onclick="setHuntPreset('Seattle, WA', this)" class="market-preset-btn px-2.5 py-1.5 rounded-xl bg-[var(--bg-surface)] hover:bg-[var(--bg-hover)] text-[var(--text-secondary)] border border-[var(--border-subtle)] font-medium transition flex items-center gap-1 cursor-pointer">
+            <span>📍 Seattle, WA</span>
+          </button>
+          <button type="button" onclick="setHuntPreset('Denver, CO', this)" class="market-preset-btn px-2.5 py-1.5 rounded-xl bg-[var(--bg-surface)] hover:bg-[var(--bg-hover)] text-[var(--text-secondary)] border border-[var(--border-subtle)] font-medium transition flex items-center gap-1 cursor-pointer">
+            <span>📍 Denver, CO</span>
+          </button>
           <button type="button" onclick="setHuntPreset('Orlando, FL', this)" class="market-preset-btn px-2.5 py-1.5 rounded-xl bg-[var(--bg-surface)] hover:bg-[var(--bg-hover)] text-[var(--text-secondary)] border border-[var(--border-subtle)] font-medium transition flex items-center gap-1 cursor-pointer">
             <span>📍 Orlando, FL</span>
           </button>
           <button type="button" onclick="setHuntPreset('Tampa, FL', this)" class="market-preset-btn px-2.5 py-1.5 rounded-xl bg-[var(--bg-surface)] hover:bg-[var(--bg-hover)] text-[var(--text-secondary)] border border-[var(--border-subtle)] font-medium transition flex items-center gap-1 cursor-pointer">
             <span>📍 Tampa, FL</span>
           </button>
-          <button type="button" onclick="setHuntPreset('Denver, CO', this)" class="market-preset-btn px-2.5 py-1.5 rounded-xl bg-[var(--bg-surface)] hover:bg-[var(--bg-hover)] text-[var(--text-secondary)] border border-[var(--border-subtle)] font-medium transition flex items-center gap-1 cursor-pointer">
-            <span>📍 Denver, CO</span>
+          <button type="button" onclick="setHuntPreset('Nashville, TN', this)" class="market-preset-btn px-2.5 py-1.5 rounded-xl bg-[var(--bg-surface)] hover:bg-[var(--bg-hover)] text-[var(--text-secondary)] border border-[var(--border-subtle)] font-medium transition flex items-center gap-1 cursor-pointer">
+            <span>📍 Nashville, TN</span>
+          </button>
+          <button type="button" onclick="setHuntPreset('Charlotte, NC', this)" class="market-preset-btn px-2.5 py-1.5 rounded-xl bg-[var(--bg-surface)] hover:bg-[var(--bg-hover)] text-[var(--text-secondary)] border border-[var(--border-subtle)] font-medium transition flex items-center gap-1 cursor-pointer">
+            <span>📍 Charlotte, NC</span>
           </button>
           <button type="button" onclick="setHuntPreset('Chicago, IL', this)" class="market-preset-btn px-2.5 py-1.5 rounded-xl bg-[var(--bg-surface)] hover:bg-[var(--bg-hover)] text-[var(--text-secondary)] border border-[var(--border-subtle)] font-medium transition flex items-center gap-1 cursor-pointer">
             <span>📍 Chicago, IL</span>
           </button>
+          <button type="button" onclick="setHuntPreset('Boston, MA', this)" class="market-preset-btn px-2.5 py-1.5 rounded-xl bg-[var(--bg-surface)] hover:bg-[var(--bg-hover)] text-[var(--text-secondary)] border border-[var(--border-subtle)] font-medium transition flex items-center gap-1 cursor-pointer">
+            <span>📍 Boston, MA</span>
+          </button>
+          <button type="button" onclick="setHuntPreset('Philadelphia, PA', this)" class="market-preset-btn px-2.5 py-1.5 rounded-xl bg-[var(--bg-surface)] hover:bg-[var(--bg-hover)] text-[var(--text-secondary)] border border-[var(--border-subtle)] font-medium transition flex items-center gap-1 cursor-pointer">
+            <span>📍 Philadelphia, PA</span>
+          </button>
           <button type="button" onclick="setHuntPreset('New York, NY', this)" class="market-preset-btn px-2.5 py-1.5 rounded-xl bg-[var(--bg-surface)] hover:bg-[var(--bg-hover)] text-[var(--text-secondary)] border border-[var(--border-subtle)] font-medium transition flex items-center gap-1 cursor-pointer">
             <span>📍 New York, NY</span>
+          </button>
+          <button type="button" onclick="setHuntPreset('Washington, DC', this)" class="market-preset-btn px-2.5 py-1.5 rounded-xl bg-[var(--bg-surface)] hover:bg-[var(--bg-hover)] text-[var(--text-secondary)] border border-[var(--border-subtle)] font-medium transition flex items-center gap-1 cursor-pointer">
+            <span>📍 Washington, DC</span>
           </button>
         </div>
 
         <div class="flex items-center gap-2 pt-0.5">
           <span class="text-[var(--text-muted)] text-[11px] font-semibold">Regional Directory:</span>
           <select id="marketQuickPicker" onchange="setHuntPreset(this.value)" class="bg-[var(--bg-surface)] border border-[var(--border-subtle)] text-[11px] font-semibold rounded-xl px-3 py-1.5 text-cyan-300 focus:outline-none focus:border-cyan-500 transition cursor-pointer">
-            <option value="" disabled selected>— Select from 12+ High-Ticket US Metros —</option>
-            <optgroup label="Florida & Southeast (Sunbelt)">
+            <option value="" disabled selected>— Select from 20+ High-Ticket US Metros —</option>
+            <optgroup label="Florida & Southeast (Sunbelt Capital)">
               <option value="Miami, FL">Miami, FL (Aesthetics & Surgery Capital)</option>
               <option value="Orlando, FL">Orlando, FL (Central Florida)</option>
               <option value="Tampa, FL">Tampa, FL (Gulf Coast)</option>
               <option value="Atlanta, GA">Atlanta, GA (Buckhead / Metro)</option>
+              <option value="Nashville, TN">Nashville, TN (High-Growth Healthcare)</option>
+              <option value="Charlotte, NC">Charlotte, NC (Rapid Expansion)</option>
             </optgroup>
-            <optgroup label="Texas (High-Density Private Practices)">
+            <optgroup label="Texas Corridor (High-Density Private Practices)">
               <option value="Dallas, TX">Dallas / Fort Worth, TX (High Net-Worth)</option>
               <option value="Houston, TX">Houston, TX (Galleria / River Oaks)</option>
               <option value="Austin, TX">Austin, TX (Tech / Rapid Growth)</option>
             </optgroup>
-            <optgroup label="West & Mountain">
-              <option value="Phoenix, AZ">Phoenix / Scottsdale, AZ (Year-Round Aesthetic Hub)</option>
+            <optgroup label="West Coast & Mountain (PST / MST)">
               <option value="Los Angeles, CA">Los Angeles / Beverly Hills, CA (Premier Aesthetic Capital)</option>
+              <option value="San Diego, CA">San Diego, CA (Coastal Private Practices)</option>
+              <option value="San Francisco, CA">San Francisco / Bay Area, CA (High Ticket)</option>
+              <option value="Las Vegas, NV">Las Vegas, NV (Tourism & Aesthetic Medical)</option>
+              <option value="Phoenix, AZ">Phoenix / Scottsdale, AZ (Year-Round Aesthetic Hub)</option>
+              <option value="Seattle, WA">Seattle, WA (Pacific Northwest Capital)</option>
               <option value="Denver, CO">Denver, CO (Cherry Creek / Metro)</option>
             </optgroup>
-            <optgroup label="Midwest & Northeast">
+            <optgroup label="Midwest, Mid-Atlantic & Northeast (EST / CST)">
               <option value="Chicago, IL">Chicago, IL (Gold Coast / Mag Mile)</option>
               <option value="New York, NY">New York, NY (Manhattan / TriBeCa)</option>
+              <option value="Boston, MA">Boston, MA (Back Bay / Cambridge)</option>
+              <option value="Philadelphia, PA">Philadelphia, PA (Main Line / Center City)</option>
+              <option value="Washington, DC">Washington, DC (Capitol Region)</option>
             </optgroup>
           </select>
         </div>
