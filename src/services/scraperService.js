@@ -252,12 +252,12 @@ export async function scrapeClinicWebsite(inputUrl) {
     }
   });
 
-  const candidateSubUrls = Array.from(subLinks).slice(0, 3);
+  const candidateSubUrls = Array.from(subLinks).slice(0, 1);
   for (const subUrl of candidateSubUrls) {
     if (doctorName && rawEmails.size > 0) break; // We already have enough high-value data
 
     console.log(`[Lead Scraper] Deep crawling sub-page: ${subUrl}`);
-    const subHtml = await fetchHtml(subUrl, 5000);
+    const subHtml = await fetchHtml(subUrl, 3000);
     if (!subHtml) continue;
 
     const $sub = cheerio.load(subHtml);

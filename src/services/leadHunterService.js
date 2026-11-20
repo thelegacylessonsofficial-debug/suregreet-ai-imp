@@ -115,7 +115,7 @@ export async function searchLocalBusinesses({ query, city = 'Miami, FL', niche =
   try {
     const searchUrl = `https://html.duckduckgo.com/html/?q=${encodeURIComponent(fullQuery)}`;
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 2500);
+    const timer = setTimeout(() => controller.abort(), 1200);
 
     const res = await fetch(searchUrl, {
       signal: controller.signal,
@@ -167,7 +167,7 @@ export async function searchLocalBusinesses({ query, city = 'Miami, FL', niche =
     console.log('[LeadHunter] DDG standard returned 0. Trying DuckDuckGo Lite fallback...');
     try {
       const controllerLite = new AbortController();
-      const timerLite = setTimeout(() => controllerLite.abort(), 2500);
+      const timerLite = setTimeout(() => controllerLite.abort(), 1200);
       const liteRes = await fetch('https://lite.duckduckgo.com/lite/', {
         signal: controllerLite.signal,
         method: 'POST',

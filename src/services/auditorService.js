@@ -30,7 +30,7 @@ const HVAC_SERVICES = [
 /**
  * Fetches clean markdown of a website via Jina AI Reader (Zero-Cost)
  */
-export async function fetchJinaMarkdown(url, timeoutMs = 12000) {
+export async function fetchJinaMarkdown(url, timeoutMs = 4000) {
   try {
     const targetUrl = url.trim();
     const endpoint = `${JINA_BASE}/${targetUrl}`;
