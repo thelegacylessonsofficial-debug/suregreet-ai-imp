@@ -472,9 +472,20 @@ scraperRouter.get('/dashboard', async (req, res) => {
         scrapeSingle();
       }
 
-      function setHuntPreset(city, btnEl) {
+      window.setHuntPreset = function(city, btnEl) {
         if (!city) return;
-        document.getElementById('huntCity').value = city;
+        const input = document.getElementById('huntCity');
+        if (input) {
+          input.value = city;
+          input.classList.add('ring-2', 'ring-cyan-400', 'border-cyan-400', 'bg-cyan-950/20');
+          setTimeout(() => {
+            input.classList.remove('ring-2', 'ring-cyan-400', 'border-cyan-400', 'bg-cyan-950/20');
+          }, 800);
+          try {
+            input.dispatchEvent(new Event('input', { bubbles: true }));
+            input.dispatchEvent(new Event('change', { bubbles: true }));
+          } catch(e) {}
+        }
 
         // Visual selection indicator on preset badges
         let matchedBtn = btnEl;
@@ -492,25 +503,38 @@ scraperRouter.get('/dashboard', async (req, res) => {
         }
 
         const picker = document.getElementById('marketQuickPicker');
-        if (picker && picker.value !== city) {
-          picker.value = city;
+        if (picker) {
+          for (let i = 0; i < picker.options.length; i++) {
+            if (picker.options[i].value && picker.options[i].value.toLowerCase().includes(city.split(',')[0].toLowerCase())) {
+              picker.selectedIndex = i;
+              break;
+            }
+          }
         }
 
         showToast('Market Selected', 'Ready to hunt ' + city + '. Click Launch Hunter or press Enter.', 'info');
-      }
+      };
 
-      function updateNicheDefaults() {
-        const niche = document.getElementById('huntNiche').value;
-        const targetCity = niche === 'hvac' ? 'Phoenix, AZ' : 'Miami, FL';
-        document.getElementById('huntCity').value = targetCity;
+      window.updateNicheDefaults = function() {
+        const nicheSelect = document.getElementById('huntNiche');
+        if (!nicheSelect) return;
+        const niche = nicheSelect.value;
+        const input = document.getElementById('huntCity');
+        const currentVal = input ? input.value.trim() : '';
 
-        // Auto update active button
-        document.querySelectorAll('.market-preset-btn').forEach(btn => {
-          if (btn.innerText.includes(targetCity.split(',')[0])) {
-            setHuntPreset(targetCity, btn);
-          }
-        });
-      }
+        let targetCity = currentVal || (niche === 'hvac' ? 'Phoenix, AZ' : 'Miami, FL');
+        if (niche === 'hvac' && (!currentVal || currentVal.toLowerCase().includes('miami'))) {
+          targetCity = 'Phoenix, AZ';
+        } else if (niche === 'medspa' && (!currentVal || currentVal.toLowerCase().includes('phoenix'))) {
+          targetCity = 'Miami, FL';
+        }
+
+        if (input) {
+          input.placeholder = niche === 'hvac' ? 'e.g. Phoenix, AZ or Dallas, TX' : 'e.g. Miami, FL or Austin, TX';
+        }
+
+        window.setHuntPreset(targetCity);
+      };
 
       async function safeFetchJson(url, options = {}) {
         const fullUrl = getAuthUrl(url);
@@ -624,7 +648,7 @@ scraperRouter.get('/dashboard', async (req, res) => {
                   '</div>' +
                   '<div class="flex items-center gap-1.5">' +
                     '<span class="text-[10px] font-semibold px-2 py-0.5 rounded ' + badgeClass + '">' + badgeText + '</span>' +
-                    '<button onclick="removeHuntedLead(this, \'' + (lead.email || '') + '\', \'' + (lead.clinicName || 'Lead').replace(/'/g, "\\\\'") + '\')" class="p-1 rounded-lg bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/30 text-[10px] transition cursor-pointer" title="Remove lead from database">' +
+                    '<button type="button" data-email="' + (lead.email || '') + '" data-clinic="' + (lead.clinicName || 'Lead').replace(/"/g, '&quot;') + '" onclick="removeHuntedLead(this)" class="p-1 rounded-lg bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/30 text-[10px] transition cursor-pointer" title="Remove lead from database">' +
                       '${getSvgIcon('trash', 'w-3 h-3')}' +
                     '</button>' +
                   '</div>' +
@@ -775,7 +799,9 @@ scraperRouter.get('/dashboard', async (req, res) => {
         }
       }
 
-      async function removeHuntedLead(btnEl, email, clinicName) {
+      async function removeHuntedLead(btnEl, passedEmail, passedClinic) {
+        const email = (passedEmail || btnEl.getAttribute('data-email') || '').trim();
+        const clinicName = (passedClinic || btnEl.getAttribute('data-clinic') || 'Lead').trim();
         if (!email) {
           const card = btnEl.closest('.hunter-card');
           if (card) card.remove();

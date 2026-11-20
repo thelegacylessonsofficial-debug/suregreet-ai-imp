@@ -177,15 +177,63 @@ const CURATED_TARGETS = {
     houston: [
       { title: 'Airteam HVAC Houston', url: 'https://airteam.com', city: 'Houston, TX' },
       { title: 'Custom Comfort Air Houston', url: 'https://customcomfortair.com', city: 'Houston, TX' },
+      { title: 'John Moore Services HVAC Houston', url: 'https://johnmooreservices.com', city: 'Houston, TX' },
+    ],
+    'los angeles': [
+      { title: 'Around the Clock Heating & Air Conditioning LA', url: 'https://aroundtheclockair.com', city: 'Los Angeles, CA' },
+      { title: 'JW Plumbing, Heating and Air Los Angeles', url: 'https://jwheatingandair.com', city: 'Los Angeles, CA' },
     ],
     'san diego': [
       { title: 'Anderson Plumbing Heating & Air San Diego', url: 'https://andersonpha.com', city: 'San Diego, CA' },
+      { title: 'Bill Howe Plumbing Heating & Air San Diego', url: 'https://billhowe.com', city: 'San Diego, CA' },
+    ],
+    'san francisco': [
+      { title: 'Atlas Heating & Air Conditioning SF', url: 'https://atlasheating.com', city: 'San Francisco, CA' },
+      { title: 'Bellows Plumbing, Heating & Air', url: 'https://bellowsservice.com', city: 'San Francisco, CA' },
     ],
     'las vegas': [
       { title: 'Sierra Air Conditioning & Plumbing Las Vegas', url: 'https://sierraairconditioning.com', city: 'Las Vegas, NV' },
+      { title: 'Goettl Air Conditioning & Plumbing Las Vegas', url: 'https://goettl.com', city: 'Las Vegas, NV' },
     ],
     seattle: [
       { title: 'Bob\'s Heating & Air Conditioning Seattle', url: 'https://bobsheating.com', city: 'Seattle, WA' },
+      { title: 'BelRed Energy Solutions Seattle', url: 'https://belred.com', city: 'Seattle, WA' },
+    ],
+    denver: [
+      { title: 'AAA Heating & Air Conditioning Denver', url: 'https://aaaheating.com', city: 'Denver, CO' },
+      { title: 'Swan Heating & Air Denver', url: 'https://swanheating.com', city: 'Denver, CO' },
+    ],
+    orlando: [
+      { title: 'Del-Air Heating & Air Conditioning Orlando', url: 'https://delair.com', city: 'Orlando, FL' },
+      { title: 'Ferran Services Air Conditioning Orlando', url: 'https://ferran-services.com', city: 'Orlando, FL' },
+    ],
+    nashville: [
+      { title: 'Lee Company 24/7 HVAC Nashville', url: 'https://leecompany.com', city: 'Nashville, TN' },
+      { title: 'Hiller Plumbing, Heating & Air Nashville', url: 'https://happyhiller.com', city: 'Nashville, TN' },
+    ],
+    charlotte: [
+      { title: 'Morris-Jenkins 24/7 HVAC Charlotte', url: 'https://morrisjenkins.com', city: 'Charlotte, NC' },
+      { title: 'Brother Heating & Air Charlotte', url: 'https://brotherair.com', city: 'Charlotte, NC' },
+    ],
+    chicago: [
+      { title: 'Four Seasons Heating & Cooling Chicago', url: 'https://www.fourseasonsheatingcooling.com', city: 'Chicago, IL' },
+      { title: 'Deljo Heating & Cooling Chicago', url: 'https://deljoheating.com', city: 'Chicago, IL' },
+    ],
+    boston: [
+      { title: 'Boston Standard Plumbing & HVAC', url: 'https://bostonstandardplumbing.com', city: 'Boston, MA' },
+      { title: '128 Plumbing Heating Cooling Boston', url: 'https://call128.com', city: 'Boston, MA' },
+    ],
+    philadelphia: [
+      { title: 'Oliver Heating & Cooling Philadelphia', url: 'https://oliverheatcool.com', city: 'Philadelphia, PA' },
+      { title: 'Eby Emergency HVAC Philadelphia', url: 'https://ebyhvac.com', city: 'Philadelphia, PA' },
+    ],
+    'new york': [
+      { title: 'Manhattan Cooling & Heating NYC', url: 'https://manhattancooling.com', city: 'New York, NY' },
+      { title: 'Air Repair Queens & NYC', url: 'https://airrepair.com', city: 'New York, NY' },
+    ],
+    'washington dc': [
+      { title: 'F.H. Furr Plumbing, Heating & Air DC', url: 'https://fhfurr.com', city: 'Washington, DC' },
+      { title: 'Magnolia Plumbing, Heating & Cooling DC', url: 'https://magnoliacompanies.com', city: 'Washington, DC' },
     ],
   },
 };
@@ -356,14 +404,14 @@ export async function huntAndEnrichLead({ url, city, niche = 'medspa', doctorOve
   console.log(`[LeadHunter] Enriching & Auditing: ${url} (${niche})...`);
 
   // 1. Scrape domain for decision maker, emails, phones, and ad tracking pixels
-  const scraped = await scrapeClinicWebsite(url, { fast });
+  const scraped = await scrapeClinicWebsite(url, { fast, niche });
   if (!scraped.success) {
     return { success: false, url, error: scraped.error };
   }
 
   // 2. Decision Maker fallback extraction
   let decisionMaker = doctorOverride || scraped.doctorName;
-  if (!decisionMaker || decisionMaker === 'Doctor' || (niche === 'hvac' && decisionMaker.includes('Medical Director'))) {
+  if (!decisionMaker || decisionMaker === 'Doctor' || (niche === 'hvac' && (decisionMaker.includes('Medical Director') || decisionMaker.includes('Doctor')))) {
     if (niche === 'hvac') {
       decisionMaker = `Owner / Operations Lead at ${scraped.clinicName || 'Company'}`;
     } else {
@@ -380,7 +428,10 @@ export async function huntAndEnrichLead({ url, city, niche = 'medspa', doctorOve
     htmlContent: scraped.rawHtml,
   });
 
-  const primaryTreatment = treatmentOverride || audit.primaryService || scraped.treatment;
+  let primaryTreatment = treatmentOverride || audit.primaryService || scraped.treatment;
+  if (niche === 'hvac' && (!primaryTreatment || /morpheus|botox|injectable|filler|sculptra|hydrafacial/i.test(primaryTreatment))) {
+    primaryTreatment = 'Emergency AC & Heating Repair';
+  }
 
   // 4. Construct direct email or fallback domain email so clinics with verified phones are never discarded
   let finalEmail = scraped.email;

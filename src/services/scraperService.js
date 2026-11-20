@@ -23,6 +23,19 @@ const AESTHETIC_TREATMENTS = [
   'IPL Photofacial',
 ];
 
+const HVAC_SERVICES = [
+  'Emergency AC Repair',
+  '24/7 HVAC Service',
+  'AC Replacement & Installation',
+  'Heat Pump Repair',
+  'Furnace Maintenance',
+  'Ductless Mini-Split Systems',
+  'Commercial Refrigeration',
+  'Air Duct Cleaning',
+  'Emergency Heating Repair',
+  'Plumbing & Drain Service',
+];
+
 const JUNK_EMAIL_DOMAINS = [
   'sentry.io',
   'wixpress.com',
@@ -176,14 +189,25 @@ export async function scrapeClinicWebsite(inputUrl, options = {}) {
   // 2. Extract Ad Tracking Pixels (Evidence of active paid ad spend)
   const adSignals = detectAdPixels(homepageHtml);
 
-  // 3. Extract Treatments
+  const niche = options.niche || 'medspa';
+  const isHvacSite = niche === 'hvac' || /hvac|air conditioning|heating|plumbing|furnace|duct|refrigeration|contractor/i.test(homepageHtml + ' ' + clinicName);
+
+  // 3. Extract Treatments / Services based on niche
   const detectedTreatments = [];
-  for (const t of AESTHETIC_TREATMENTS) {
-    if (new RegExp(`\\b${t}\\b`, 'i').test(homepageHtml)) {
-      detectedTreatments.push(t);
+  if (isHvacSite) {
+    for (const s of HVAC_SERVICES) {
+      if (new RegExp(`\\b${s}\\b`, 'i').test(homepageHtml)) {
+        detectedTreatments.push(s);
+      }
+    }
+  } else {
+    for (const t of AESTHETIC_TREATMENTS) {
+      if (new RegExp(`\\b${t}\\b`, 'i').test(homepageHtml)) {
+        detectedTreatments.push(t);
+      }
     }
   }
-  const primaryTreatment = detectedTreatments[0] || 'Morpheus8 & Injectables';
+  const primaryTreatment = detectedTreatments[0] || (isHvacSite ? 'Emergency AC & Heating Repair' : 'Morpheus8 & Injectables');
 
   // 4. Extract Phone & Emails from Homepage
   const rawEmails = new Set();
@@ -217,8 +241,19 @@ export async function scrapeClinicWebsite(inputUrl, options = {}) {
     }
   }
 
-  // 5. Extract Doctor Name from Homepage
-  let doctorName = extractDoctorName(homepageHtml, $home);
+  // 5. Extract Decision Maker / Doctor Name from Homepage
+  let doctorName = null;
+  if (isHvacSite) {
+    const ownerRegex = /\b(?:Owner|President|Founder|CEO|General Manager|Operations Manager)\s*[:\-–]\s*([A-Z][a-z]{2,15}(?:\s+[A-Z][a-z]{2,15}))\b/;
+    const ownerMatch = homepageHtml.match(ownerRegex);
+    if (ownerMatch && !/^(of|the|our|and|company|business|services|team|board|group|management)\b/i.test(ownerMatch[1])) {
+      doctorName = `${ownerMatch[1]} (Owner)`;
+    } else {
+      doctorName = clinicName ? `Owner / Operations Lead at ${clinicName}` : 'Owner / Operations Lead';
+    }
+  } else {
+    doctorName = extractDoctorName(homepageHtml, $home);
+  }
 
   // 6. Deep Crawl Sub-pages (/about, /team, /contact) if not in fast batch mode and doctor/email missing
   if (!options.fast) {
@@ -226,7 +261,7 @@ export async function scrapeClinicWebsite(inputUrl, options = {}) {
     $home('a[href]').each((_, el) => {
       const href = $home(el).attr('href');
       if (!href) return;
-      if (/(about|team|provider|doctor|contact|physician|staff)/i.test(href)) {
+      if (/(about|team|provider|doctor|contact|physician|staff|leadership)/i.test(href)) {
         try {
           const fullUrl = new URL(href, baseUrl).href;
           if (fullUrl.startsWith(baseUrl)) {
@@ -238,7 +273,7 @@ export async function scrapeClinicWebsite(inputUrl, options = {}) {
 
     const candidateSubUrls = Array.from(subLinks).slice(0, 1);
     for (const subUrl of candidateSubUrls) {
-      if (doctorName && rawEmails.size > 0) break; // We already have enough high-value data
+      if (doctorName && rawEmails.size > 0 && !doctorName.includes('Operations Lead') && !doctorName.includes('Medical Director')) break;
 
       console.log(`[Lead Scraper] Deep crawling sub-page: ${subUrl}`);
       const subHtml = await fetchHtml(subUrl, 2000);
@@ -246,8 +281,15 @@ export async function scrapeClinicWebsite(inputUrl, options = {}) {
 
       const $sub = cheerio.load(subHtml);
 
-      if (!doctorName) {
-        doctorName = extractDoctorName(subHtml, $sub);
+      if (!isHvacSite && (!doctorName || doctorName === 'Doctor')) {
+        const foundDoc = extractDoctorName(subHtml, $sub);
+        if (foundDoc) doctorName = foundDoc;
+      } else if (isHvacSite && (!doctorName || doctorName.includes('Operations Lead'))) {
+        const ownerRegex = /\b(?:Owner|President|Founder|CEO|General Manager)\s*[:\-–]\s*([A-Z][a-z]{2,15}(?:\s+[A-Z][a-z]{2,15}))\b/;
+        const ownerMatch = subHtml.match(ownerRegex);
+        if (ownerMatch && !/^(of|the|our|and|company|business|services|team|board|group|management)\b/i.test(ownerMatch[1])) {
+          doctorName = `${ownerMatch[1]} (Owner)`;
+        }
       }
 
       $sub('a[href^="mailto:"]').each((_, el) => {
@@ -276,7 +318,6 @@ export async function scrapeClinicWebsite(inputUrl, options = {}) {
   const primaryEmail = Array.from(rawEmails)[0] || null;
   const primaryPhone = Array.from(rawPhones)[0] || null;
 
-  const isHvacSite = /hvac|air conditioning|heating|plumbing|furnace|duct|refrigeration|contractor/i.test(homepageHtml + ' ' + clinicName);
   const defaultTitle = isHvacSite
     ? (clinicName ? `Owner / Operations Lead at ${clinicName}` : 'Owner / Operations Lead')
     : (clinicName ? `Medical Director at ${clinicName}` : 'Doctor');
@@ -301,8 +342,8 @@ export async function scrapeClinicWebsite(inputUrl, options = {}) {
 /**
  * Scrape a clinic website and automatically push into Supabase `public.prospects`
  */
-export async function scrapeAndIngestLead({ url, cityOverride, treatmentOverride, doctorOverride }) {
-  const result = await scrapeClinicWebsite(url);
+export async function scrapeAndIngestLead({ url, cityOverride, treatmentOverride, doctorOverride, nicheOverride }) {
+  const result = await scrapeClinicWebsite(url, { niche: nicheOverride });
   if (!result.success) {
     return { success: false, error: result.error };
   }
