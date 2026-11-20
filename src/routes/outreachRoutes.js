@@ -10,6 +10,7 @@ import {
   getDueProspects,
   renderStepContent,
   updateProspect,
+  deleteProspect,
 } from '../services/outreachService.js';
 import { runOutreachQueueWorker, isWithinSendingWindow } from '../cron/outreachCron.js';
 import { renderSaasShell, getSvgIcon } from '../views/saasLayout.js';
@@ -313,6 +314,15 @@ function renderProspectsHtml(list, authKey = '') {
                             </button>`
                           : ''
                       }
+
+                      <!-- Remove Lead Button -->
+                      <button 
+                        onclick="confirmDeleteProspect('${p.id}', '${escapeQuotes(p.doctor_name || 'Doctor')}', '${escapeQuotes(p.clinic_name || 'Clinic')}')"
+                        class="p-1.5 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/30 transition text-xs inline-flex items-center justify-center align-middle"
+                        title="Permanently remove this lead from CRM database"
+                      >
+                        ${getSvgIcon('trash', 'w-3.5 h-3.5')}
+                      </button>
                     </td>
                   </tr>`;
                 })
@@ -607,6 +617,35 @@ function renderProspectsHtml(list, authKey = '') {
           }
         } catch (e) {
           showToast('Failed', e.message, 'error');
+        }
+      }
+
+      async function confirmDeleteProspect(id, drName, clinicName) {
+        const ok = confirm('Permanently remove ' + drName + ' (' + clinicName + ') from the CRM database?\\n\\nThis will stop all automated sequences and delete the lead record.');
+        if (!ok) return;
+
+        try {
+          const res = await fetch(getAuthUrl('/outreach/delete'), {
+            method: 'POST',
+            credentials: 'include',
+            headers: getAuthHeaders(),
+            body: JSON.stringify({ prospectId: id })
+          });
+          const data = await res.json();
+          if (res.ok) {
+            showToast('Lead Deleted', drName + ' removed from database.', 'success');
+            const row = document.querySelector('.prospect-row[data-id="' + id + '"]');
+            if (row) {
+              row.style.transition = 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)';
+              row.style.opacity = '0';
+              row.style.transform = 'translateX(25px)';
+              setTimeout(() => row.remove(), 300);
+            }
+          } else {
+            showToast('Delete Failed', data.message || 'Error deleting lead', 'error');
+          }
+        } catch (e) {
+          showToast('Network Error', e.message, 'error');
         }
       }
 
@@ -908,6 +947,26 @@ outreachRouter.post('/activate', async (req, res) => {
     res.json({ status: 'success', message: 'Prospect activated into queue', prospect: result.prospect });
   } else {
     res.status(400).json({ status: 'error', message: result.error });
+  }
+});
+
+// 5. Delete / Remove Prospect Route (1-Click Lead Removal)
+outreachRouter.post(['/delete', '/remove'], async (req, res) => {
+  const { prospectId, email } = req.body || {};
+  const target = prospectId || email;
+  if (!target) {
+    return res.status(400).json({ status: 'error', message: 'Field "prospectId" or "email" is required' });
+  }
+
+  try {
+    const result = await deleteProspect(target);
+    if (result.success) {
+      res.json({ status: 'success', message: 'Prospect permanently removed from database', deleted: result.deleted });
+    } else {
+      res.status(400).json({ status: 'error', message: result.error || 'Failed to remove prospect' });
+    }
+  } catch (err) {
+    res.status(500).json({ status: 'error', message: err.message });
   }
 });
 

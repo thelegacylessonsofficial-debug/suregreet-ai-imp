@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { scrapeClinicWebsite, scrapeAndIngestLead, scrapeBulkLeads } from '../services/scraperService.js';
 import { runAutonomousHunt, huntAndEnrichLead, commitLeadToSupabase } from '../services/leadHunterService.js';
 import { runDigitalAudit, auditAndSaveProspect } from '../services/auditorService.js';
-import { getProspects } from '../services/outreachService.js';
+import { getProspects, deleteProspect } from '../services/outreachService.js';
 import { renderSaasShell, getSvgIcon } from '../views/saasLayout.js';
 
 export const scraperRouter = Router();
@@ -111,7 +111,27 @@ scraperRouter.post('/audit', async (req, res) => {
   }
 });
 
-// 6. Standalone Web Dashboard for Lead Hunting, Scraping & Auditing
+// 6. Delete / Remove Lead Route
+scraperRouter.post(['/lead/delete', '/remove'], async (req, res) => {
+  const { prospectId, email, url } = req.body || {};
+  const target = prospectId || email || url;
+  if (!target) {
+    return res.status(400).json({ status: 'error', message: 'Field "prospectId" or "email" is required' });
+  }
+
+  try {
+    const result = await deleteProspect(target);
+    if (result.success) {
+      res.json({ status: 'success', message: 'Lead permanently removed from database', deleted: result.deleted });
+    } else {
+      res.status(400).json({ status: 'error', message: result.error || 'Failed to remove lead' });
+    }
+  } catch (err) {
+    res.status(500).json({ status: 'error', message: err.message });
+  }
+});
+
+// 7. Standalone Web Dashboard for Lead Hunting, Scraping & Auditing
 scraperRouter.get('/dashboard', async (req, res) => {
   const authKey = req.query.key || '';
 
@@ -297,6 +317,14 @@ scraperRouter.get('/dashboard', async (req, res) => {
               <div id="resPhone" class="text-[var(--text-primary)] font-mono">(305) 356-7402</div>
             </div>
           </div>
+
+          <div class="border-t border-[var(--border-subtle)] pt-2.5 flex items-center justify-between">
+            <span class="text-[10px] text-[var(--text-muted)]">Saved in Supabase CRM</span>
+            <button onclick="removeSingleScrapedLead()" class="px-2.5 py-1 rounded-lg bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/30 text-[11px] font-semibold transition flex items-center gap-1" title="Remove this lead from CRM database">
+              ${getSvgIcon('trash', 'w-3 h-3')}
+              <span>Remove from CRM</span>
+            </button>
+          </div>
         </div>
       </div>
 
@@ -467,13 +495,18 @@ scraperRouter.get('/dashboard', async (req, res) => {
                   '<p class="italic text-[var(--text-secondary)]">\\"' + (lead.specificObservation || '') + '\\"</p></div>';
               }
 
-              return '<div class="bg-[var(--bg-surface)] border border-[var(--border-subtle)] rounded-xl p-4 space-y-3">' +
+              return '<div class="bg-[var(--bg-surface)] border border-[var(--border-subtle)] rounded-xl p-4 space-y-3 hunter-card">' +
                 '<div class="flex items-start justify-between">' +
                   '<div>' +
                     '<h4 class="font-bold text-[var(--text-primary)] text-sm">' + (lead.clinicName || 'Practice') + '</h4>' +
                     '<p class="text-[11px] text-[var(--text-muted)]">' + (lead.doctorName || 'Lead') + ' • ' + (lead.city || city) + '</p>' +
                   '</div>' +
-                  '<span class="text-[10px] font-semibold px-2 py-0.5 rounded ' + badgeClass + '">' + badgeText + '</span>' +
+                  '<div class="flex items-center gap-1.5">' +
+                    '<span class="text-[10px] font-semibold px-2 py-0.5 rounded ' + badgeClass + '">' + badgeText + '</span>' +
+                    '<button onclick="removeHuntedLead(this, \'' + (lead.email || '') + '\', \'' + (lead.clinicName || 'Lead').replace(/'/g, "\\\\'") + '\')" class="p-1 rounded-lg bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/30 text-[10px] transition" title="Remove lead from database">' +
+                      '${getSvgIcon('trash', 'w-3 h-3')}' +
+                    '</button>' +
+                  '</div>' +
                 '</div>' +
                 '<div class="text-xs space-y-1.5 border-t border-[var(--border-subtle)] pt-2.5">' +
                   '<div class="flex items-center justify-between text-[var(--text-muted)]"><span>Email:</span><span class="text-cyan-400 font-mono truncate max-w-[200px]">' + (lead.email || 'None found') + '</span></div>' +
@@ -607,6 +640,56 @@ scraperRouter.get('/dashboard', async (req, res) => {
           btn.innerHTML = '${getSvgIcon('play', 'w-4 h-4')}<span>Start Bulk Ingestion</span>';
           resBox.innerText = 'Error: ' + e.message;
           showToast('Bulk Error', e.message, 'error');
+        }
+      }
+
+      async function removeHuntedLead(btnEl, email, clinicName) {
+        if (!email) {
+          const card = btnEl.closest('.hunter-card');
+          if (card) card.remove();
+          return;
+        }
+        if (!confirm('Permanently remove ' + clinicName + ' from the database?')) return;
+        const card = btnEl.closest('.hunter-card');
+        try {
+          const data = await safeFetchJson('/scraper/lead/delete', {
+            method: 'POST',
+            body: JSON.stringify({ email })
+          });
+          if (data.status === 'success') {
+            showToast('Lead Deleted', clinicName + ' removed from database.', 'success');
+            if (card) {
+              card.style.transition = 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)';
+              card.style.opacity = '0';
+              card.style.transform = 'scale(0.95)';
+              setTimeout(() => card.remove(), 300);
+            }
+          } else {
+            showToast('Delete Failed', data.message || 'Error deleting lead', 'error');
+          }
+        } catch (e) {
+          showToast('Error', e.message, 'error');
+        }
+      }
+
+      async function removeSingleScrapedLead() {
+        const email = document.getElementById('resEmail').innerText.trim();
+        const clinic = document.getElementById('resClinicName').innerText.trim();
+        if (!email || email === 'None') return;
+        if (!confirm('Permanently delete ' + clinic + ' from the database?')) return;
+        try {
+          const data = await safeFetchJson('/scraper/lead/delete', {
+            method: 'POST',
+            body: JSON.stringify({ email })
+          });
+          if (data.status === 'success') {
+            showToast('Lead Deleted', clinic + ' removed from CRM.', 'success');
+            document.getElementById('singleResultCard').classList.add('hidden');
+          } else {
+            showToast('Delete Failed', data.message || 'Error', 'error');
+          }
+        } catch (e) {
+          showToast('Error', e.message, 'error');
         }
       }
     </script>

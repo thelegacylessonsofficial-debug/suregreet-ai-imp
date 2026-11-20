@@ -232,6 +232,31 @@ export async function updateProspect(id, updates) {
 }
 
 /**
+ * Permanently delete prospect by ID or Email
+ */
+export async function deleteProspect(idOrEmail) {
+  if (!idOrEmail) return { success: false, message: 'ID or email is required' };
+  const target = String(idOrEmail).trim();
+  const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(target);
+  const endpoint = isUUID
+    ? `/prospects?id=eq.${encodeURIComponent(target)}`
+    : `/prospects?email=eq.${encodeURIComponent(target.toLowerCase())}`;
+
+  const res = await supabaseFetch(endpoint, {
+    method: 'DELETE',
+    headers: { Prefer: 'return=representation' },
+  });
+
+  if (!res.ok) {
+    console.error(`[OutreachService] Failed to delete prospect ${target}:`, res.data);
+    return { success: false, error: res.data?.message || 'Delete operation failed' };
+  }
+
+  console.log(`[OutreachService] Successfully deleted prospect ${target}`);
+  return { success: true, deleted: res.data };
+}
+
+/**
  * Fetch all active prospects due for their next follow-up
  */
 export async function getDueProspects(limit = 10) {
