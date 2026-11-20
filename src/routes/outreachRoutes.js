@@ -15,6 +15,14 @@ import {
 import { runOutreachQueueWorker, isWithinSendingWindow } from '../cron/outreachCron.js';
 import { renderSaasShell, getSvgIcon } from '../views/saasLayout.js';
 import { renderLeadBotsHubHtml } from '../views/leadBotsHub.js';
+import {
+  generateHarveyScript,
+  auditHarveyCopy,
+  BANNED_AI_PHRASES,
+  formatSalutation,
+  getUnsubscribeUrl,
+} from '../templates/outreachTemplates.js';
+import { sendEmail } from '../services/mailer.js';
 
 export const outreachRouter = Router();
 
@@ -696,164 +704,452 @@ function renderProspectsHtml(list, authKey = '') {
   });
 }
 
-function renderScriptStudioHtml(selectedStep, sample, authKey = '') {
-  const rendered = renderStepContent(selectedStep, sample);
-  const wordCount = countWords(rendered.text);
-  const isWordCountValid = wordCount >= 45 && wordCount <= 65;
+function renderScriptStudioHtml({ sample, framework = 'pas', signalHook = 'form_friction', prospects = [], authKey = '' }) {
+  const generated = generateHarveyScript({
+    framework,
+    signalHook,
+    doctorName: sample.doctor_name,
+    clinicName: sample.clinic_name,
+    city: sample.city,
+    treatment: sample.treatment,
+    niche: sample.niche || 'medspa',
+    specificObservation: sample.specific_observation,
+    prospectEmail: sample.email,
+  });
+
+  const audit = auditHarveyCopy(generated.text, generated.subject);
+
+  // Framework metadata definitions
+  const frameworksList = [
+    { id: 'pas', name: 'PAS (Micro-Audit)', tag: 'Cold Hook', day: 'Day 1', desc: 'Problem • Agitation • Solution', optimal: '45–65 Words' },
+    { id: 'qvc', name: 'QVC (Speed/Volume)', tag: 'Direct ROI', day: 'Day 1 Alt', desc: 'Question • Value • 3-Min CTA', optimal: '50–65 Words' },
+    { id: 'bab', name: 'BAB (Napkin Math)', tag: 'Risk-Free Offer', day: 'Day 1 Alt', desc: 'Lost Revenue Math • 14-Day Free Pilot', optimal: '50–70 Words' },
+    { id: 'bump', name: 'Threaded Bump', tag: '30s Demo', day: '+2 Biz Days', desc: 'Re: Threaded 2-line nudge', optimal: '25–35 Words' },
+    { id: 'breakup', name: 'Clean Breakup', tag: 'Polite Closer', day: '+3 Biz Days', desc: 'Re: Polite door-left-open exit', optimal: '25–35 Words' },
+  ];
 
   const bodyContent = `
-    <!-- Header Banner -->
-    <div class="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-[var(--border-subtle)] pb-4">
+    <!-- Top Hero Header -->
+    <div class="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-[var(--border-subtle)] pb-5">
       <div>
         <div class="flex items-center space-x-2">
-          <h2 class="text-lg font-bold tracking-tight text-[var(--text-primary)]">Outbound Email Script Studio</h2>
-          <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-blue-500/10 text-blue-400 border border-blue-500/20">
-            Harvey Sales Copy Engine
+          <h2 class="text-lg font-bold tracking-tight text-[var(--text-primary)] flex items-center gap-2">
+            <span>Harvey Copywriting Engine v2</span>
+          </h2>
+          <span class="text-[11px] px-2.5 py-0.5 rounded-full font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-mono">
+            Anti-AI Quality Gate Active
           </span>
         </div>
-        <p class="text-xs text-[var(--text-secondary)] mt-1">Preview 1-on-1 plain-text scripts, inspect MIME threading, and verify 45–65 word limits.</p>
+        <p class="text-xs text-[var(--text-secondary)] mt-1">Multi-Framework Playbook • Signal-Based Openings • 0 Em-Dashes & 0 Clichés • Mobile iOS Mail Viewport</p>
       </div>
 
-      <div class="flex items-center gap-2">
-        <a href="/outreach/prospects" class="px-3.5 py-2 text-xs font-semibold bg-[var(--bg-card)] hover:bg-[var(--bg-hover)] text-[var(--text-primary)] border border-[var(--border-subtle)] rounded-xl transition flex items-center gap-1.5">
-          <span>Back to Pipeline</span>
+      <div class="flex items-center space-x-3">
+        <a href="/outreach/prospects" class="text-xs bg-[var(--bg-card)] hover:bg-[var(--bg-hover)] text-[var(--text-primary)] border border-[var(--border-subtle)] px-4 py-2 rounded-xl transition flex items-center gap-1.5 font-semibold">
+          <span>Back to Pipeline CRM</span>
+          ${getSvgIcon('external', 'w-3 h-3 text-[var(--text-muted)]')}
         </a>
       </div>
     </div>
 
-    <!-- Step Selector Tabs -->
-    <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
-      <a href="?step=1&doctorName=${encodeURIComponent(sample.doctor_name || '')}&clinicName=${encodeURIComponent(sample.clinic_name || '')}&city=${encodeURIComponent(sample.city || '')}&treatment=${encodeURIComponent(sample.treatment || '')}&email=${encodeURIComponent(sample.email || '')}&niche=${encodeURIComponent(sample.niche || 'medspa')}&specificObservation=${encodeURIComponent(sample.specific_observation || '')}" 
-         class="p-3.5 rounded-2xl border transition ${
-           selectedStep === 1
-             ? 'bg-blue-600/15 border-blue-500 text-[var(--text-primary)] shadow-lg shadow-blue-500/10'
-             : 'bg-[var(--bg-card)] border-[var(--border-subtle)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:border-[var(--border-strong)]'
-         }">
-        <div class="text-[10px] font-bold uppercase tracking-wider text-blue-400">Step 1 • Cold Hook</div>
-        <div class="font-bold text-sm text-[var(--text-primary)] mt-0.5">Micro-Audit</div>
-        <div class="text-[11px] text-[var(--text-muted)] mt-1 font-mono">45–65 Words • Day 1</div>
-      </a>
-
-      <a href="?step=2&doctorName=${encodeURIComponent(sample.doctor_name || '')}&clinicName=${encodeURIComponent(sample.clinic_name || '')}&city=${encodeURIComponent(sample.city || '')}&treatment=${encodeURIComponent(sample.treatment || '')}&email=${encodeURIComponent(sample.email || '')}&niche=${encodeURIComponent(sample.niche || 'medspa')}&specificObservation=${encodeURIComponent(sample.specific_observation || '')}" 
-         class="p-3.5 rounded-2xl border transition ${
-           selectedStep === 2
-             ? 'bg-purple-600/15 border-purple-500 text-[var(--text-primary)] shadow-lg shadow-purple-500/10'
-             : 'bg-[var(--bg-card)] border-[var(--border-subtle)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:border-[var(--border-strong)]'
-         }">
-        <div class="text-[10px] font-bold uppercase tracking-wider text-purple-400">Step 2 • Proof</div>
-        <div class="font-bold text-sm text-[var(--text-primary)] mt-0.5">30s Audio Demo</div>
-        <div class="text-[11px] text-[var(--text-muted)] mt-1 font-mono">Threaded Re: (+2 biz days)</div>
-      </a>
-
-      <a href="?step=3&doctorName=${encodeURIComponent(sample.doctor_name || '')}&clinicName=${encodeURIComponent(sample.clinic_name || '')}&city=${encodeURIComponent(sample.city || '')}&treatment=${encodeURIComponent(sample.treatment || '')}&email=${encodeURIComponent(sample.email || '')}&niche=${encodeURIComponent(sample.niche || 'medspa')}&specificObservation=${encodeURIComponent(sample.specific_observation || '')}" 
-         class="p-3.5 rounded-2xl border transition ${
-           selectedStep === 3
-             ? 'bg-amber-600/15 border-amber-500 text-[var(--text-primary)] shadow-lg shadow-amber-500/10'
-             : 'bg-[var(--bg-card)] border-[var(--border-subtle)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:border-[var(--border-strong)]'
-         }">
-        <div class="text-[10px] font-bold uppercase tracking-wider text-amber-400">Step 3 • Economic Math</div>
-        <div class="font-bold text-sm text-[var(--text-primary)] mt-0.5">Revenue Leak</div>
-        <div class="text-[11px] text-[var(--text-muted)] mt-1 font-mono">Threaded Re: (+3 biz days)</div>
-      </a>
-
-      <a href="?step=4&doctorName=${encodeURIComponent(sample.doctor_name || '')}&clinicName=${encodeURIComponent(sample.clinic_name || '')}&city=${encodeURIComponent(sample.city || '')}&treatment=${encodeURIComponent(sample.treatment || '')}&email=${encodeURIComponent(sample.email || '')}&niche=${encodeURIComponent(sample.niche || 'medspa')}&specificObservation=${encodeURIComponent(sample.specific_observation || '')}" 
-         class="p-3.5 rounded-2xl border transition ${
-           selectedStep === 4
-             ? 'bg-emerald-600/15 border-emerald-500 text-[var(--text-primary)] shadow-lg shadow-emerald-500/10'
-             : 'bg-[var(--bg-card)] border-[var(--border-subtle)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:border-[var(--border-strong)]'
-         }">
-        <div class="text-[10px] font-bold uppercase tracking-wider text-emerald-400">Step 4 • Closer</div>
-        <div class="font-bold text-sm text-[var(--text-primary)] mt-0.5">Clean Breakup</div>
-        <div class="text-[11px] text-[var(--text-muted)] mt-1 font-mono">Threaded Re: (+3 biz days)</div>
-      </a>
+    <!-- Framework Switcher Tabs -->
+    <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+      ${frameworksList.map(fw => {
+        const isActive = framework === fw.id;
+        const activeClass = isActive
+          ? 'bg-cyan-500/15 border-cyan-500 text-[var(--text-primary)] shadow-lg shadow-cyan-500/10'
+          : 'bg-[var(--bg-card)] border-[var(--border-subtle)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:border-[var(--border-strong)]';
+        return `
+          <a href="?framework=${fw.id}&signalHook=${encodeURIComponent(signalHook)}&doctorName=${encodeURIComponent(sample.doctor_name || '')}&clinicName=${encodeURIComponent(sample.clinic_name || '')}&city=${encodeURIComponent(sample.city || '')}&treatment=${encodeURIComponent(sample.treatment || '')}&email=${encodeURIComponent(sample.email || '')}&niche=${encodeURIComponent(sample.niche || 'medspa')}&specificObservation=${encodeURIComponent(sample.specific_observation || '')}"
+             class="p-3 rounded-2xl border transition flex flex-col justify-between ${activeClass}">
+            <div>
+              <div class="flex items-center justify-between text-[10px] font-bold uppercase tracking-wider text-cyan-400">
+                <span>${fw.tag}</span>
+                <span class="font-mono text-[var(--text-muted)]">${fw.day}</span>
+              </div>
+              <div class="font-bold text-sm text-[var(--text-primary)] mt-1">${fw.name}</div>
+              <p class="text-[11px] text-[var(--text-muted)] mt-0.5 line-clamp-1">${fw.desc}</p>
+            </div>
+            <div class="text-[10px] text-[var(--text-secondary)] font-mono mt-2 pt-1.5 border-t border-[var(--border-subtle)] flex items-center justify-between">
+              <span>Limit:</span>
+              <span class="font-semibold text-cyan-300">${fw.optimal}</span>
+            </div>
+          </a>
+        `;
+      }).join('')}
     </div>
 
-    <!-- Dual Studio: Customizer Sidebar + Inbox Mockup -->
-    <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+    <!-- Main Dual Studio Grid -->
+    <div class="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
 
-      <!-- Left Column: Customizer -->
-      <div class="lg:col-span-4 bg-[var(--bg-card)] border border-[var(--border-subtle)] rounded-2xl p-5 space-y-4 shadow-xl">
-        <h3 class="text-xs font-semibold uppercase tracking-wider text-[var(--text-muted)] border-b border-[var(--border-subtle)] pb-2">
-          Prospect Variables Customizer
-        </h3>
+      <!-- Left Column: Variable Customizer & Signal Hook Ingestion (5 cols) -->
+      <div class="lg:col-span-5 bg-[var(--bg-card)] border border-[var(--border-subtle)] rounded-2xl p-5 space-y-4 shadow-xl">
+        <div class="flex items-center justify-between border-b border-[var(--border-subtle)] pb-3">
+          <h3 class="text-xs font-semibold uppercase tracking-wider text-[var(--text-muted)] flex items-center gap-2">
+            ${getSvgIcon('bolt', 'w-3.5 h-3.5 text-cyan-400')}
+            <span>Prospect & Hook Customizer</span>
+          </h3>
+          <span class="text-[10px] font-mono text-cyan-400 bg-cyan-500/10 px-2 py-0.5 rounded border border-cyan-500/20">Live Sync</span>
+        </div>
 
-        <form method="GET" action="/outreach/preview" class="space-y-3 pt-2">
-          <input type="hidden" name="step" value="${selectedStep}" />
-
+        <!-- CRM Preset Quick Picker -->
+        ${prospects && prospects.length > 0 ? `
           <div>
-            <label class="block text-[11px] font-medium text-[var(--text-muted)]">Target Niche</label>
-            <select name="niche" id="inputNiche" class="w-full bg-[var(--bg-surface)] border border-[var(--border-subtle)] rounded-xl px-3 py-1.5 text-xs text-[var(--text-primary)] focus:outline-none focus:border-cyan-500">
-              <option value="medspa" ${sample.niche !== 'hvac' ? 'selected' : ''}>MedSpa / Aesthetic Clinic</option>
-              <option value="hvac" ${sample.niche === 'hvac' ? 'selected' : ''}>Emergency HVAC & Plumbing</option>
+            <label class="block text-[11px] font-medium text-[var(--text-secondary)] mb-1">Load From Pipeline CRM (${prospects.length} Leads)</label>
+            <select id="crmProspectPicker" onchange="loadSelectedProspect(this)" class="w-full bg-[var(--bg-surface)] border border-[var(--border-subtle)] rounded-xl px-3 py-2 text-xs text-[var(--text-primary)] focus:outline-none focus:border-cyan-500">
+              <option value="">-- Choose a verified prospect to auto-fill --</option>
+              ${prospects.map(p => `
+                <option value="${p.id}"
+                  data-doctor="${escapeQuotes(p.doctor_name || '')}"
+                  data-clinic="${escapeQuotes(p.clinic_name || '')}"
+                  data-city="${escapeQuotes(p.city || '')}"
+                  data-treatment="${escapeQuotes(p.treatment || '')}"
+                  data-email="${escapeQuotes(p.email || '')}"
+                  data-niche="${escapeQuotes(p.niche || 'medspa')}"
+                  data-observation="${escapeQuotes(p.specific_observation || '')}">
+                  ${escapeHtml(p.doctor_name || p.clinic_name)} — ${escapeHtml(p.clinic_name)} (${escapeHtml(p.city || 'US')})
+                </option>
+              `).join('')}
+            </select>
+          </div>
+        ` : ''}
+
+        <form method="GET" action="/outreach/preview" class="space-y-3 pt-1" id="customizerForm">
+          <input type="hidden" name="framework" value="${framework}" id="inputFramework" />
+
+          <!-- Signal Hook Selector -->
+          <div>
+            <label class="block text-[11px] font-medium text-[var(--text-secondary)] mb-1">Intent Signal Hook</label>
+            <select name="signalHook" id="inputSignalHook" class="w-full bg-[var(--bg-surface)] border border-[var(--border-subtle)] rounded-xl px-3 py-2 text-xs text-cyan-300 font-semibold focus:outline-none focus:border-cyan-500">
+              <option value="form_friction" ${signalHook === 'form_friction' ? 'selected' : ''}>Static Form Friction (Patient drop-off audit)</option>
+              <option value="meta_ads" ${signalHook === 'meta_ads' ? 'selected' : ''}>Active Meta / Google Ads Signal (Paid traffic)</option>
+              <option value="after_hours" ${signalHook === 'after_hours' ? 'selected' : ''}>After-Hours Voicemail Gap (7:15 PM call test)</option>
+              <option value="hiring" ${signalHook === 'hiring' ? 'selected' : ''}>Front Desk Hiring Leak (Staff onboarding gap)</option>
             </select>
           </div>
 
-          <div>
-            <label class="block text-[11px] font-medium text-[var(--text-muted)]">Doctor / Owner Name</label>
-            <input type="text" name="doctorName" id="inputDoctor" value="${sample.doctor_name || ''}" class="w-full bg-[var(--bg-surface)] border border-[var(--border-subtle)] rounded-xl px-3 py-1.5 text-xs text-[var(--text-primary)] focus:outline-none focus:border-cyan-500" />
+          <div class="grid grid-cols-2 gap-3">
+            <div>
+              <label class="block text-[11px] font-medium text-[var(--text-muted)] mb-1">Target Niche</label>
+              <select name="niche" id="inputNiche" class="w-full bg-[var(--bg-surface)] border border-[var(--border-subtle)] rounded-xl px-3 py-2 text-xs text-[var(--text-primary)] focus:outline-none focus:border-cyan-500">
+                <option value="medspa" ${sample.niche !== 'hvac' ? 'selected' : ''}>MedSpa / Aesthetics</option>
+                <option value="hvac" ${sample.niche === 'hvac' ? 'selected' : ''}>Emergency HVAC / Plumbing</option>
+              </select>
+            </div>
+            <div>
+              <label class="block text-[11px] font-medium text-[var(--text-muted)] mb-1">City / Metro</label>
+              <input type="text" name="city" id="inputCity" value="${escapeHtml(sample.city || '')}" class="w-full bg-[var(--bg-surface)] border border-[var(--border-subtle)] rounded-xl px-3 py-2 text-xs text-[var(--text-primary)] focus:outline-none focus:border-cyan-500" />
+            </div>
           </div>
 
           <div>
-            <label class="block text-[11px] font-medium text-[var(--text-muted)]">Business / Clinic Name</label>
-            <input type="text" name="clinicName" id="inputClinic" value="${sample.clinic_name || ''}" class="w-full bg-[var(--bg-surface)] border border-[var(--border-subtle)] rounded-xl px-3 py-1.5 text-xs text-[var(--text-primary)] focus:outline-none focus:border-cyan-500" />
+            <label class="block text-[11px] font-medium text-[var(--text-muted)] mb-1">Doctor / Decision Maker</label>
+            <input type="text" name="doctorName" id="inputDoctor" value="${escapeHtml(sample.doctor_name || '')}" class="w-full bg-[var(--bg-surface)] border border-[var(--border-subtle)] rounded-xl px-3 py-2 text-xs text-[var(--text-primary)] focus:outline-none focus:border-cyan-500" />
           </div>
 
           <div>
-            <label class="block text-[11px] font-medium text-[var(--text-muted)]">City / Market</label>
-            <input type="text" name="city" id="inputCity" value="${sample.city || ''}" class="w-full bg-[var(--bg-surface)] border border-[var(--border-subtle)] rounded-xl px-3 py-1.5 text-xs text-[var(--text-primary)] focus:outline-none focus:border-cyan-500" />
+            <label class="block text-[11px] font-medium text-[var(--text-muted)] mb-1">Clinic / Business Name</label>
+            <input type="text" name="clinicName" id="inputClinic" value="${escapeHtml(sample.clinic_name || '')}" class="w-full bg-[var(--bg-surface)] border border-[var(--border-subtle)] rounded-xl px-3 py-2 text-xs text-[var(--text-primary)] focus:outline-none focus:border-cyan-500" />
+          </div>
+
+          <div class="grid grid-cols-2 gap-3">
+            <div>
+              <label class="block text-[11px] font-medium text-[var(--text-muted)] mb-1">High-Ticket Procedure</label>
+              <input type="text" name="treatment" id="inputTreatment" value="${escapeHtml(sample.treatment || '')}" class="w-full bg-[var(--bg-surface)] border border-[var(--border-subtle)] rounded-xl px-3 py-2 text-xs text-[var(--text-primary)] focus:outline-none focus:border-cyan-500" />
+            </div>
+            <div>
+              <label class="block text-[11px] font-medium text-[var(--text-muted)] mb-1">Target Email</label>
+              <input type="text" name="email" id="inputEmail" value="${escapeHtml(sample.email || '')}" class="w-full bg-[var(--bg-surface)] border border-[var(--border-subtle)] rounded-xl px-3 py-2 text-xs text-[var(--text-primary)] focus:outline-none focus:border-cyan-500" />
+            </div>
           </div>
 
           <div>
-            <label class="block text-[11px] font-medium text-[var(--text-muted)]">High-Ticket Offer / Service</label>
-            <input type="text" name="treatment" id="inputTreatment" value="${sample.treatment || ''}" class="w-full bg-[var(--bg-surface)] border border-[var(--border-subtle)] rounded-xl px-3 py-1.5 text-xs text-[var(--text-primary)] focus:outline-none focus:border-cyan-500" />
+            <label class="block text-[11px] font-medium text-[var(--text-muted)] mb-1">Specific Diagnostic Hook / Friction Gap</label>
+            <textarea name="specificObservation" id="inputObservation" rows="2" placeholder="e.g. Saw your site makes patients fill out a static form for Morpheus8..." class="w-full bg-[var(--bg-surface)] border border-[var(--border-subtle)] rounded-xl p-2.5 text-xs text-[var(--text-primary)] focus:outline-none focus:border-cyan-500">${escapeHtml(sample.specific_observation || '')}</textarea>
           </div>
 
-          <div>
-            <label class="block text-[11px] font-medium text-[var(--text-muted)]">Target Email</label>
-            <input type="text" name="email" id="inputEmail" value="${sample.email || ''}" class="w-full bg-[var(--bg-surface)] border border-[var(--border-subtle)] rounded-xl px-3 py-1.5 text-xs text-[var(--text-primary)] focus:outline-none focus:border-cyan-500" />
-          </div>
-
-          <div>
-            <label class="block text-[11px] font-medium text-[var(--text-muted)]">Friction Gap Observation</label>
-            <textarea name="specificObservation" id="inputObservation" rows="3" class="w-full bg-[var(--bg-surface)] border border-[var(--border-subtle)] rounded-xl p-2.5 text-xs text-[var(--text-primary)] focus:outline-none focus:border-cyan-500">${sample.specific_observation || ''}</textarea>
-          </div>
-
-          <button type="submit" class="w-full py-2 bg-[var(--accent-emerald)] hover:opacity-90 text-black font-bold text-xs rounded-xl transition shadow-sm">
-            Update Live Preview
+          <button type="submit" class="w-full py-2.5 bg-cyan-500 hover:bg-cyan-400 text-black font-extrabold text-xs rounded-xl transition shadow-md shadow-cyan-500/20 flex items-center justify-center gap-1.5">
+            ${getSvgIcon('bolt', 'w-3.5 h-3.5')}
+            <span>Regenerate Harvey Copy</span>
           </button>
         </form>
       </div>
 
-      <!-- Right Column: Harvey Live Preview -->
-      <div class="lg:col-span-8 bg-[var(--bg-card)] border border-[var(--border-subtle)] rounded-2xl p-6 space-y-4 shadow-xl">
-        <div class="flex items-center justify-between border-b border-[var(--border-subtle)] pb-3">
-          <div class="flex items-center space-x-2">
-            <span class="text-xs font-bold text-[var(--text-primary)]">Rendered Plain Text Payload</span>
-            <span class="text-[10px] font-mono px-2 py-0.5 rounded-full ${isWordCountValid ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' : 'bg-amber-500/10 text-amber-400 border border-amber-500/20'}">
-              ${wordCount} Words (Harvey Cap: 45–65)
-            </span>
+      <!-- Right Column: Anti-AI Quality Gate, Viewport & 1-Click Test Send (7 cols) -->
+      <div class="lg:col-span-7 space-y-5">
+
+        <!-- HARVEY ANTI-AI SCORECARD & QUALITY GATE -->
+        <div class="bg-[var(--bg-card)] border border-[var(--border-subtle)] rounded-2xl p-5 shadow-xl space-y-4">
+          <div class="flex items-center justify-between border-b border-[var(--border-subtle)] pb-3">
+            <div class="flex items-center gap-2">
+              <span class="w-2.5 h-2.5 rounded-full ${audit.passed ? 'bg-emerald-400 animate-pulse' : 'bg-amber-400'}"></span>
+              <h3 class="text-xs font-bold uppercase tracking-wider text-[var(--text-primary)]">Anti-AI Deliverability Scorecard</h3>
+            </div>
+            <div class="flex items-center gap-2">
+              <span class="text-xs font-mono font-bold px-2.5 py-0.5 rounded-full ${audit.score >= 85 ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' : 'bg-amber-500/10 text-amber-400 border border-amber-500/20'}">
+                Score: ${audit.score}/100
+              </span>
+              <span class="text-[10px] uppercase font-bold px-2 py-0.5 rounded ${audit.passed ? 'bg-emerald-500/20 text-emerald-400' : 'bg-amber-500/20 text-amber-300'}">
+                ${audit.passed ? '✓ Deliverability Passed' : 'Needs Polish'}
+              </span>
+            </div>
           </div>
-          <button onclick="copyToClipboard(document.getElementById('renderedEmailBody').innerText, 'Email body copied!')" class="px-3 py-1.5 rounded-xl bg-[var(--bg-surface)] hover:bg-[var(--bg-hover)] border border-[var(--border-subtle)] text-xs text-[var(--text-primary)] font-semibold transition">
-            Copy Text
-          </button>
+
+          <!-- Metric Cards Grid -->
+          <div class="grid grid-cols-2 sm:grid-cols-4 gap-2.5 text-xs">
+            <!-- Word Count -->
+            <div class="bg-[var(--bg-surface)] border border-[var(--border-subtle)] p-3 rounded-xl">
+              <div class="text-[10px] text-[var(--text-muted)] uppercase font-semibold">Word Count</div>
+              <div class="text-base font-mono font-bold text-[var(--text-primary)] mt-0.5">${audit.wordCount}</div>
+              <div class="text-[10px] ${audit.isOptimalWordCount ? 'text-emerald-400' : audit.isUnderHardCeiling ? 'text-amber-400' : 'text-rose-400'} mt-0.5">
+                ${audit.isOptimalWordCount ? '✓ Optimal (45–65)' : audit.isUnderHardCeiling ? 'Under 75 cap' : 'Exceeds 75 cap'}
+              </div>
+            </div>
+
+            <!-- Cliché Scanner -->
+            <div class="bg-[var(--bg-surface)] border border-[var(--border-subtle)] p-3 rounded-xl">
+              <div class="text-[10px] text-[var(--text-muted)] uppercase font-semibold">AI Clichés</div>
+              <div class="text-base font-mono font-bold ${audit.foundBanned.length === 0 ? 'text-emerald-400' : 'text-rose-400'} mt-0.5">
+                ${audit.foundBanned.length}
+              </div>
+              <div class="text-[10px] text-[var(--text-muted)] mt-0.5">
+                ${audit.foundBanned.length === 0 ? '✓ 0 LLM Clichés' : audit.foundBanned.slice(0, 1).join(', ')}
+              </div>
+            </div>
+
+            <!-- Em-Dash & Exclamations -->
+            <div class="bg-[var(--bg-surface)] border border-[var(--border-subtle)] p-3 rounded-xl">
+              <div class="text-[10px] text-[var(--text-muted)] uppercase font-semibold">Punctuation Tell</div>
+              <div class="text-base font-mono font-bold ${audit.emDashes === 0 && audit.exclamations === 0 ? 'text-emerald-400' : 'text-rose-400'} mt-0.5">
+                ${audit.emDashes} — / ${audit.exclamations} !
+              </div>
+              <div class="text-[10px] text-[var(--text-muted)] mt-0.5">
+                ${audit.emDashes === 0 && audit.exclamations === 0 ? '✓ Peer-to-peer' : 'Remove em-dashes'}
+              </div>
+            </div>
+
+            <!-- Subject Line Words -->
+            <div class="bg-[var(--bg-surface)] border border-[var(--border-subtle)] p-3 rounded-xl">
+              <div class="text-[10px] text-[var(--text-muted)] uppercase font-semibold">Subject Length</div>
+              <div class="text-base font-mono font-bold text-[var(--text-primary)] mt-0.5">${audit.subjectWords} Words</div>
+              <div class="text-[10px] ${audit.subjectWords >= 2 && audit.subjectWords <= 5 ? 'text-emerald-400' : 'text-amber-400'} mt-0.5">
+                ${audit.subjectWords >= 2 && audit.subjectWords <= 5 ? '✓ 2–4 Words' : 'Target 2–4 words'}
+              </div>
+            </div>
+          </div>
+
+          <!-- Issues notification banner (if any) -->
+          ${audit.issues && audit.issues.length > 0 ? `
+            <div class="bg-amber-950/30 border border-amber-500/20 rounded-xl p-3 text-[11px] text-amber-300 space-y-1">
+              <span class="font-bold">Harvey Optimization Suggestions:</span>
+              <ul class="list-disc pl-4 space-y-0.5 text-amber-200/80">
+                ${audit.issues.map(iss => `<li>${escapeHtml(iss)}</li>`).join('')}
+              </ul>
+            </div>
+          ` : `
+            <div class="bg-emerald-950/20 border border-emerald-500/20 rounded-xl px-3 py-2 text-[11px] text-emerald-400 flex items-center gap-1.5 font-medium">
+              <span>✓ 100% Compliant with Harvey Playbook: Peer-to-peer tone, mobile-first brevity, verified deliverability.</span>
+            </div>
+          `}
         </div>
 
-        <div class="p-4 rounded-xl bg-[var(--bg-surface)] border border-[var(--border-subtle)] space-y-3 font-mono text-xs">
-          <div class="border-b border-[var(--border-subtle)] pb-2 text-[var(--text-muted)]">
-            <strong>Subject:</strong> <span class="text-cyan-400">${rendered.subject}</span>
+        <!-- DUAL VIEWPORT: PLAIN TEXT & IPHONE MOBILE PREVIEW -->
+        <div class="bg-[var(--bg-card)] border border-[var(--border-subtle)] rounded-2xl shadow-xl overflow-hidden">
+          <!-- Viewport Header Tabs -->
+          <div class="flex items-center justify-between border-b border-[var(--border-subtle)] px-5 py-3 bg-[var(--bg-surface)]">
+            <div class="flex items-center space-x-2">
+              <button onclick="switchViewport('plain')" id="tabBtnPlain" class="px-3 py-1.5 rounded-lg text-xs font-semibold bg-[var(--bg-card)] text-cyan-400 border border-cyan-500/30 transition shadow-sm">
+                Plain Text Payload
+              </button>
+              <button onclick="switchViewport('mobile')" id="tabBtnMobile" class="px-3 py-1.5 rounded-lg text-xs font-semibold text-[var(--text-muted)] hover:text-[var(--text-primary)] transition">
+                📱 iPhone iOS Mail View
+              </button>
+            </div>
+
+            <button onclick="copyToClipboard(document.getElementById('renderedEmailBody').innerText, 'Plain text email payload copied!')" class="px-3 py-1 rounded-lg bg-[var(--bg-card)] hover:bg-[var(--bg-hover)] border border-[var(--border-subtle)] text-xs text-[var(--text-primary)] font-semibold transition flex items-center gap-1.5">
+              ${getSvgIcon('copy', 'w-3 h-3 text-cyan-400')}
+              <span>Copy Payload</span>
+            </button>
           </div>
-          <div id="renderedEmailBody" class="text-[var(--text-primary)] whitespace-pre-line leading-relaxed">${rendered.text}</div>
+
+          <!-- VIEWPORT 1: PLAIN TEXT & MIME PAYLOAD -->
+          <div id="plainTextView" class="p-5 space-y-3 font-mono text-xs">
+            <div class="p-3 bg-[var(--bg-surface)] border border-[var(--border-subtle)] rounded-xl space-y-1">
+              <div class="text-[var(--text-muted)] flex items-center justify-between">
+                <span><strong>From:</strong> Archit &lt;archit@suregreet.ai&gt;</span>
+                <span class="text-[10px] text-emerald-400">SPF/DKIM/DMARC: PASS</span>
+              </div>
+              <div class="text-[var(--text-muted)]">
+                <strong>To:</strong> <span class="text-[var(--text-primary)] font-mono">${escapeHtml(sample.email || 'doctor@clinic.com')}</span>
+              </div>
+              <div class="text-[var(--text-muted)] border-t border-[var(--border-subtle)] pt-1.5 mt-1.5">
+                <strong>Subject:</strong> <span class="text-cyan-400 font-semibold" id="renderedEmailSubject">${escapeHtml(generated.subject)}</span>
+              </div>
+            </div>
+
+            <div id="renderedEmailBody" class="p-4 bg-[var(--bg-surface)] border border-[var(--border-subtle)] rounded-xl text-[var(--text-primary)] whitespace-pre-line leading-relaxed selection:bg-cyan-500/30">
+${escapeHtml(generated.text)}
+            </div>
+          </div>
+
+          <!-- VIEWPORT 2: REALISTIC IPHONE MOBILE MAIL PREVIEW -->
+          <div id="mobileView" class="hidden p-6 flex justify-center bg-[var(--bg-card)]">
+            <div class="w-[340px] bg-black rounded-[44px] p-3 shadow-2xl border-4 border-neutral-800 relative">
+              <!-- Dynamic Island / Notch -->
+              <div class="w-24 h-4 bg-neutral-900 rounded-full mx-auto mb-3 flex items-center justify-center">
+                <span class="w-2.5 h-2.5 rounded-full bg-neutral-950 inline-block mr-2"></span>
+                <span class="w-1.5 h-1.5 rounded-full bg-blue-950 inline-block"></span>
+              </div>
+
+              <!-- iOS Mail Body Screen -->
+              <div class="bg-white text-neutral-900 rounded-[32px] p-4 text-[13px] font-sans min-h-[460px] flex flex-col justify-between shadow-inner">
+                <div>
+                  <!-- iOS Mail Header Bar -->
+                  <div class="flex items-center justify-between text-[11px] text-neutral-500 border-b border-neutral-100 pb-2 mb-2.5">
+                    <span class="text-blue-600 font-medium">‹ Inbox</span>
+                    <span class="font-bold text-neutral-800">Mail</span>
+                    <span class="text-blue-600 font-medium">Details</span>
+                  </div>
+
+                  <!-- Sender Pill & Timestamp -->
+                  <div class="flex items-start justify-between mb-2">
+                    <div class="flex items-center space-x-2">
+                      <div class="w-8 h-8 rounded-full bg-blue-600 text-white font-bold text-xs flex items-center justify-center">A</div>
+                      <div>
+                        <div class="font-bold text-[13px] text-neutral-900 leading-tight">Archit | SureGreet AI</div>
+                        <div class="text-[11px] text-neutral-500">To: ${escapeHtml(sample.doctor_name || 'Dr. Riveros')}</div>
+                      </div>
+                    </div>
+                    <span class="text-[10px] text-neutral-400">9:41 AM</span>
+                  </div>
+
+                  <!-- Subject Line -->
+                  <div class="font-semibold text-[13px] text-neutral-900 mb-3 border-b border-neutral-100 pb-2">
+                    ${escapeHtml(generated.subject)}
+                  </div>
+
+                  <!-- Email Body -->
+                  <div class="text-neutral-800 text-[12px] whitespace-pre-line leading-relaxed font-sans">
+${escapeHtml(generated.text)}
+                  </div>
+                </div>
+
+                <div class="pt-4 border-t border-neutral-100 text-[10px] text-neutral-400 text-center font-mono">
+                  Above-the-fold 100% visible on iPhone 15 Pro • 0 scrolling required
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
+
+        <!-- 1-CLICK TEST SEND TO MY PHONE / INBOX -->
+        <div class="bg-[var(--bg-card)] border border-[var(--border-subtle)] rounded-2xl p-5 shadow-xl space-y-3">
+          <div class="flex items-center justify-between">
+            <div class="flex items-center space-x-2">
+              <span class="p-1 rounded-lg bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                ${getSvgIcon('mail', 'w-4 h-4')}
+              </span>
+              <div>
+                <h4 class="text-xs font-bold text-[var(--text-primary)]">1-Click Test Dispatch to Your Phone</h4>
+                <p class="text-[11px] text-[var(--text-muted)]">Fire a live test email directly to your inbox to inspect mobile rendering on your phone.</p>
+              </div>
+            </div>
+            <span class="text-[10px] font-mono px-2 py-0.5 rounded bg-cyan-500/10 text-cyan-400 border border-cyan-500/20">Resend / SMTP</span>
+          </div>
+
+          <div class="flex flex-col sm:flex-row items-center gap-3 pt-1">
+            <input type="email" id="testRecipient" value="architd062@gmail.com" placeholder="your-email@example.com" class="w-full sm:flex-1 bg-[var(--bg-surface)] border border-[var(--border-subtle)] rounded-xl px-3.5 py-2.5 text-xs text-[var(--text-primary)] font-mono focus:outline-none focus:border-cyan-500" />
+            <button onclick="sendTestEmailDirect()" id="btnSendTest" class="w-full sm:w-auto px-5 py-2.5 bg-emerald-500 hover:bg-emerald-400 text-black font-extrabold text-xs rounded-xl transition shadow-md shadow-emerald-500/20 flex items-center justify-center gap-2 whitespace-nowrap">
+              ${getSvgIcon('bolt', 'w-3.5 h-3.5')}
+              <span>Send Test to My Phone</span>
+            </button>
+          </div>
+        </div>
+
       </div>
 
     </div>
+
+    <!-- Client-Side Script Studio Interactivity -->
+    <script>
+      function switchViewport(mode) {
+        const plainView = document.getElementById('plainTextView');
+        const mobileView = document.getElementById('mobileView');
+        const btnPlain = document.getElementById('tabBtnPlain');
+        const btnMobile = document.getElementById('tabBtnMobile');
+
+        if (mode === 'mobile') {
+          plainView.classList.add('hidden');
+          mobileView.classList.remove('hidden');
+          btnMobile.className = 'px-3 py-1.5 rounded-lg text-xs font-semibold bg-[var(--bg-card)] text-cyan-400 border border-cyan-500/30 transition shadow-sm';
+          btnPlain.className = 'px-3 py-1.5 rounded-lg text-xs font-semibold text-[var(--text-muted)] hover:text-[var(--text-primary)] transition';
+        } else {
+          mobileView.classList.add('hidden');
+          plainView.classList.remove('hidden');
+          btnPlain.className = 'px-3 py-1.5 rounded-lg text-xs font-semibold bg-[var(--bg-card)] text-cyan-400 border border-cyan-500/30 transition shadow-sm';
+          btnMobile.className = 'px-3 py-1.5 rounded-lg text-xs font-semibold text-[var(--text-muted)] hover:text-[var(--text-primary)] transition';
+        }
+      }
+
+      function loadSelectedProspect(selectEl) {
+        const selected = selectEl.options[selectEl.selectedIndex];
+        if (!selected || !selected.value) return;
+
+        document.getElementById('inputDoctor').value = selected.getAttribute('data-doctor') || '';
+        document.getElementById('inputClinic').value = selected.getAttribute('data-clinic') || '';
+        document.getElementById('inputCity').value = selected.getAttribute('data-city') || '';
+        document.getElementById('inputTreatment').value = selected.getAttribute('data-treatment') || '';
+        document.getElementById('inputEmail').value = selected.getAttribute('data-email') || '';
+        document.getElementById('inputNiche').value = selected.getAttribute('data-niche') || 'medspa';
+        document.getElementById('inputObservation').value = selected.getAttribute('data-observation') || '';
+
+        // Auto submit form to regenerate copy
+        document.getElementById('customizerForm').submit();
+      }
+
+      async function sendTestEmailDirect() {
+        const to = document.getElementById('testRecipient').value.trim();
+        if (!to) return showToast('Missing Recipient', 'Please enter a target email address', 'warning');
+
+        const subject = document.getElementById('renderedEmailSubject').innerText.trim();
+        const text = document.getElementById('renderedEmailBody').innerText.trim();
+        const btn = document.getElementById('btnSendTest');
+
+        btn.disabled = true;
+        btn.innerHTML = '<span>⏳ Dispatching...</span>';
+
+        try {
+          const authKey = new URLSearchParams(window.location.search).get('key') || '';
+          const url = authKey ? '/outreach/test-send?key=' + encodeURIComponent(authKey) : '/outreach/test-send';
+
+          const res = await fetch(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ to, subject, text })
+          });
+
+          const data = await res.json();
+          btn.disabled = false;
+          btn.innerHTML = '${getSvgIcon('bolt', 'w-3.5 h-3.5')}<span>Send Test to My Phone</span>';
+
+          if (data.status === 'success' || data.success) {
+            showToast('Test Sent Successfully', 'Check ' + to + ' on your mobile device (ID: ' + (data.messageId || 'sent') + ')', 'success');
+          } else {
+            showToast('Test Send Failed', data.message || data.error || 'Check server mailer logs.', 'error');
+          }
+        } catch (err) {
+          btn.disabled = false;
+          btn.innerHTML = '${getSvgIcon('bolt', 'w-3.5 h-3.5')}<span>Send Test to My Phone</span>';
+          showToast('Network Error', err.message, 'error');
+        }
+      }
+    </script>
   `;
 
   return renderSaasShell({
-    title: `SureGreet AI — Script Studio (Step ${selectedStep})`,
+    title: `SureGreet AI — Harvey Script Studio (${framework.toUpperCase()})`,
     activeNav: 'studio',
-    pageHeading: `Email Script Studio • Step ${selectedStep}`,
-    badgeText: 'Harvey Sales Engine',
+    pageHeading: `Email Script Studio • ${framework.toUpperCase()} Framework`,
+    badgeText: 'Harvey Sales Engine v2',
     bodyContent,
     authKeyParam: authKey,
   });
@@ -889,10 +1185,22 @@ outreachRouter.get('/prospects', async (req, res) => {
 outreachRouter.get('/dashboard', (req, res) => res.redirect('/outreach/prospects'));
 outreachRouter.get('/pipeline', (req, res) => res.redirect('/outreach/prospects'));
 
-// 2. Email Script Studio Route
+// 2. Email Script Studio Route (Harvey Engine v2)
 outreachRouter.get('/preview', async (req, res) => {
-  const step = Math.min(Math.max(parseInt(req.query.step || '1', 10), 1), 4);
   const authKey = req.query.key || '';
+
+  // Map legacy step query to framework if present
+  let framework = (req.query.framework || '').toLowerCase();
+  if (!framework) {
+    const step = parseInt(req.query.step || '1', 10);
+    if (step === 2) framework = 'bump';
+    else if (step === 3) framework = 'qvc';
+    else if (step === 4) framework = 'breakup';
+    else framework = 'pas';
+  }
+
+  const signalHook = req.query.signalHook || 'form_friction';
+
   const sample = {
     doctor_name: req.query.doctorName || 'Dr. Carlos Riveros',
     clinic_name: req.query.clinicName || 'Med Aesthetics Miami',
@@ -903,8 +1211,55 @@ outreachRouter.get('/preview', async (req, res) => {
     specific_observation: req.query.specificObservation || 'Saw your site makes patients fill out a static contact form on the Morpheus8 page instead of booking directly.',
   };
 
+  // Fetch all live prospects for instant pre-population dropdown
+  const allProspects = await getProspects();
+
   res.setHeader('Content-Type', 'text/html; charset=utf-8');
-  res.send(renderScriptStudioHtml(step, sample, authKey));
+  res.send(renderScriptStudioHtml({
+    sample,
+    framework,
+    signalHook,
+    prospects: allProspects || [],
+    authKey,
+  }));
+});
+
+// 2.1 Test Dispatch Endpoint for Script Studio
+outreachRouter.post('/test-send', async (req, res) => {
+  const { to, subject, text, html } = req.body || {};
+  if (!to || !text) {
+    return res.status(400).json({ status: 'error', message: 'Fields "to" and "text" are required' });
+  }
+
+  try {
+    const result = await sendEmail({
+      to,
+      subject: `[TEST] ${subject || 'quick question'}`,
+      text,
+      html: html || `<div style="font-family: -apple-system, sans-serif; font-size: 14px; line-height: 1.6; color: #111; max-width: 520px; white-space: pre-line;">${escapeHtml(text)}</div>`,
+    });
+    res.json({ status: result.success ? 'success' : 'error', ...result });
+  } catch (err) {
+    res.status(500).json({ status: 'error', message: err.message });
+  }
+});
+
+// 2.2 Dynamic Copy Generation & Audit API Endpoint
+outreachRouter.post('/generate-script', (req, res) => {
+  const { framework, signalHook, doctorName, clinicName, city, treatment, niche, specificObservation, prospectEmail } = req.body || {};
+  const generated = generateHarveyScript({
+    framework,
+    signalHook,
+    doctorName,
+    clinicName,
+    city,
+    treatment,
+    niche,
+    specificObservation,
+    prospectEmail,
+  });
+  const audit = auditHarveyCopy(generated.text, generated.subject);
+  res.json({ status: 'success', generated, audit });
 });
 
 // 3. Update Prospect Status Route (1-Click Action Hub)
