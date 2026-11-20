@@ -187,7 +187,7 @@ scraperRouter.get('/dashboard', async (req, res) => {
 
         <div>
           <label class="block text-[11px] font-semibold uppercase tracking-wider text-[var(--text-muted)] mb-1.5">Target US Metro / City</label>
-          <input id="huntCity" type="text" value="Miami, FL" class="w-full bg-[var(--bg-surface)] border border-[var(--border-subtle)] rounded-xl px-3.5 py-2.5 text-xs text-[var(--text-primary)] focus:outline-none focus:border-cyan-500 font-medium" placeholder="e.g. Austin, TX or Phoenix, AZ">
+          <input id="huntCity" type="text" value="Miami, FL" onkeydown="if(event.key==='Enter') runAutonomousHuntClient()" class="w-full bg-[var(--bg-surface)] border border-[var(--border-subtle)] rounded-xl px-3.5 py-2.5 text-xs text-[var(--text-primary)] focus:outline-none focus:border-cyan-500 font-medium" placeholder="e.g. Austin, TX or Phoenix, AZ">
         </div>
 
         <div>
@@ -198,7 +198,7 @@ scraperRouter.get('/dashboard', async (req, res) => {
               <option value="5" selected>5 Qualified Leads</option>
               <option value="8">8 Qualified Leads</option>
             </select>
-            <button onclick="runAutonomousHuntClient()" id="btnLaunchHunter" class="bg-cyan-500 hover:opacity-90 text-black font-bold text-xs px-5 py-2.5 rounded-xl transition flex items-center gap-1.5 shadow-lg shadow-cyan-500/20">
+            <button onclick="runAutonomousHuntClient()" id="btnLaunchHunter" type="button" class="bg-cyan-500 hover:opacity-90 text-black font-bold text-xs px-5 py-2.5 rounded-xl transition flex items-center gap-1.5 shadow-lg shadow-cyan-500/20 active:scale-95 cursor-pointer">
               ${getSvgIcon('bolt', 'w-4 h-4')}
               <span>Launch Hunter</span>
             </button>
@@ -208,12 +208,22 @@ scraperRouter.get('/dashboard', async (req, res) => {
 
       <!-- Quick Preset City Badges -->
       <div class="flex items-center gap-2 flex-wrap text-xs pt-1">
-        <span class="text-[var(--text-muted)] text-[11px]">High-demand markets:</span>
-        <button onclick="setHuntPreset('Miami, FL')" class="px-2.5 py-1 rounded-lg bg-[var(--bg-surface)] hover:bg-[var(--bg-hover)] text-[var(--text-secondary)] border border-[var(--border-subtle)] transition">Miami, FL</button>
-        <button onclick="setHuntPreset('Dallas, TX')" class="px-2.5 py-1 rounded-lg bg-[var(--bg-surface)] hover:bg-[var(--bg-hover)] text-[var(--text-secondary)] border border-[var(--border-subtle)] transition">Dallas, TX</button>
-        <button onclick="setHuntPreset('Austin, TX')" class="px-2.5 py-1 rounded-lg bg-[var(--bg-surface)] hover:bg-[var(--bg-hover)] text-[var(--text-secondary)] border border-[var(--border-subtle)] transition">Austin, TX</button>
-        <button onclick="setHuntPreset('Phoenix, AZ')" class="px-2.5 py-1 rounded-lg bg-[var(--bg-surface)] hover:bg-[var(--bg-hover)] text-[var(--text-secondary)] border border-[var(--border-subtle)] transition">Phoenix, AZ</button>
-        <button onclick="setHuntPreset('Atlanta, GA')" class="px-2.5 py-1 rounded-lg bg-[var(--bg-surface)] hover:bg-[var(--bg-hover)] text-[var(--text-secondary)] border border-[var(--border-subtle)] transition">Atlanta, GA</button>
+        <span class="text-[var(--text-muted)] text-[11px] font-semibold">Verified Markets:</span>
+        <button type="button" onclick="setHuntPreset('Miami, FL', this)" class="market-preset-btn px-3 py-1.5 rounded-xl bg-cyan-500/15 text-cyan-300 border border-cyan-500/40 font-bold transition flex items-center gap-1.5 shadow-sm shadow-cyan-500/10 active cursor-pointer">
+          <span>📍 Miami, FL</span>
+        </button>
+        <button type="button" onclick="setHuntPreset('Dallas, TX', this)" class="market-preset-btn px-3 py-1.5 rounded-xl bg-[var(--bg-surface)] hover:bg-[var(--bg-hover)] text-[var(--text-secondary)] border border-[var(--border-subtle)] font-medium transition flex items-center gap-1.5 cursor-pointer">
+          <span>📍 Dallas, TX</span>
+        </button>
+        <button type="button" onclick="setHuntPreset('Austin, TX', this)" class="market-preset-btn px-3 py-1.5 rounded-xl bg-[var(--bg-surface)] hover:bg-[var(--bg-hover)] text-[var(--text-secondary)] border border-[var(--border-subtle)] font-medium transition flex items-center gap-1.5 cursor-pointer">
+          <span>📍 Austin, TX</span>
+        </button>
+        <button type="button" onclick="setHuntPreset('Phoenix, AZ', this)" class="market-preset-btn px-3 py-1.5 rounded-xl bg-[var(--bg-surface)] hover:bg-[var(--bg-hover)] text-[var(--text-secondary)] border border-[var(--border-subtle)] font-medium transition flex items-center gap-1.5 cursor-pointer">
+          <span>📍 Phoenix, AZ</span>
+        </button>
+        <button type="button" onclick="setHuntPreset('Atlanta, GA', this)" class="market-preset-btn px-3 py-1.5 rounded-xl bg-[var(--bg-surface)] hover:bg-[var(--bg-hover)] text-[var(--text-secondary)] border border-[var(--border-subtle)] font-medium transition flex items-center gap-1.5 cursor-pointer">
+          <span>📍 Atlanta, GA</span>
+        </button>
       </div>
 
       <!-- Live Hunting Status Console -->
@@ -375,17 +385,34 @@ scraperRouter.get('/dashboard', async (req, res) => {
         scrapeSingle();
       }
 
-      function setHuntPreset(city) {
+      function setHuntPreset(city, btnEl) {
         document.getElementById('huntCity').value = city;
+
+        // Visual selection indicator on preset badges
+        document.querySelectorAll('.market-preset-btn').forEach(btn => {
+          btn.classList.remove('bg-cyan-500/15', 'text-cyan-300', 'border-cyan-500/40', 'font-bold', 'shadow-sm', 'shadow-cyan-500/10', 'active');
+          btn.classList.add('bg-[var(--bg-surface)]', 'text-[var(--text-secondary)]', 'border-[var(--border-subtle)]', 'font-medium');
+        });
+
+        if (btnEl) {
+          btnEl.classList.remove('bg-[var(--bg-surface)]', 'text-[var(--text-secondary)]', 'border-[var(--border-subtle)]', 'font-medium');
+          btnEl.classList.add('bg-cyan-500/15', 'text-cyan-300', 'border-cyan-500/40', 'font-bold', 'shadow-sm', 'shadow-cyan-500/10', 'active');
+        }
+
+        showToast('Market Selected', 'Ready to hunt ' + city + '. Click Launch Hunter or press Enter.', 'info');
       }
 
       function updateNicheDefaults() {
         const niche = document.getElementById('huntNiche').value;
-        if (niche === 'hvac') {
-          document.getElementById('huntCity').value = 'Phoenix, AZ';
-        } else {
-          document.getElementById('huntCity').value = 'Miami, FL';
-        }
+        const targetCity = niche === 'hvac' ? 'Phoenix, AZ' : 'Miami, FL';
+        document.getElementById('huntCity').value = targetCity;
+
+        // Auto update active button
+        document.querySelectorAll('.market-preset-btn').forEach(btn => {
+          if (btn.innerText.includes(targetCity.split(',')[0])) {
+            setHuntPreset(targetCity, btn);
+          }
+        });
       }
 
       async function safeFetchJson(url, options = {}) {
@@ -436,18 +463,18 @@ scraperRouter.get('/dashboard', async (req, res) => {
           timerEl.innerText = seconds.toFixed(1) + 's';
         }, 500);
 
-        bar.style.width = '20%';
-        statusText.innerText = 'Searching DuckDuckGo for top-ranked ' + niche + ' practices in ' + city + '...';
+        bar.style.width = '30%';
+        statusText.innerText = 'Sourcing top-tier verified domains in ' + city + ' (' + niche + ')...';
 
-        setTimeout(() => {
-          bar.style.width = '45%';
-          statusText.innerText = 'Extracting decision-makers, checking Meta Pixels & phone numbers...';
-        }, 2500);
+        const step1 = setTimeout(() => {
+          bar.style.width = '65%';
+          statusText.innerText = 'Extracting decision-makers, direct phones & ad spend in parallel...';
+        }, 1200);
 
-        setTimeout(() => {
-          bar.style.width = '75%';
-          statusText.innerText = 'Running Jina AI Reader to diagnose booking friction & after-hours gaps...';
-        }, 5500);
+        const step2 = setTimeout(() => {
+          bar.style.width = '85%';
+          statusText.innerText = 'Running speed-to-lead audit & diagnosing after-hours booking friction...';
+        }, 2800);
 
         try {
           const data = await safeFetchJson('/scraper/hunt', {
@@ -455,9 +482,6 @@ scraperRouter.get('/dashboard', async (req, res) => {
             body: JSON.stringify({ city, niche, limit })
           });
 
-          clearInterval(timerInterval);
-          btn.disabled = false;
-          btn.innerHTML = '${getSvgIcon('bolt', 'w-4 h-4')}<span>Launch Hunter</span>';
           bar.style.width = '100%';
           statusText.innerText = 'Hunt complete! ' + (data.leads ? data.leads.length : 0) + ' businesses processed.';
 
@@ -503,7 +527,7 @@ scraperRouter.get('/dashboard', async (req, res) => {
                   '</div>' +
                   '<div class="flex items-center gap-1.5">' +
                     '<span class="text-[10px] font-semibold px-2 py-0.5 rounded ' + badgeClass + '">' + badgeText + '</span>' +
-                    '<button onclick="removeHuntedLead(this, \'' + (lead.email || '') + '\', \'' + (lead.clinicName || 'Lead').replace(/'/g, "\\\\'") + '\')" class="p-1 rounded-lg bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/30 text-[10px] transition" title="Remove lead from database">' +
+                    '<button onclick="removeHuntedLead(this, \'' + (lead.email || '') + '\', \'' + (lead.clinicName || 'Lead').replace(/'/g, "\\\\'") + '\')" class="p-1 rounded-lg bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/30 text-[10px] transition cursor-pointer" title="Remove lead from database">' +
                       '${getSvgIcon('trash', 'w-3 h-3')}' +
                     '</button>' +
                   '</div>' +
@@ -515,7 +539,7 @@ scraperRouter.get('/dashboard', async (req, res) => {
                 '</div>' +
                 hookHtml +
                 '<div class="pt-2 border-t border-[var(--border-subtle)] flex items-center justify-between text-[11px]">' +
-                  '<a href="/outreach/preview" target="_blank" class="text-cyan-400 hover:underline">Preview Harvey Email →</a>' +
+                  '<a href="' + getAuthUrl('/outreach/preview') + '" target="_blank" class="text-cyan-400 hover:underline">Preview Harvey Email →</a>' +
                   '<a href="' + (lead.url || '#') + '" target="_blank" class="text-[var(--text-muted)] hover:text-[var(--text-primary)]">Visit Site ↗</a>' +
                 '</div>' +
               '</div>';
@@ -524,14 +548,17 @@ scraperRouter.get('/dashboard', async (req, res) => {
             resultsContainer.classList.remove('hidden');
             showToast('Hunt Complete', data.committedCount + ' leads committed to Supabase', 'success');
           } else {
-            showToast('No Leads Found', 'DuckDuckGo found no fresh domains for this query.', 'warning');
+            showToast('No New Leads', data.message || 'All target domains in this market are already in your CRM.', 'info');
           }
 
         } catch (err) {
+          showToast('Hunt Error', err.message, 'error');
+        } finally {
           clearInterval(timerInterval);
+          clearTimeout(step1);
+          clearTimeout(step2);
           btn.disabled = false;
           btn.innerHTML = '${getSvgIcon('bolt', 'w-4 h-4')}<span>Launch Hunter</span>';
-          showToast('Hunt Error', err.message, 'error');
         }
       }
 

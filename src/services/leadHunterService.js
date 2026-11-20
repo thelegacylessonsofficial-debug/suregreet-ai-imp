@@ -29,44 +29,39 @@ const NICHE_QUERIES = {
 const CURATED_TARGETS = {
   medspa: {
     miami: [
-      { title: 'Monaco MedSpa Midtown Miami', url: 'https://www.monacomedspa.com', city: 'Miami, FL' },
-      { title: 'Aglow Medical & MedSpa Miami Lakes', url: 'https://aglowmiami.com', city: 'Miami, FL' },
-      { title: 'Miami Center for Dermatology & Medspa', url: 'https://microneedlingmiamicenter.com', city: 'Miami, FL' },
-      { title: 'Flamingo Beauty MedSpa Miami', url: 'https://www.flamingobeautymiami.com', city: 'Miami, FL' },
-      { title: 'Hochstein Medspa Miami Beach', url: 'https://www.lhochsteinmd.com', city: 'Miami, FL' },
       { title: 'Med Aesthetics Miami', url: 'https://www.medaestheticsmiami.com', city: 'Miami, FL' },
-      { title: 'Fox Vein & Laser Medspa South Florida', url: 'https://www.foxveinexperts.com', city: 'Miami, FL' },
+      { title: 'Aglow Medical & MedSpa Miami Lakes', url: 'https://aglowmiami.com', city: 'Miami, FL' },
+      { title: 'Microneedling & Morpheus8 Miami Center', url: 'https://microneedlingmiamicenter.com', city: 'Miami, FL' },
+      { title: 'Hochstein Medspa Miami Beach', url: 'https://www.lhochsteinmd.com', city: 'Miami, FL' },
       { title: 'DermaCare Brickell Laser & MedSpa', url: 'https://dermacarebrickell.com', city: 'Miami, FL' },
     ],
     dallas: [
       { title: 'Vitalyc Medspa Dallas', url: 'https://www.vitalyc.com', city: 'Dallas, TX' },
       { title: 'Rejuve Med-Spa Dallas', url: 'https://www.rejuvemedspa.com', city: 'Dallas, TX' },
-      { title: 'Innovative Dermatology & Medspa Dallas', url: 'https://www.innovativederm.com', city: 'Dallas, TX' },
       { title: 'EpiCentre Skin Care & Laser Dallas', url: 'https://www.epicentreskincare.com', city: 'Dallas, TX' },
-      { title: 'Dallas Cosmetic Center', url: 'https://www.dallascosmeticcenter.com', city: 'Dallas, TX' },
-      { title: 'Skintastic Medical and Cosmetic Surgery Dallas', url: 'https://skintastic.com', city: 'Dallas, TX' },
-      { title: 'Mara Med Spa Dallas', url: 'https://maramedspa.com', city: 'Dallas, TX' },
-      { title: 'Renew Beauty Med Spa Dallas', url: 'https://renewbeautydallas.com', city: 'Dallas, TX' },
+      { title: 'Lumea Med Spa Dallas', url: 'https://lumeamedspa.com', city: 'Dallas, TX' },
+      { title: 'Dallas Plastic Surgery Institute MedSpa', url: 'https://dpsi.org', city: 'Dallas, TX' },
     ],
     phoenix: [
-      { title: 'Sens Aesthetics Scottsdale & Phoenix', url: 'https://www.sensaesthetics.com', city: 'Phoenix, AZ' },
-      { title: 'Clean Slate Laser MedSpa', url: 'https://www.cleanslateaz.com', city: 'Phoenix, AZ' },
       { title: 'Vibrant Skin Bar Phoenix', url: 'https://vibrantskinbar.com', city: 'Phoenix, AZ' },
       { title: 'Scottsdale Skin & Holistic MedSpa', url: 'https://scottsdalemedspa.com', city: 'Phoenix, AZ' },
-      { title: 'Luxe Aesthetics Phoenix', url: 'https://luxemedspaaz.com', city: 'Phoenix, AZ' },
-      { title: 'Derma Health Skin & Laser Phoenix', url: 'https://dermahealthinstitute.com', city: 'Phoenix, AZ' },
+      { title: 'Skin Science Institute Phoenix', url: 'https://skinscienceinstitute.com', city: 'Phoenix, AZ' },
+      { title: 'Sculpted Contours MedSpa Phoenix', url: 'https://sculptedcontours.com', city: 'Phoenix, AZ' },
+      { title: 'Beverly Hills Rejuvenation Center Scottsdale', url: 'https://bhrcenter.com', city: 'Phoenix, AZ' },
+      { title: 'Skin Cabinet MedSpa Phoenix', url: 'https://skincabinet.com', city: 'Phoenix, AZ' },
     ],
     scottsdale: [
-      { title: 'Sens Aesthetics Scottsdale', url: 'https://www.sensaesthetics.com', city: 'Scottsdale, AZ' },
-      { title: 'Clean Slate Laser MedSpa Scottsdale', url: 'https://www.cleanslateaz.com', city: 'Scottsdale, AZ' },
       { title: 'Vibrant Skin Bar Scottsdale', url: 'https://vibrantskinbar.com', city: 'Scottsdale, AZ' },
       { title: 'Scottsdale Skin & Holistic MedSpa', url: 'https://scottsdalemedspa.com', city: 'Scottsdale, AZ' },
+      { title: 'Beverly Hills Rejuvenation Center Scottsdale', url: 'https://bhrcenter.com', city: 'Scottsdale, AZ' },
+      { title: 'Skin Cabinet MedSpa Scottsdale', url: 'https://skincabinet.com', city: 'Scottsdale, AZ' },
     ],
     austin: [
       { title: 'Elevate Body & Face Medspa Austin', url: 'https://www.elevatemedspa.com', city: 'Austin, TX' },
       { title: 'Viva Day Spa + Med Spa Austin', url: 'https://www.vivadayspa.com', city: 'Austin, TX' },
       { title: 'Beleza Surgery & Medspa Austin', url: 'https://belezasurgery.com', city: 'Austin, TX' },
-      { title: 'Halina Spa + Medical Rejuvenation Austin', url: 'https://halinaspa.com', city: 'Austin, TX' },
+      { title: 'Austin Medspa', url: 'https://austinmedspa.com', city: 'Austin, TX' },
+      { title: 'Restoration MedSpa Austin', url: 'https://restorationmedspa.com', city: 'Austin, TX' },
     ],
     atlanta: [
       { title: 'ELLEMES Medical Spa Atlanta', url: 'https://www.ellemesmedspa.com', city: 'Atlanta, GA' },
@@ -78,21 +73,15 @@ const CURATED_TARGETS = {
   hvac: {
     phoenix: [
       { title: 'Champion Air 24/7 Emergency AC Phoenix', url: 'https://www.championair.com', city: 'Phoenix, AZ' },
-      { title: 'Emergency Air Heating Cooling & Plumbing', url: 'https://www.emergencyair.com', city: 'Phoenix, AZ' },
       { title: 'George Brazil HVAC Phoenix', url: 'https://georgebrazilhvac.com', city: 'Phoenix, AZ' },
-      { title: 'Tortoise Heating & Air Phoenix', url: 'https://www.tortoisehvac.com', city: 'Phoenix, AZ' },
       { title: 'Morehart Air Conditioning & Heating Phoenix', url: 'https://morehartac.com', city: 'Phoenix, AZ' },
-      { title: "Heath's Air 24/7 Emergency HVAC Phoenix", url: 'https://www.heathsair.com', city: 'Phoenix, AZ' },
-      { title: 'Viking HVAC Emergency Services Phoenix', url: 'https://viking-hvac.com', city: 'Phoenix, AZ' },
       { title: 'Compass Air Conditioning & Furnace Repair', url: 'https://azcompassair.com', city: 'Phoenix, AZ' },
     ],
     dallas: [
       { title: 'Lex Air Conditioning & Heating 24/7 Emergency Dallas', url: 'https://www.lexairconditioning.com', city: 'Dallas, TX' },
-      { title: 'Baker Brothers Plumbing & HVAC Dallas', url: 'https://www.bakerbrothersplumbing.com', city: 'Dallas, TX' },
-      { title: 'Berkeys Air Conditioning & Plumbing', url: 'https://www.berkeys.com', city: 'Dallas, TX' },
       { title: 'Total Air & Heat 24/7 Emergency Dallas', url: 'https://www.totalair.com', city: 'Dallas, TX' },
-      { title: 'Rescue Air Heating & Cooling Dallas', url: 'https://www.rescueairtx.com', city: 'Dallas, TX' },
-      { title: 'Milestone HVAC & Electrical Dallas', url: 'https://callmilestone.com', city: 'Dallas, TX' },
+      { title: 'Berkeys Air Conditioning & Plumbing', url: 'https://www.berkeys.com', city: 'Dallas, TX' },
+      { title: 'Baker Brothers Plumbing & HVAC Dallas', url: 'https://www.bakerbrothersplumbing.com', city: 'Dallas, TX' },
     ],
     miami: [
       { title: 'Direct Air Conditioning & Emergency HVAC Miami', url: 'https://www.directairfl.com', city: 'Miami, FL' },
@@ -102,12 +91,10 @@ const CURATED_TARGETS = {
     ],
     austin: [
       { title: 'Fox Service Company 24/7 HVAC Austin', url: 'https://foxservice.com', city: 'Austin, TX' },
-      { title: "Stan's Heating Air & Plumbing Austin", url: 'https://www.stansac.com', city: 'Austin, TX' },
-      { title: 'McCullough Heating & Air Austin', url: 'https://www.mcculloughair.com', city: 'Austin, TX' },
       { title: 'Totally Cool AC 24/7 Emergency Austin', url: 'https://www.totallycoolac.com', city: 'Austin, TX' },
+      { title: 'McCullough Heating & Air Austin', url: 'https://www.mcculloughair.com', city: 'Austin, TX' },
     ],
     atlanta: [
-      { title: 'Casteel Heating & Cooling Atlanta', url: 'https://casteelair.com', city: 'Atlanta, GA' },
       { title: 'PV Heating, Cooling & Plumbing Atlanta', url: 'https://pvhvac.com', city: 'Atlanta, GA' },
       { title: 'Anchor Heating & Air 24/7 Emergency Atlanta', url: 'https://www.anchorac.com', city: 'Atlanta, GA' },
       { title: 'Reliable Heating & Air Atlanta', url: 'https://reliableair.com', city: 'Atlanta, GA' },
@@ -128,7 +115,7 @@ export async function searchLocalBusinesses({ query, city = 'Miami, FL', niche =
   try {
     const searchUrl = `https://html.duckduckgo.com/html/?q=${encodeURIComponent(fullQuery)}`;
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 7000);
+    const timer = setTimeout(() => controller.abort(), 2500);
 
     const res = await fetch(searchUrl, {
       signal: controller.signal,
@@ -179,7 +166,10 @@ export async function searchLocalBusinesses({ query, city = 'Miami, FL', niche =
   if (rawResults.length === 0) {
     console.log('[LeadHunter] DDG standard returned 0. Trying DuckDuckGo Lite fallback...');
     try {
+      const controllerLite = new AbortController();
+      const timerLite = setTimeout(() => controllerLite.abort(), 2500);
       const liteRes = await fetch('https://lite.duckduckgo.com/lite/', {
+        signal: controllerLite.signal,
         method: 'POST',
         headers: {
           'Content-Type': 'application/x-www-form-urlencoded',
@@ -188,6 +178,7 @@ export async function searchLocalBusinesses({ query, city = 'Miami, FL', niche =
         },
         body: `q=${encodeURIComponent(fullQuery)}`,
       });
+      clearTimeout(timerLite);
 
       if (liteRes.ok) {
         const liteHtml = await liteRes.text();
@@ -387,12 +378,8 @@ export async function runAutonomousHunt({ city = 'Miami, FL', niche = 'medspa', 
     };
   }
 
-  // Step 2 & 3: Enrich, Audit & Commit
-  const enrichedLeads = [];
-  let committedCount = 0;
-
-  for (let i = 0; i < businesses.length; i++) {
-    const item = businesses[i];
+  // Step 2 & 3: Concurrently Enrich, Audit & Commit in parallel
+  const enrichmentPromises = businesses.map(async (item) => {
     try {
       const enriched = await huntAndEnrichLead({
         url: item.url,
@@ -400,21 +387,27 @@ export async function runAutonomousHunt({ city = 'Miami, FL', niche = 'medspa', 
         niche: item.niche,
       });
 
-      if (enriched.success) {
+      if (enriched && enriched.success) {
         // Commit with deduplication
         const commitRes = await commitLeadToSupabase(enriched);
         enriched.savedToDb = commitRes.success;
         enriched.dbStatus = commitRes.alreadyExists ? 'duplicate' : commitRes.success ? 'saved' : 'no_email';
-        if (commitRes.success) committedCount++;
-        enrichedLeads.push(enriched);
+        return { success: true, lead: enriched, committed: commitRes.success };
       }
     } catch (err) {
       console.warn(`[LeadHunter] Failed to process ${item.url}:`, err.message);
     }
+    return { success: false, url: item.url };
+  });
 
-    // Rate-limiting delay between deep crawls
-    if (i < businesses.length - 1) {
-      await new Promise((r) => setTimeout(r, 1200));
+  const settled = await Promise.allSettled(enrichmentPromises);
+  const enrichedLeads = [];
+  let committedCount = 0;
+
+  for (const res of settled) {
+    if (res.status === 'fulfilled' && res.value?.success && res.value.lead) {
+      enrichedLeads.push(res.value.lead);
+      if (res.value.committed) committedCount++;
     }
   }
 
