@@ -867,7 +867,13 @@ scraperRouter.get('/dashboard', async (req, res) => {
               }
 
               if (card) card.classList.remove('hidden');
-              showToast('Lead Sourced', (d.clinicName || 'Domain') + ' audited and saved in CRM.', 'success');
+              if (data.status === 'success' || data.success) {
+                showToast('Lead Sourced', (d.clinicName || 'Domain') + ' audited and saved in CRM.', 'success');
+              } else if (data.message && data.message.includes('already exists')) {
+                showToast('Already in CRM', (d.clinicName || 'Clinic') + ' is already recorded in your pipeline CRM.', 'info');
+              } else {
+                showToast('Audit Warning', data.message || 'Scraped successfully.', 'warning');
+              }
             } else {
               showToast('Scrape Warning', data.message || 'No direct email found.', 'warning');
             }
@@ -986,12 +992,19 @@ scraperRouter.get('/dashboard', async (req, res) => {
                   const isSuccess = item.success;
                   const clinic = d.clinicName || item.url.replace(/^https?:\\/\\//, '').split('/')[0];
                   const doc = d.doctorName || 'Director';
-                  const email = d.email || 'No email found';
-                  const phone = d.phone || 'No phone';
+                  const email = d.email || '';
+                  const phone = d.phone || '';
                   const badgeClass = isSuccess 
                     ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' 
                     : 'bg-amber-500/10 text-amber-400 border border-amber-500/20';
-                  const badgeText = isSuccess ? '✓ Ingested' : (item.message && item.message.includes('already exists') ? 'In CRM' : 'Notice');
+                  const badgeText = isSuccess ? '✓ Ingested' : (item.message && item.message.includes('already exists') ? 'In CRM' : (item.error ? 'Crawl Blocked' : 'Notice'));
+
+                  let subline = '';
+                  if (isSuccess || d.email) {
+                    subline = '<span>' + doc + '</span><span>•</span><span class="text-cyan-400 truncate">' + (email || 'No email') + '</span>' + (phone ? '<span>•</span><span>' + phone + '</span>' : '');
+                  } else {
+                    subline = '<span class="text-[var(--text-muted)] italic truncate max-w-sm">' + (item.error || item.message || 'No direct email found') + '</span>';
+                  }
 
                   return '<div class="p-3 bg-[var(--bg-card)] border border-[var(--border-subtle)] rounded-xl flex items-center justify-between gap-3 text-xs">' +
                     '<div class="min-w-0">' +
@@ -1000,11 +1013,7 @@ scraperRouter.get('/dashboard', async (req, res) => {
                         '<span class="text-[10px] px-2 py-0.5 rounded font-mono font-semibold ' + badgeClass + '">' + badgeText + '</span>' +
                       '</div>' +
                       '<div class="text-[11px] text-[var(--text-muted)] flex items-center gap-2 mt-0.5 font-mono">' +
-                        '<span>' + doc + '</span>' +
-                        '<span>•</span>' +
-                        '<span class="text-cyan-400 truncate">' + email + '</span>' +
-                        '<span>•</span>' +
-                        '<span>' + phone + '</span>' +
+                        subline +
                       '</div>' +
                     '</div>' +
                     '<a href="' + getAuthUrl('/outreach/prospects') + '" class="text-[11px] text-cyan-400 hover:underline font-semibold whitespace-nowrap">CRM →</a>' +
