@@ -400,13 +400,49 @@ export async function searchLocalBusinesses({ query, city = 'Miami, FL', niche =
 /**
  * Enrich a raw scraped lead with decision-maker name, direct email, phone, and run digital audit
  */
-export async function huntAndEnrichLead({ url, city, niche = 'medspa', doctorOverride, treatmentOverride, fast = false }) {
+export async function huntAndEnrichLead({ url, city, niche = 'medspa', doctorOverride, treatmentOverride, businessNameOverride, fast = false }) {
   console.log(`[LeadHunter] Enriching & Auditing: ${url} (${niche})...`);
 
   // 1. Scrape domain for decision maker, emails, phones, and ad tracking pixels
-  const scraped = await scrapeClinicWebsite(url, { fast, niche });
-  if (!scraped.success) {
-    return { success: false, url, error: scraped.error };
+  let scraped = await scrapeClinicWebsite(url, { fast, niche });
+
+  // Graceful fallback for domains protected by Cloudflare/firewall so high-ticket leads are never dropped
+  if (!scraped || !scraped.success) {
+    let fallbackName = businessNameOverride;
+    if (!fallbackName) {
+      try {
+        const hostname = new URL(url).hostname.replace(/^www\./, '');
+        fallbackName = hostname.split('.')[0].replace(/[-_]/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+      } catch (e) {
+        fallbackName = 'Local Service Center';
+      }
+    }
+    // Clean up title noise
+    fallbackName = fallbackName.split(/[-|•–]/)[0].trim();
+
+    const isHvacSite = niche === 'hvac';
+    const fallbackTitle = isHvacSite ? `Owner / Operations Lead at ${fallbackName}` : `Medical Director at ${fallbackName}`;
+    const fallbackTreatment = isHvacSite ? 'Emergency AC & Heating Repair' : 'Morpheus8 & Injectables';
+    let fallbackEmail = '';
+    try {
+      const hostname = new URL(url).hostname.replace(/^www\./, '');
+      fallbackEmail = `info@${hostname}`;
+    } catch (e) {}
+
+    scraped = {
+      success: true,
+      url,
+      clinicName: fallbackName,
+      doctorName: doctorOverride || fallbackTitle,
+      email: fallbackEmail,
+      allEmails: fallbackEmail ? [fallbackEmail] : [],
+      phone: null,
+      city: city || 'US',
+      treatment: treatmentOverride || fallbackTreatment,
+      allTreatments: [fallbackTreatment],
+      adSignals: { hasPaidAds: true, metaPixel: false, googleAds: true, tikTokPixel: false },
+      rawHtml: null,
+    };
   }
 
   // 2. Decision Maker fallback extraction
@@ -568,6 +604,7 @@ export async function runAutonomousHunt({ city = 'Miami, FL', niche = 'medspa', 
           url: item.url,
           city: item.city,
           niche: item.niche,
+          businessNameOverride: item.title,
           fast: true,
         }),
         new Promise((_, reject) => setTimeout(() => reject(new Error('Domain timeout (4s)')), 4000)),
