@@ -51,7 +51,7 @@ const JUNK_EMAIL_DOMAINS = [
 /**
  * Fetches page HTML with standard browser headers and timeout
  */
-async function fetchHtml(url, timeoutMs = 2000) {
+async function fetchHtml(url, timeoutMs = 3000) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {

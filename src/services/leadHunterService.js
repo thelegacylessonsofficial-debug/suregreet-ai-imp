@@ -531,10 +531,12 @@ export async function commitLeadToSupabase(enrichedLead, existingProspectsMap) {
  * Full Autonomous Lead Hunter Execution: Search -> Enrich -> Audit -> Deduplicate -> Commit
  */
 export async function runAutonomousHunt({ city = 'Miami, FL', niche = 'medspa', query, limit = 5 }) {
-  console.log(`[LeadHunter] Starting Autonomous Hunt for ${niche} in ${city} (Limit: ${limit})...`);
+  const targetLimit = Math.min(Math.max(Number(limit) || 5, 1), 25);
+  console.log(`[LeadHunter] Starting Autonomous Hunt for ${niche} in ${city} (Target: ${targetLimit})...`);
 
-  // Step 1: Search
-  const businesses = await searchLocalBusinesses({ query, city, niche, limit });
+  // Step 1: Search with candidate buffer (targetLimit * 2) so domain timeouts don't starve batch size
+  const candidateTarget = Math.min(Math.max(targetLimit * 2, targetLimit + 4), 30);
+  const businesses = await searchLocalBusinesses({ query, city, niche, limit: candidateTarget });
   if (!businesses || businesses.length === 0) {
     return {
       success: false,
@@ -558,7 +560,7 @@ export async function runAutonomousHunt({ city = 'Miami, FL', niche = 'medspa', 
   }
 
   // Step 2 & 3: Concurrently Enrich, Audit & Commit in parallel
-  // Fast mode + in-memory HTML parsing + 1-trip inserts ensure all 20 leads qualify in 2.5 seconds!
+  // Fast mode + in-memory HTML parsing + 1-trip inserts ensure all leads qualify rapidly
   const enrichmentPromises = businesses.map(async (item) => {
     try {
       const enriched = await Promise.race([
@@ -568,7 +570,7 @@ export async function runAutonomousHunt({ city = 'Miami, FL', niche = 'medspa', 
           niche: item.niche,
           fast: true,
         }),
-        new Promise((_, reject) => setTimeout(() => reject(new Error('Domain timeout (3s)')), 3000)),
+        new Promise((_, reject) => setTimeout(() => reject(new Error('Domain timeout (4s)')), 4000)),
       ]);
 
       if (enriched && enriched.success) {
@@ -592,6 +594,7 @@ export async function runAutonomousHunt({ city = 'Miami, FL', niche = 'medspa', 
     if (res.status === 'fulfilled' && res.value?.success && res.value.lead) {
       enrichedLeads.push(res.value.lead);
       if (res.value.committed) committedCount++;
+      if (enrichedLeads.length >= targetLimit) break;
     }
   }
 
