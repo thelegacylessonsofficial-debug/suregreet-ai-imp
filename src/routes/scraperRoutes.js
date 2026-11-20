@@ -360,12 +360,13 @@ scraperRouter.get('/dashboard', async (req, res) => {
               id="singleUrl" 
               type="url" 
               placeholder="https://clinicname.com" 
+              onkeydown="if(event.key==='Enter') scrapeSingle()"
               class="flex-1 bg-[var(--bg-surface)] border border-[var(--border-subtle)] rounded-xl px-4 py-2.5 text-xs text-[var(--text-primary)] placeholder-[var(--text-muted)] focus:outline-none focus:border-cyan-500 transition font-mono"
             >
             <button 
               onclick="scrapeSingle()" 
               id="btnSingle" 
-              class="bg-cyan-500 hover:opacity-90 text-black font-bold text-xs px-4 py-2.5 rounded-xl transition flex items-center gap-1.5 shadow-md shadow-cyan-500/20 shrink-0"
+              class="bg-cyan-500 hover:opacity-90 text-black font-bold text-xs px-4 py-2.5 rounded-xl transition flex items-center gap-1.5 shadow-md shadow-cyan-500/20 shrink-0 cursor-pointer active:scale-95"
             >
               ${getSvgIcon('bolt', 'w-4 h-4')}
               <span>Scrape & Audit</span>
@@ -375,24 +376,33 @@ scraperRouter.get('/dashboard', async (req, res) => {
           <!-- Quick Test Presets -->
           <div class="flex items-center gap-1.5 flex-wrap text-xs">
             <span class="text-[var(--text-muted)] text-[11px]">Quick presets:</span>
-            <button onclick="setPreset('https://vitalyc.com')" class="px-2 py-0.5 rounded-lg bg-[var(--bg-surface)] hover:bg-[var(--bg-hover)] text-[var(--text-secondary)] border border-[var(--border-subtle)] transition text-[11px]">Vitalyc (Dallas)</button>
-            <button onclick="setPreset('https://ellemesmedspa.com')" class="px-2 py-0.5 rounded-lg bg-[var(--bg-surface)] hover:bg-[var(--bg-hover)] text-[var(--text-secondary)] border border-[var(--border-subtle)] transition text-[11px]">ELLEMES (Atlanta)</button>
+            <button onclick="setPreset('https://vitalyc.com')" class="px-2 py-0.5 rounded-lg bg-[var(--bg-surface)] hover:bg-[var(--bg-hover)] text-[var(--text-secondary)] border border-[var(--border-subtle)] transition text-[11px] cursor-pointer">Vitalyc (Dallas)</button>
+            <button onclick="setPreset('https://ellemesmedspa.com')" class="px-2 py-0.5 rounded-lg bg-[var(--bg-surface)] hover:bg-[var(--bg-hover)] text-[var(--text-secondary)] border border-[var(--border-subtle)] transition text-[11px] cursor-pointer">ELLEMES (Atlanta)</button>
           </div>
         </div>
 
         <!-- Extraction Progress Card -->
-        <div id="scrapeProgress" class="hidden bg-[var(--bg-surface)] rounded-xl p-4 border border-[var(--border-subtle)] space-y-3">
+        <div id="scrapeProgress" class="hidden bg-[var(--bg-surface)] rounded-xl p-4 border border-cyan-500/30 space-y-2.5 shadow-inner">
           <div class="flex items-center justify-between text-xs">
-            <span id="progressText" class="text-[var(--text-primary)] font-medium">Connecting to domain...</span>
-            <span id="progressPercent" class="text-cyan-400 font-mono">25%</span>
+            <span class="text-cyan-400 font-mono font-medium flex items-center gap-2">
+              <span class="relative flex h-2 w-2">
+                <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-cyan-400 opacity-75"></span>
+                <span class="relative inline-flex rounded-full h-2 w-2 bg-cyan-500"></span>
+              </span>
+              <span id="progressText">Connecting to target domain...</span>
+            </span>
+            <div class="flex items-center gap-2">
+              <span id="singleTimer" class="text-[var(--text-muted)] font-mono text-[11px]">0.0s</span>
+              <span id="progressPercent" class="text-cyan-400 font-mono font-bold text-xs">25%</span>
+            </div>
           </div>
-          <div class="w-full bg-[var(--bg-card)] rounded-full h-1.5 overflow-hidden">
-            <div id="progressBar" class="bg-cyan-500 h-1.5 transition-all duration-300 rounded-full" style="width: 25%"></div>
+          <div class="w-full bg-[var(--bg-card)] rounded-full h-2 overflow-hidden border border-[var(--border-subtle)]">
+            <div id="progressBar" class="bg-gradient-to-r from-cyan-500 to-emerald-400 h-2 transition-all duration-300 rounded-full" style="width: 25%"></div>
           </div>
         </div>
 
         <!-- Single Scrape Result Card -->
-        <div id="singleResultCard" class="hidden bg-[var(--bg-surface)] rounded-xl p-4 border border-[var(--border-subtle)] space-y-3">
+        <div id="singleResultCard" class="hidden bg-[var(--bg-surface)] rounded-xl p-4 border border-emerald-500/30 space-y-3 shadow-lg">
           <div class="flex items-start justify-between">
             <div>
               <div id="resClinicName" class="font-bold text-[var(--text-primary)] text-sm">Med Aesthetics Miami</div>
@@ -423,11 +433,19 @@ scraperRouter.get('/dashboard', async (req, res) => {
           </div>
 
           <div class="border-t border-[var(--border-subtle)] pt-2.5 flex items-center justify-between">
-            <span class="text-[10px] text-[var(--text-muted)]">Saved in Supabase CRM</span>
-            <button onclick="removeSingleScrapedLead()" class="px-2.5 py-1 rounded-lg bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/30 text-[11px] font-semibold transition flex items-center gap-1" title="Remove this lead from CRM database">
-              ${getSvgIcon('trash', 'w-3 h-3')}
-              <span>Remove from CRM</span>
-            </button>
+            <span class="text-[10px] text-emerald-400 font-semibold flex items-center gap-1">
+              <span>✓</span>
+              <span>Saved in Pipeline CRM</span>
+            </span>
+            <div class="flex items-center gap-2">
+              <a href="/outreach/prospects" class="text-[11px] text-cyan-400 hover:underline font-semibold flex items-center gap-1">
+                <span>View in CRM →</span>
+              </a>
+              <button onclick="removeSingleScrapedLead()" class="px-2 py-1 rounded-lg bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/30 text-[10px] font-semibold transition flex items-center gap-1 cursor-pointer" title="Remove this lead from CRM database">
+                ${getSvgIcon('trash', 'w-3 h-3')}
+                <span>Delete</span>
+              </button>
+            </div>
           </div>
         </div>
       </div>
@@ -439,7 +457,7 @@ scraperRouter.get('/dashboard', async (req, res) => {
             <div class="text-[10px] font-mono uppercase tracking-wider text-[var(--text-muted)]">Bulk Meta Ad Ingestion</div>
             <h3 class="text-sm font-bold text-[var(--text-primary)] mt-0.5">Paste Up to 15 Ad Spender Domains</h3>
           </div>
-          <a href="https://www.facebook.com/ads/library/?country=US&q=MedSpa%20Miami" target="_blank" class="text-[11px] text-cyan-400 hover:underline flex items-center gap-1 font-semibold">
+          <a href="https://www.facebook.com/ads/library/?active_status=active&ad_type=all&country=US&media_type=all&q=MedSpa%20Miami" target="_blank" class="text-[11px] text-cyan-400 hover:underline flex items-center gap-1 font-semibold cursor-pointer">
             <span>Meta Ads Library</span>
             ${getSvgIcon('external', 'w-3 h-3')}
           </a>
@@ -448,7 +466,7 @@ scraperRouter.get('/dashboard', async (req, res) => {
         <div class="space-y-3">
           <textarea 
             id="bulkUrls" 
-            rows="5" 
+            rows="4" 
             placeholder="https://clinic1.com&#10;https://clinic2.com&#10;https://clinic3.com" 
             class="w-full bg-[var(--bg-surface)] border border-[var(--border-subtle)] rounded-xl p-3 text-xs text-[var(--text-primary)] placeholder-[var(--text-muted)] focus:outline-none focus:border-cyan-500 font-mono leading-relaxed"
           ></textarea>
@@ -458,14 +476,46 @@ scraperRouter.get('/dashboard', async (req, res) => {
             <button 
               onclick="scrapeBulk()" 
               id="btnBulk" 
-              class="bg-emerald-500 hover:opacity-90 text-black font-bold text-xs px-4 py-2.5 rounded-xl transition flex items-center gap-1.5 shadow-md shadow-emerald-500/20"
+              class="bg-emerald-500 hover:opacity-90 text-black font-bold text-xs px-4 py-2.5 rounded-xl transition flex items-center gap-1.5 shadow-md shadow-emerald-500/20 cursor-pointer active:scale-95"
             >
               ${getSvgIcon('play', 'w-4 h-4')}
               <span>Start Bulk Ingestion</span>
             </button>
           </div>
 
-          <div id="bulkResult" class="hidden text-xs bg-[var(--bg-surface)] p-3.5 rounded-xl border border-[var(--border-subtle)] font-mono max-h-40 overflow-y-auto"></div>
+          <!-- Live Bulk Progress Console -->
+          <div id="bulkProgressConsole" class="hidden bg-[var(--bg-surface)] rounded-xl p-4 border border-emerald-500/30 space-y-2.5 shadow-inner">
+            <div class="flex items-center justify-between text-xs">
+              <span class="text-emerald-400 font-mono font-medium flex items-center gap-2">
+                <span class="relative flex h-2 w-2">
+                  <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                  <span class="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                </span>
+                <span id="bulkStatusText">Initializing batch ingestion...</span>
+              </span>
+              <div class="flex items-center gap-2">
+                <span id="bulkTimer" class="text-[var(--text-muted)] font-mono text-[11px]">0.0s</span>
+                <span id="bulkProgressPercent" class="text-emerald-400 font-mono font-bold text-xs">15%</span>
+              </div>
+            </div>
+            <div class="w-full bg-[var(--bg-card)] rounded-full h-2 overflow-hidden border border-[var(--border-subtle)]">
+              <div id="bulkProgressBar" class="bg-gradient-to-r from-emerald-500 to-cyan-400 h-2 transition-all duration-300 rounded-full" style="width: 15%"></div>
+            </div>
+          </div>
+
+          <!-- Bulk Result Summary Container -->
+          <div id="bulkResultContainer" class="hidden space-y-3 pt-1">
+            <div id="bulkSummaryBanner" class="p-3 bg-emerald-950/40 border border-emerald-500/30 rounded-xl flex items-center justify-between gap-3 text-xs">
+              <div class="flex items-center gap-2">
+                <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                <span id="bulkSummaryText" class="font-bold text-emerald-300"></span>
+              </div>
+              <a href="/outreach/prospects" class="px-3 py-1.5 bg-emerald-500 hover:bg-emerald-400 text-black font-extrabold rounded-lg text-[11px] transition whitespace-nowrap flex items-center gap-1 shadow-sm">
+                <span>View in CRM →</span>
+              </a>
+            </div>
+            <div id="bulkResultsList" class="space-y-2 max-h-56 overflow-y-auto pr-1"></div>
+          </div>
         </div>
       </div>
 
@@ -597,7 +647,7 @@ scraperRouter.get('/dashboard', async (req, res) => {
         const statsBadge = document.getElementById('hunterStatsBadge');
 
         btn.disabled = true;
-        btn.innerHTML = '<span>⏳ Hunting...</span>';
+        btn.innerHTML = '${getSvgIcon('spinner', 'w-4 h-4 mr-1 text-black')}<span>Hunting Leads...</span>';
         consoleBox.classList.remove('hidden');
         resultsContainer.classList.add('hidden');
         cardsList.innerHTML = '';
@@ -716,110 +766,266 @@ scraperRouter.get('/dashboard', async (req, res) => {
       }
 
       async function scrapeSingle() {
-        const url = document.getElementById('singleUrl').value.trim();
-        if (!url) return alert('Please enter a clinic URL');
+        const urlInput = document.getElementById('singleUrl');
+        const url = (urlInput ? urlInput.value : '').trim();
+        if (!url) {
+          showToast('Domain Required', 'Please enter a clinic URL or select a quick preset.', 'warning');
+          return;
+        }
 
         const btn = document.getElementById('btnSingle');
         const progress = document.getElementById('scrapeProgress');
         const bar = document.getElementById('progressBar');
         const text = document.getElementById('progressText');
         const percent = document.getElementById('progressPercent');
+        const timerEl = document.getElementById('singleTimer');
         const card = document.getElementById('singleResultCard');
 
-        btn.disabled = true;
-        btn.innerHTML = '<span>⏳ Crawling...</span>';
-        progress.classList.remove('hidden');
-        card.classList.add('hidden');
+        if (btn) {
+          btn.disabled = true;
+          btn.innerHTML = '${getSvgIcon('spinner', 'w-4 h-4 mr-1 text-black')}<span>Auditing Domain...</span>';
+        }
+        if (progress) progress.classList.remove('hidden');
+        if (card) card.classList.add('hidden');
 
-        bar.style.width = '25%';
-        text.innerText = 'Connecting to domain ' + url + '...';
-        percent.innerText = '25%';
+        if (bar) bar.style.width = '15%';
+        if (percent) percent.innerText = '15%';
+        if (text) text.innerText = 'Connecting to ' + url.replace(/^https?:\\/\\//, '') + '...';
+        if (timerEl) timerEl.innerText = '0.0s';
 
+        let seconds = 0;
+        const singleTimerInterval = setInterval(() => {
+          seconds += 0.2;
+          if (timerEl) timerEl.innerText = seconds.toFixed(1) + 's';
+        }, 200);
+
+        let currentProgress = 15;
         const progressInterval = setInterval(() => {
-          const cur = parseInt(bar.style.width) || 25;
-          if (cur < 85) {
-            bar.style.width = (cur + 15) + '%';
-            percent.innerText = (cur + 15) + '%';
-            if (cur > 40) text.innerText = 'Crawling /about and /team pages for doctor names...';
-            if (cur > 65) text.innerText = 'Scanning for Meta Pixel (fbq) and Google Ads tags...';
+          if (currentProgress < 90) {
+            currentProgress += (currentProgress < 60 ? 12 : 6);
+            if (bar) bar.style.width = currentProgress + '%';
+            if (percent) percent.innerText = currentProgress + '%';
+            if (text) {
+              if (currentProgress >= 25 && currentProgress < 45) {
+                text.innerText = 'Resolving DNS & testing SSL handshake...';
+              } else if (currentProgress >= 45 && currentProgress < 65) {
+                text.innerText = 'Crawling homepage & scanning Meta Pixel (fbq) tags...';
+              } else if (currentProgress >= 65 && currentProgress < 80) {
+                text.innerText = 'Deep-crawling /about & /team for medical director...';
+              } else if (currentProgress >= 80) {
+                text.innerText = 'Diagnosing booking friction & committing to CRM...';
+              }
+            }
           }
-        }, 600);
+        }, 500);
 
         try {
           const data = await safeFetchJson('/scraper/ingest', {
             method: 'POST',
             body: JSON.stringify({ url })
           });
-          clearInterval(progressInterval);
-          bar.style.width = '100%';
-          percent.innerText = '100%';
-          text.innerText = 'Extraction complete!';
 
-          btn.disabled = false;
-          btn.innerHTML = '${getSvgIcon('bolt', 'w-4 h-4')}<span>Scrape & Audit</span>';
+          clearInterval(singleTimerInterval);
+          clearInterval(progressInterval);
+
+          if (bar) bar.style.width = '100%';
+          if (percent) percent.innerText = '100%';
+          if (text) text.innerText = 'Extraction and audit complete!';
+
+          if (btn) {
+            btn.disabled = false;
+            btn.innerHTML = '${getSvgIcon('bolt', 'w-4 h-4')}<span>Scrape & Audit</span>';
+          }
 
           setTimeout(() => {
-            progress.classList.add('hidden');
+            if (progress) progress.classList.add('hidden');
             if (data.status === 'success' || data.scrapedData) {
-              const d = data.scrapedData || data.data;
-              document.getElementById('resClinicName').innerText = d.clinicName || 'Clinic';
-              document.getElementById('resCity').innerText = d.city || 'United States';
-              document.getElementById('resDoctor').innerText = d.doctorName || 'Medical Director';
-              document.getElementById('resEmail').innerText = d.email || 'None';
-              document.getElementById('resTreatment').innerText = d.treatment || 'Morpheus8';
-              document.getElementById('resPhone').innerText = d.phone || 'N/A';
-
+              const d = data.scrapedData || data.data || {};
+              const clinicNameEl = document.getElementById('resClinicName');
+              const cityEl = document.getElementById('resCity');
+              const doctorEl = document.getElementById('resDoctor');
+              const emailEl = document.getElementById('resEmail');
+              const treatmentEl = document.getElementById('resTreatment');
+              const phoneEl = document.getElementById('resPhone');
               const badge = document.getElementById('resPixelBadge');
-              if (d.adSignals?.hasPaidAds) {
-                badge.innerText = '✓ Meta / Google Ads Active';
-                badge.className = 'px-2 py-0.5 rounded text-[10px] font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20';
-              } else {
-                badge.innerText = 'Organic Traffic';
-                badge.className = 'px-2 py-0.5 rounded text-[10px] font-semibold bg-gray-800 text-gray-400 border border-gray-700';
+
+              if (clinicNameEl) clinicNameEl.innerText = d.clinicName || 'Clinic';
+              if (cityEl) cityEl.innerText = d.city || 'United States';
+              if (doctorEl) doctorEl.innerText = d.doctorName || 'Medical Director';
+              if (emailEl) emailEl.innerText = d.email || 'None';
+              if (treatmentEl) treatmentEl.innerText = d.treatment || 'High-Ticket Aesthetic';
+              if (phoneEl) phoneEl.innerText = d.phone || 'N/A';
+
+              if (badge) {
+                if (d.adSignals?.hasPaidAds) {
+                  badge.innerText = '✓ Meta / Google Ads Active';
+                  badge.className = 'px-2 py-0.5 rounded text-[10px] font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20';
+                } else {
+                  badge.innerText = 'Organic Traffic';
+                  badge.className = 'px-2 py-0.5 rounded text-[10px] font-semibold bg-gray-800 text-gray-400 border border-gray-700';
+                }
               }
 
-              card.classList.remove('hidden');
-              showToast('Lead Sourced', d.clinicName + ' audited and saved.', 'success');
+              if (card) card.classList.remove('hidden');
+              showToast('Lead Sourced', (d.clinicName || 'Domain') + ' audited and saved in CRM.', 'success');
             } else {
               showToast('Scrape Warning', data.message || 'No direct email found.', 'warning');
             }
-          }, 400);
+          }, 350);
 
         } catch (err) {
+          clearInterval(singleTimerInterval);
           clearInterval(progressInterval);
-          btn.disabled = false;
-          btn.innerHTML = '${getSvgIcon('bolt', 'w-4 h-4')}<span>Scrape & Audit</span>';
-          progress.classList.add('hidden');
+          if (btn) {
+            btn.disabled = false;
+            btn.innerHTML = '${getSvgIcon('bolt', 'w-4 h-4')}<span>Scrape & Audit</span>';
+          }
+          if (progress) progress.classList.add('hidden');
           showToast('Extraction Failed', err.message, 'error');
         }
       }
 
       async function scrapeBulk() {
-        const text = document.getElementById('bulkUrls').value.trim();
-        if (!text) return alert('Please enter at least one URL');
+        const textarea = document.getElementById('bulkUrls');
+        const rawText = (textarea ? textarea.value : '').trim();
+        if (!rawText) {
+          showToast('Input Required', 'Please paste at least one domain URL.', 'warning');
+          return;
+        }
+
+        const urls = rawText.split(/[\\r\\n,]+/).map(u => u.trim()).filter(Boolean);
+        if (urls.length === 0) {
+          showToast('Input Required', 'Please enter valid URLs.', 'warning');
+          return;
+        }
 
         const btn = document.getElementById('btnBulk');
-        const resBox = document.getElementById('bulkResult');
+        const consoleBox = document.getElementById('bulkProgressConsole');
+        const statusText = document.getElementById('bulkStatusText');
+        const timerEl = document.getElementById('bulkTimer');
+        const percentEl = document.getElementById('bulkProgressPercent');
+        const bar = document.getElementById('bulkProgressBar');
+        const resultContainer = document.getElementById('bulkResultContainer');
+        const summaryText = document.getElementById('bulkSummaryText');
+        const resultsList = document.getElementById('bulkResultsList');
 
-        btn.disabled = true;
-        btn.innerHTML = '<span>⏳ Extracting Batch...</span>';
-        resBox.classList.remove('hidden');
-        resBox.innerText = 'Initiating sequential crawl with 1.2s anti-rate-limit delays...';
+        if (btn) {
+          btn.disabled = true;
+          btn.innerHTML = '${getSvgIcon('spinner', 'w-4 h-4 mr-1 text-black')}<span>Processing ' + urls.length + ' Domains...</span>';
+        }
+        if (consoleBox) consoleBox.classList.remove('hidden');
+        if (resultContainer) resultContainer.classList.add('hidden');
+        if (resultsList) resultsList.innerHTML = '';
+
+        if (bar) bar.style.width = '10%';
+        if (percentEl) percentEl.innerText = '10%';
+        if (statusText) statusText.innerText = 'Initiating batch crawl of ' + urls.length + ' domains with anti-rate-limit jitter...';
+        if (timerEl) timerEl.innerText = '0.0s';
+
+        let seconds = 0;
+        const bulkTimerInterval = setInterval(() => {
+          seconds += 0.2;
+          if (timerEl) timerEl.innerText = seconds.toFixed(1) + 's';
+        }, 200);
+
+        let bulkProgress = 10;
+        const bulkProgressInterval = setInterval(() => {
+          if (bulkProgress < 90) {
+            bulkProgress += (bulkProgress < 50 ? 10 : 5);
+            if (bar) bar.style.width = bulkProgress + '%';
+            if (percentEl) percentEl.innerText = bulkProgress + '%';
+            if (statusText) {
+              if (bulkProgress >= 20 && bulkProgress < 40) {
+                statusText.innerText = 'Auditing Meta Pixel & Google Ads signals across batch...';
+              } else if (bulkProgress >= 40 && bulkProgress < 65) {
+                statusText.innerText = 'Crawling staff & provider directories for decision-makers...';
+              } else if (bulkProgress >= 65 && bulkProgress < 85) {
+                statusText.innerText = 'Checking speed-to-lead gaps & deduplicating CRM entries...';
+              } else if (bulkProgress >= 85) {
+                statusText.innerText = 'Ingesting verified leads into Supabase pipeline...';
+              }
+            }
+          }
+        }, 800);
 
         try {
           const data = await safeFetchJson('/scraper/bulk', {
             method: 'POST',
-            body: JSON.stringify({ urls: text })
+            body: JSON.stringify({ urls: rawText })
           });
-          btn.disabled = false;
-          btn.innerHTML = '${getSvgIcon('play', 'w-4 h-4')}<span>Start Bulk Ingestion</span>';
-          resBox.innerText = JSON.stringify(data, null, 2);
-          showToast('Bulk Ingestion Finished', 'Processed domains successfully.', 'success');
+
+          clearInterval(bulkTimerInterval);
+          clearInterval(bulkProgressInterval);
+
+          if (bar) bar.style.width = '100%';
+          if (percentEl) percentEl.innerText = '100%';
+          if (statusText) statusText.innerText = 'Batch ingestion complete!';
+
+          if (btn) {
+            btn.disabled = false;
+            btn.innerHTML = '${getSvgIcon('play', 'w-4 h-4')}<span>Start Bulk Ingestion</span>';
+          }
+
+          setTimeout(() => {
+            if (consoleBox) consoleBox.classList.add('hidden');
+
+            const total = data.total || urls.length;
+            const ingested = data.ingestedCount || 0;
+            const results = data.results || [];
+
+            if (summaryText) {
+              summaryText.innerText = '✓ ' + ingested + ' of ' + total + ' Leads Sourced & Saved in Pipeline CRM';
+            }
+
+            if (resultsList) {
+              if (results.length === 0) {
+                resultsList.innerHTML = '<p class="text-xs text-[var(--text-muted)] italic py-2">No domains processed.</p>';
+              } else {
+                resultsList.innerHTML = results.map(item => {
+                  const d = item.scrapedData || {};
+                  const isSuccess = item.success;
+                  const clinic = d.clinicName || item.url.replace(/^https?:\\/\\//, '').split('/')[0];
+                  const doc = d.doctorName || 'Director';
+                  const email = d.email || 'No email found';
+                  const phone = d.phone || 'No phone';
+                  const badgeClass = isSuccess 
+                    ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' 
+                    : 'bg-amber-500/10 text-amber-400 border border-amber-500/20';
+                  const badgeText = isSuccess ? '✓ Ingested' : (item.message && item.message.includes('already exists') ? 'In CRM' : 'Notice');
+
+                  return '<div class="p-3 bg-[var(--bg-card)] border border-[var(--border-subtle)] rounded-xl flex items-center justify-between gap-3 text-xs">' +
+                    '<div class="min-w-0">' +
+                      '<div class="flex items-center gap-2">' +
+                        '<span class="font-bold text-[var(--text-primary)] truncate">' + clinic + '</span>' +
+                        '<span class="text-[10px] px-2 py-0.5 rounded font-mono font-semibold ' + badgeClass + '">' + badgeText + '</span>' +
+                      '</div>' +
+                      '<div class="text-[11px] text-[var(--text-muted)] flex items-center gap-2 mt-0.5 font-mono">' +
+                        '<span>' + doc + '</span>' +
+                        '<span>•</span>' +
+                        '<span class="text-cyan-400 truncate">' + email + '</span>' +
+                        '<span>•</span>' +
+                        '<span>' + phone + '</span>' +
+                      '</div>' +
+                    '</div>' +
+                    '<a href="' + getAuthUrl('/outreach/prospects') + '" class="text-[11px] text-cyan-400 hover:underline font-semibold whitespace-nowrap">CRM →</a>' +
+                  '</div>';
+                }).join('');
+              }
+            }
+
+            if (resultContainer) resultContainer.classList.remove('hidden');
+            showToast('Batch Complete', ingested + ' of ' + total + ' leads saved to CRM.', 'success');
+          }, 400);
+
         } catch (e) {
-          btn.disabled = false;
-          btn.innerHTML = '${getSvgIcon('play', 'w-4 h-4')}<span>Start Bulk Ingestion</span>';
-          resBox.innerText = 'Error: ' + e.message;
-          showToast('Bulk Error', e.message, 'error');
+          clearInterval(bulkTimerInterval);
+          clearInterval(bulkProgressInterval);
+          if (btn) {
+            btn.disabled = false;
+            btn.innerHTML = '${getSvgIcon('play', 'w-4 h-4')}<span>Start Bulk Ingestion</span>';
+          }
+          if (consoleBox) consoleBox.classList.add('hidden');
+          showToast('Bulk Ingestion Error', e.message, 'error');
         }
       }
 
