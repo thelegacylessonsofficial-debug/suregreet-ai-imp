@@ -48,7 +48,7 @@ export function renderSaasShell({
   const navItems = [
     { id: 'pipeline', label: 'Pipeline CRM', href: `/outreach/prospects${keyQuery}`, icon: 'pipeline', count: '11' },
     { id: 'scraper', label: 'Lead Hunter Studio', href: `/scraper/dashboard${keyQuery}`, icon: 'hunter', count: 'Free' },
-    { id: 'bots', label: 'Lead Bots Control Hub', href: `/outreach/prospects${keyQuery}#bots`, icon: 'bots', badge: '4 Bots' },
+    { id: 'bots', label: 'Agency Operators', href: `/outreach/prospects${keyQuery}#bots`, icon: 'bots', badge: '4 Active' },
     { id: 'calls', label: 'Daily Dials & Logs', href: `/calls${keyQuery}`, icon: 'calls', count: '10 RGA' },
     { id: 'inbox', label: 'Inbox LAARC Closer', href: `/inbox/dashboard${keyQuery}`, icon: 'inbox', badge: 'Auto' },
     { id: 'studio', label: 'Email Script Studio', href: `/outreach/preview${keyQuery}`, icon: 'studio', badge: 'Harvey' },
@@ -439,6 +439,40 @@ export function renderSaasShell({
         showToast('Network Error', e.message, 'error');
       }
     }
+
+    // Auto-preserve adminKey across all internal navigation links and forms
+    document.addEventListener('DOMContentLoaded', () => {
+      if (adminKey) {
+        // Enrich existing and dynamic anchor tags
+        const enrichLinks = () => {
+          document.querySelectorAll('a[href]').forEach(a => {
+            const href = a.getAttribute('href');
+            if (!href || href.startsWith('#') || href.startsWith('mailto:') || href.startsWith('tel:') || href.startsWith('javascript:')) return;
+            if ((href.startsWith('/') || href.startsWith('?')) && !href.includes('key=')) {
+              const delim = href.includes('?') ? '&' : '?';
+              a.setAttribute('href', href + delim + 'key=' + encodeURIComponent(adminKey));
+            }
+          });
+        };
+
+        enrichLinks();
+        // Also observe dynamic DOM mutations (modals, re-renders)
+        const observer = new MutationObserver(() => enrichLinks());
+        observer.observe(document.body, { childList: true, subtree: true });
+
+        // Ensure forms also propagate the key parameter
+        document.addEventListener('submit', (e) => {
+          const form = e.target;
+          if (form && !form.querySelector('input[name="key"]')) {
+            const hidden = document.createElement('input');
+            hidden.type = 'hidden';
+            hidden.name = 'key';
+            hidden.value = adminKey;
+            form.appendChild(hidden);
+          }
+        });
+      }
+    });
   </script>
 
   ${extraScripts}

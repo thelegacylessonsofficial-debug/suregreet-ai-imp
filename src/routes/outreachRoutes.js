@@ -651,6 +651,8 @@ function renderProspectsHtml(list, authKey = '') {
           niche: p.niche || 'medspa',
           specificObservation: p.specific_observation || '',
         });
+        const currentKey = new URLSearchParams(window.location.search).get('key') || localStorage.getItem('suregreet_admin_key') || '';
+        if (currentKey) queryParams.set('key', currentKey);
 
         document.getElementById('modalFullStudioLink').href = '/outreach/preview?' + queryParams.toString();
         document.getElementById('previewModal').classList.remove('hidden');
@@ -894,6 +896,7 @@ function renderScriptStudioHtml({ sample, step = 1, framework = 'pas', signalHoo
   const leakedAmount = isHvac ? '$4,000+' : '$12,000';
   const leakedAnnual = isHvac ? '$48,000+' : '$144,000';
   const avgTicket = isHvac ? '$2,000+' : '$1,500+';
+  const keyParam = authKey ? '&key=' + encodeURIComponent(authKey) : '';
 
   const bodyContent = `
     <!-- Top Hero Header -->
@@ -913,7 +916,7 @@ function renderScriptStudioHtml({ sample, step = 1, framework = 'pas', signalHoo
       </div>
 
       <div class="flex items-center space-x-3">
-        <a href="/outreach/prospects" class="text-xs bg-[var(--bg-card)] hover:bg-[var(--bg-hover)] text-[var(--text-primary)] border border-[var(--border-subtle)] px-4 py-2 rounded-xl transition flex items-center gap-1.5 font-semibold">
+        <a href="/outreach/prospects${authKey ? `?key=${encodeURIComponent(authKey)}` : ''}" class="text-xs bg-[var(--bg-card)] hover:bg-[var(--bg-hover)] text-[var(--text-primary)] border border-[var(--border-subtle)] px-4 py-2 rounded-xl transition flex items-center gap-1.5 font-semibold">
           <span>Back to Pipeline CRM</span>
           ${getSvgIcon('external', 'w-3 h-3 text-[var(--text-muted)]')}
         </a>
@@ -928,7 +931,7 @@ function renderScriptStudioHtml({ sample, step = 1, framework = 'pas', signalHoo
           ? 'bg-cyan-500/15 border-cyan-500 text-[var(--text-primary)] shadow-lg shadow-cyan-500/10'
           : 'bg-[var(--bg-card)] border-[var(--border-subtle)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:border-[var(--border-strong)]';
         return `
-          <a href="?step=${s.num}&signalHook=${encodeURIComponent(signalHook)}&framework=${encodeURIComponent(framework)}&doctorName=${encodeURIComponent(sample.doctor_name || '')}&clinicName=${encodeURIComponent(sample.clinic_name || '')}&city=${encodeURIComponent(sample.city || '')}&treatment=${encodeURIComponent(sample.treatment || '')}&email=${encodeURIComponent(sample.email || '')}&niche=${encodeURIComponent(sample.niche || 'medspa')}&specificObservation=${encodeURIComponent(sample.specific_observation || '')}"
+          <a href="?step=${s.num}${keyParam}&signalHook=${encodeURIComponent(signalHook)}&framework=${encodeURIComponent(framework)}&doctorName=${encodeURIComponent(sample.doctor_name || '')}&clinicName=${encodeURIComponent(sample.clinic_name || '')}&city=${encodeURIComponent(sample.city || '')}&treatment=${encodeURIComponent(sample.treatment || '')}&email=${encodeURIComponent(sample.email || '')}&niche=${encodeURIComponent(sample.niche || 'medspa')}&specificObservation=${encodeURIComponent(sample.specific_observation || '')}"
              class="p-3.5 rounded-2xl border transition flex flex-col justify-between ${activeClass}">
             <div>
               <div class="flex items-center justify-between text-[10px] font-bold uppercase tracking-wider text-cyan-400">
@@ -947,7 +950,7 @@ function renderScriptStudioHtml({ sample, step = 1, framework = 'pas', signalHoo
       }).join('')}
 
       <!-- All 4 Steps Chained Thread View Tab -->
-      <a href="?step=all&signalHook=${encodeURIComponent(signalHook)}&framework=${encodeURIComponent(framework)}&doctorName=${encodeURIComponent(sample.doctor_name || '')}&clinicName=${encodeURIComponent(sample.clinic_name || '')}&city=${encodeURIComponent(sample.city || '')}&treatment=${encodeURIComponent(sample.treatment || '')}&email=${encodeURIComponent(sample.email || '')}&niche=${encodeURIComponent(sample.niche || 'medspa')}&specificObservation=${encodeURIComponent(sample.specific_observation || '')}"
+      <a href="?step=all${keyParam}&signalHook=${encodeURIComponent(signalHook)}&framework=${encodeURIComponent(framework)}&doctorName=${encodeURIComponent(sample.doctor_name || '')}&clinicName=${encodeURIComponent(sample.clinic_name || '')}&city=${encodeURIComponent(sample.city || '')}&treatment=${encodeURIComponent(sample.treatment || '')}&email=${encodeURIComponent(sample.email || '')}&niche=${encodeURIComponent(sample.niche || 'medspa')}&specificObservation=${encodeURIComponent(sample.specific_observation || '')}"
          class="p-3.5 rounded-2xl border transition flex flex-col justify-between ${isAllSteps ? 'bg-purple-500/15 border-purple-500 text-[var(--text-primary)] shadow-lg shadow-purple-500/10' : 'bg-[var(--bg-card)] border-[var(--border-subtle)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:border-[var(--border-strong)]'}">
         <div>
           <div class="flex items-center justify-between text-[10px] font-bold uppercase tracking-wider text-purple-400">
@@ -1000,6 +1003,7 @@ function renderScriptStudioHtml({ sample, step = 1, framework = 'pas', signalHoo
         ` : ''}
 
         <form method="GET" action="/outreach/preview" class="space-y-3 pt-1" id="customizerForm">
+          ${authKey ? `<input type="hidden" name="key" value="${escapeHtml(authKey)}" />` : ''}
           <input type="hidden" name="step" value="${step}" id="inputStep" />
 
           <!-- Step 1 Framework Selector (PAS vs QVC) -->

@@ -1,6 +1,7 @@
 import express from 'express';
 import cors from 'cors';
 import path from 'path';
+import fs from 'fs';
 import { config } from './config.js';
 import { calcomRouter } from './routes/calcomWebhook.js';
 import { calendarFirstRouter } from './routes/calendarFirstBooking.js';
@@ -35,11 +36,19 @@ app.use(express.static('public'));
 
 // Live Agency & Demo Endpoints
 app.get('/agency', (req, res) => {
-  res.sendFile(path.join(process.cwd(), 'public', 'index.html'));
+  const filePath = path.join(process.cwd(), 'public', 'index.html');
+  if (fs.existsSync(filePath)) {
+    return res.sendFile(filePath);
+  }
+  return res.status(200).send('<!DOCTYPE html><html><head><title>SureGreet AI</title></head><body><h1>SureGreet AI Agency Portal</h1></body></html>');
 });
 
 app.get('/demo-medspa', (req, res) => {
-  res.sendFile(path.join(process.cwd(), 'public', 'demo-medspa.html'));
+  const filePath = path.join(process.cwd(), 'public', 'demo-medspa.html');
+  if (fs.existsSync(filePath)) {
+    return res.sendFile(filePath);
+  }
+  return res.status(200).send('<!DOCTYPE html><html><head><title>MedSpa Voice Demo</title></head><body><h1>SureGreet AI MedSpa Demo Simulator</h1></body></html>');
 });
 
 // Healthcheck
