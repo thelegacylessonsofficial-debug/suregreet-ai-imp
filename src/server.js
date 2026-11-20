@@ -136,6 +136,10 @@ app.use('/outreach', requireAdminAuth, outreachRouter);
 app.use('/scraper', requireAdminAuth, scraperRouter);
 app.use('/inbox', requireAdminAuth, inboxRouter);
 app.use(['/calls', '/dashboard/calls'], requireAdminAuth, callsRouter);
+app.get(['/bots', '/dashboard/bots'], requireAdminAuth, (req, res) => {
+  const key = req.query.key ? `?key=${encodeURIComponent(req.query.key)}` : '';
+  res.redirect(`/outreach/prospects${key}#bots`);
+});
 
 // Manual trigger for testing 24h reminders immediately
 app.all('/test/run-reminders', async (req, res) => {

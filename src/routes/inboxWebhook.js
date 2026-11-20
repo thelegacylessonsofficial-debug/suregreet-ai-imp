@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { processIncomingReply, classifyReply, generateLAARCResponse } from '../services/inboxTriageService.js';
 import { getProspects } from '../services/outreachService.js';
+import { renderSaasShell, getSvgIcon } from '../views/saasLayout.js';
 
 export const inboxRouter = Router();
 
@@ -66,41 +67,19 @@ inboxRouter.post('/test-triage', async (req, res) => {
  * Visual Inbox Triage & Closer Dashboard
  */
 inboxRouter.get('/dashboard', async (req, res) => {
-  const prospects = await getProspects({ limit: 10 });
-  const prospectOptions = prospects.map((p) => `<option value="${p.email}">${p.doctor_name || 'Doctor'} (${p.clinic_name || 'Clinic'}) - ${p.email}</option>`).join('\n');
+  const authKey = req.query.key || '';
+  const prospects = await getProspects({ limit: 15 });
+  const prospectOptions = prospects
+    .map((p) => `<option value="${p.email}">${p.doctor_name || 'Doctor'} (${p.clinic_name || 'Clinic'}) - ${p.email}</option>`)
+    .join('\n');
 
-  res.setHeader('Content-Type', 'text/html; charset=utf-8');
-  res.send(`<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <title>SureGreet AI • Inbox Triage & Booking Closer</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <script src="https://cdn.tailwindcss.com"></script>
-</head>
-<body class="bg-gray-950 text-gray-100 min-h-screen antialiased font-sans">
-  <!-- Nav Header -->
-  <header class="border-b border-gray-800 bg-gray-900/80 backdrop-blur-md px-6 py-4 flex items-center justify-between">
-    <div class="flex items-center space-x-3">
-      <div class="w-9 h-9 rounded-xl bg-emerald-500 text-black font-extrabold flex items-center justify-center text-lg">⚡</div>
-      <div>
-        <h1 class="text-base font-bold text-white flex items-center gap-2">SureGreet AI <span class="text-xs px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">Pillar 5: Inbox Triage</span></h1>
-        <p class="text-[11px] text-gray-400">Autonomous Sentiment Classification & LAARC Objection Closer</p>
-      </div>
-    </div>
-    <div class="flex items-center gap-2 text-xs font-mono">
-      <a href="/outreach/prospects" class="px-3 py-1.5 rounded-lg bg-gray-800 hover:bg-gray-700 text-gray-300">📊 Pipeline CRM</a>
-      <a href="/scraper/dashboard" class="px-3 py-1.5 rounded-lg bg-gray-800 hover:bg-gray-700 text-gray-300">⚡ Scraper Studio</a>
-    </div>
-  </header>
-
-  <main class="max-w-5xl mx-auto px-6 py-8 space-y-8">
+  const bodyContent = `
     <!-- Pillar Overview Banner -->
-    <div class="p-6 rounded-2xl bg-gray-900 border border-gray-800 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+    <div class="p-6 rounded-2xl bg-[var(--bg-card)] border border-[var(--border-subtle)] flex flex-col md:flex-row items-start md:items-center justify-between gap-4 shadow-xl">
       <div>
-        <div class="text-xs font-mono text-emerald-400 uppercase tracking-wider font-semibold">Speed Wins Deals</div>
-        <h2 class="text-xl font-bold text-white mt-1">Autonomous 4-Bucket Reply Triage Engine</h2>
-        <p class="text-xs text-gray-400 mt-1 max-w-2xl">
+        <div class="text-xs font-mono text-amber-400 uppercase tracking-wider font-semibold">Speed Wins Deals</div>
+        <h2 class="text-xl font-bold text-[var(--text-primary)] mt-1">Autonomous 4-Bucket Reply Triage Engine</h2>
+        <p class="text-xs text-[var(--text-secondary)] mt-1 max-w-2xl">
           Classifies incoming doctor emails into <strong>POSITIVE_DEMO_REQUEST</strong>, <strong>OBJECTION_OR_QUESTION</strong>, <strong>NOT_INTERESTED</strong>, and <strong>OUT_OF_OFFICE</strong>. Freezes sequences in Supabase and delivers 1-click LAARC responses directly to Telegram.
         </p>
       </div>
@@ -112,120 +91,138 @@ inboxRouter.get('/dashboard', async (req, res) => {
     <!-- Interactive Simulator -->
     <div class="grid md:grid-cols-2 gap-6">
       <!-- Input Card -->
-      <div class="p-6 rounded-2xl bg-gray-900 border border-gray-800 space-y-4">
-        <h3 class="text-sm font-bold text-white uppercase tracking-wider font-mono flex items-center gap-2">
-          <span>📨 Test Incoming Reply Simulation</span>
+      <div class="p-6 rounded-2xl bg-[var(--bg-card)] border border-[var(--border-subtle)] space-y-4 shadow-xl">
+        <h3 class="text-sm font-bold text-[var(--text-primary)] uppercase tracking-wider font-mono flex items-center gap-2">
+          <span>Test Incoming Reply Simulation</span>
         </h3>
 
         <div class="space-y-1">
-          <label class="text-xs font-mono text-gray-400">Select Test Prospect</label>
-          <select id="simEmail" class="w-full bg-gray-950 border border-gray-800 rounded-xl px-3.5 py-2.5 text-xs text-white focus:outline-none focus:border-emerald-500">
+          <label class="text-xs font-mono text-[var(--text-muted)]">Select Test Prospect</label>
+          <select id="simEmail" class="w-full bg-[var(--bg-surface)] border border-[var(--border-subtle)] rounded-xl px-3.5 py-2.5 text-xs text-[var(--text-primary)] focus:outline-none focus:border-amber-500">
             ${prospectOptions}
           </select>
         </div>
 
         <div class="space-y-1">
-          <label class="text-xs font-mono text-gray-400">Incoming Reply Text</label>
-          <textarea id="simText" rows="4" placeholder="e.g., Yeah sure, send the walkthrough over or how much is this per month?" class="w-full bg-gray-950 border border-gray-800 rounded-xl p-3 text-xs text-white focus:outline-none focus:border-emerald-500"></textarea>
+          <label class="text-xs font-mono text-[var(--text-muted)]">Incoming Reply Text</label>
+          <textarea id="simText" rows="4" placeholder="e.g., Yeah sure, send the walkthrough over or how much is this per month?" class="w-full bg-[var(--bg-surface)] border border-[var(--border-subtle)] rounded-xl p-3 text-xs text-[var(--text-primary)] focus:outline-none focus:border-amber-500"></textarea>
         </div>
 
         <!-- 1-Click Quick Presets -->
         <div class="space-y-1.5">
-          <div class="text-[11px] font-mono text-gray-500">Quick Test Presets:</div>
+          <div class="text-[11px] font-mono text-[var(--text-muted)]">Quick Test Presets:</div>
           <div class="flex flex-wrap gap-1.5 text-[11px] font-mono">
-            <button type="button" onclick="loadPreset('positive')" class="px-2.5 py-1 rounded bg-gray-800 hover:bg-emerald-950/60 hover:text-emerald-400 transition-colors">🔥 Demo Request</button>
-            <button type="button" onclick="loadPreset('price')" class="px-2.5 py-1 rounded bg-gray-800 hover:bg-emerald-950/60 hover:text-emerald-400 transition-colors">💰 Price Question</button>
-            <button type="button" onclick="loadPreset('staff')" class="px-2.5 py-1 rounded bg-gray-800 hover:bg-emerald-950/60 hover:text-emerald-400 transition-colors">👥 Have Staff</button>
-            <button type="button" onclick="loadPreset('unsub')" class="px-2.5 py-1 rounded bg-gray-800 hover:bg-red-950/60 hover:text-red-400 transition-colors">🚫 Unsubscribe</button>
+            <button type="button" onclick="loadPreset('positive')" class="px-2.5 py-1 rounded-lg bg-[var(--bg-surface)] hover:bg-[var(--bg-hover)] text-emerald-400 border border-[var(--border-subtle)] transition">Demo Request</button>
+            <button type="button" onclick="loadPreset('price')" class="px-2.5 py-1 rounded-lg bg-[var(--bg-surface)] hover:bg-[var(--bg-hover)] text-amber-400 border border-[var(--border-subtle)] transition">Price Question</button>
+            <button type="button" onclick="loadPreset('staff')" class="px-2.5 py-1 rounded-lg bg-[var(--bg-surface)] hover:bg-[var(--bg-hover)] text-cyan-400 border border-[var(--border-subtle)] transition">Have Staff</button>
+            <button type="button" onclick="loadPreset('unsub')" class="px-2.5 py-1 rounded-lg bg-[var(--bg-surface)] hover:bg-[var(--bg-hover)] text-rose-400 border border-[var(--border-subtle)] transition">Unsubscribe</button>
           </div>
         </div>
 
-        <button id="btnSimulate" onclick="runSimulation()" class="w-full py-3 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-black font-bold text-xs transition-colors flex items-center justify-center gap-2 cursor-pointer">
-          <span>⚡ Process Reply Through Triage</span>
+        <button id="btnSimulate" onclick="runSimulation()" class="w-full py-3 rounded-xl bg-amber-500 hover:opacity-90 text-black font-bold text-xs transition flex items-center justify-center gap-2 shadow-md shadow-amber-500/15">
+          ${getSvgIcon('bolt', 'w-4 h-4')}
+          <span>Process Reply Through Triage</span>
         </button>
       </div>
 
       <!-- Output Card -->
-      <div class="p-6 rounded-2xl bg-gray-900 border border-gray-800 space-y-4">
-        <h3 class="text-sm font-bold text-white uppercase tracking-wider font-mono">
-          <span>🎯 Execution Result & LAARC Output</span>
+      <div class="p-6 rounded-2xl bg-[var(--bg-card)] border border-[var(--border-subtle)] space-y-4 shadow-xl">
+        <h3 class="text-sm font-bold text-[var(--text-primary)] uppercase tracking-wider font-mono">
+          <span>Execution Result & LAARC Output</span>
         </h3>
 
-        <div id="resultBox" class="p-4 rounded-xl bg-gray-950 border border-gray-800 min-h-[220px] text-xs font-mono text-gray-400 flex items-center justify-center text-center">
+        <div id="resultBox" class="p-4 rounded-xl bg-[var(--bg-surface)] border border-[var(--border-subtle)] min-h-[220px] text-xs font-mono text-[var(--text-muted)] flex items-center justify-center text-center">
           Select a preset or enter text and click "Process Reply Through Triage" to see the sentiment classification and actions taken.
         </div>
       </div>
     </div>
-  </main>
+  `;
 
-  <script>
-    const presets = {
-      positive: "Yeah sure, send over that test line. Would love to hear how it handles our after-hours calls.",
-      price: "How much does this cost per month? Just email me the pricing.",
-      staff: "We already have front desk receptionists who answer our phones during the day.",
-      unsub: "Please remove me from your email list, not interested."
-    };
+  const extraScripts = `
+    <script>
+      const presets = {
+        positive: "Yeah sure, send over that test line. Would love to hear how it handles our after-hours calls.",
+        price: "How much does this cost per month? Just email me the pricing.",
+        staff: "We already have front desk receptionists who answer our phones during the day.",
+        unsub: "Please remove me from your email list, not interested."
+      };
 
-    function loadPreset(key) {
-      document.getElementById('simText').value = presets[key] || '';
-    }
-
-    async function runSimulation() {
-      const email = document.getElementById('simEmail').value;
-      const text = document.getElementById('simText').value.trim();
-      if (!text) return alert('Please enter or select reply text to simulate.');
-
-      const btn = document.getElementById('btnSimulate');
-      const box = document.getElementById('resultBox');
-
-      btn.disabled = true;
-      btn.innerText = 'Analyzing & Executing...';
-
-      try {
-        const res = await fetch('/inbox/test-triage', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ email, text })
-        });
-        const data = await res.json();
-
-        btn.disabled = false;
-        btn.innerText = '⚡ Process Reply Through Triage';
-
-        if (data.status === 'success') {
-          const badgeColor = data.classification.bucket === 'POSITIVE_DEMO_REQUEST'
-            ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/40'
-            : data.classification.bucket === 'NOT_INTERESTED'
-            ? 'bg-red-500/20 text-red-400 border-red-500/40'
-            : 'bg-amber-500/20 text-amber-400 border-amber-500/40';
-
-          box.className = 'p-4 rounded-xl bg-gray-950 border border-gray-800 text-xs text-left space-y-3';
-          box.innerHTML = \`
-            <div class="flex items-center justify-between border-b border-gray-800 pb-2">
-              <span class="text-gray-400 font-mono">Bucket:</span>
-              <span class="px-2.5 py-0.5 rounded-full text-xs font-bold border \${badgeColor}">\${data.classification.bucket} (\${data.classification.subType})</span>
-            </div>
-            <div>
-              <div class="text-[11px] text-gray-500 font-mono uppercase">Automated Actions Executed:</div>
-              <ul class="list-disc list-inside text-gray-300 mt-1 space-y-0.5">
-                \${data.actionsTaken.map(a => \`<li>\${a}</li>\`).join('')}
-              </ul>
-            </div>
-            <div class="border-t border-gray-800 pt-2">
-              <div class="text-[11px] text-emerald-400 font-mono uppercase font-bold">Suggested LAARC Reply (/harvey-sales):</div>
-              <pre class="mt-1 p-2.5 rounded bg-gray-900 border border-gray-800 font-mono text-[11px] text-gray-200 whitespace-pre-wrap leading-relaxed">\${data.suggestedReply}</pre>
-            </div>
-          \`;
-        } else {
-          box.innerHTML = '<span class="text-red-400">Error: ' + (data.message || 'Simulation failed') + '</span>';
-        }
-      } catch (err) {
-        btn.disabled = false;
-        btn.innerText = '⚡ Process Reply Through Triage';
-        box.innerHTML = '<span class="text-red-400">Error: ' + err.message + '</span>';
+      function loadPreset(key) {
+        document.getElementById('simText').value = presets[key] || '';
       }
-    }
-  </script>
-</body>
-</html>`);
+
+      async function runSimulation() {
+        const email = document.getElementById('simEmail').value;
+        const text = document.getElementById('simText').value.trim();
+        if (!text) return alert('Please enter or select reply text to simulate.');
+
+        const btn = document.getElementById('btnSimulate');
+        const box = document.getElementById('resultBox');
+
+        btn.disabled = true;
+        btn.innerText = 'Analyzing & Executing...';
+
+        try {
+          const res = await fetch(getAuthUrl('/inbox/test-triage'), {
+            method: 'POST',
+            credentials: 'include',
+            headers: getAuthHeaders(),
+            body: JSON.stringify({ email, text })
+          });
+          const data = await res.json();
+
+          btn.disabled = false;
+          btn.innerHTML = '${getSvgIcon('bolt', 'w-4 h-4')}<span>Process Reply Through Triage</span>';
+
+          if (data.status === 'success') {
+            const badgeColor = data.classification.bucket === 'POSITIVE_DEMO_REQUEST'
+              ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/40'
+              : data.classification.bucket === 'NOT_INTERESTED'
+              ? 'bg-rose-500/20 text-rose-400 border-rose-500/40'
+              : 'bg-amber-500/20 text-amber-400 border-amber-500/40';
+
+            box.className = 'p-4 rounded-xl bg-[var(--bg-surface)] border border-[var(--border-subtle)] text-xs text-left space-y-3';
+            box.innerHTML = \`
+              <div class="flex items-center justify-between border-b border-[var(--border-subtle)] pb-2">
+                <span class="text-[var(--text-muted)] font-mono">Bucket:</span>
+                <span class="px-2.5 py-0.5 rounded-full text-xs font-bold border \${badgeColor}">\${data.classification.bucket} (\${data.classification.subType})</span>
+              </div>
+              <div>
+                <div class="text-[11px] text-[var(--text-muted)] font-mono uppercase">Automated Actions Executed:</div>
+                <ul class="list-disc list-inside text-[var(--text-secondary)] mt-1 space-y-0.5">
+                  \${data.actionsTaken.map(a => \`<li>\${a}</li>\`).join('')}
+                </ul>
+              </div>
+              <div class="border-t border-[var(--border-subtle)] pt-2">
+                <div class="text-[11px] text-[var(--accent-emerald)] font-mono uppercase font-bold">Suggested LAARC Reply (/harvey-sales):</div>
+                <pre class="mt-1 p-2.5 rounded-xl bg-[var(--bg-card)] border border-[var(--border-subtle)] font-mono text-[11px] text-[var(--text-primary)] whitespace-pre-wrap leading-relaxed">\${data.suggestedReply}</pre>
+              </div>
+            \`;
+            showToast('Triage Complete', data.classification.bucket, 'success');
+          } else {
+            box.innerHTML = '<span class="text-rose-400">Error: ' + (data.message || 'Simulation failed') + '</span>';
+            showToast('Triage Failed', data.message || 'Error', 'error');
+          }
+        } catch (err) {
+          btn.disabled = false;
+          btn.innerHTML = '${getSvgIcon('bolt', 'w-4 h-4')}<span>Process Reply Through Triage</span>';
+          box.innerHTML = '<span class="text-rose-400">Error: ' + err.message + '</span>';
+          showToast('Network Error', err.message, 'error');
+        }
+      }
+    </script>
+  `;
+
+  res.setHeader('Content-Type', 'text/html; charset=utf-8');
+  res.send(
+    renderSaasShell({
+      title: 'SureGreet AI — Inbox Triage & Booking Closer',
+      activeNav: 'inbox',
+      pageHeading: 'Inbox LAARC Closer & Sentiment Triage',
+      badgeText: 'Pillar 5 • Speed-to-Lead',
+      bodyContent,
+      extraScripts,
+      authKeyParam: authKey,
+    })
+  );
 });
