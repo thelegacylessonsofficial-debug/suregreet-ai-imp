@@ -38,7 +38,7 @@ const JUNK_EMAIL_DOMAINS = [
 /**
  * Fetches page HTML with standard browser headers and timeout
  */
-async function fetchHtml(url, timeoutMs = 6000) {
+async function fetchHtml(url, timeoutMs = 3000) {
   try {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), timeoutMs);
@@ -308,6 +308,7 @@ export async function scrapeClinicWebsite(inputUrl) {
     treatment: primaryTreatment,
     allTreatments: detectedTreatments,
     adSignals,
+    rawHtml: homepageHtml,
     scrapedAt: new Date().toISOString(),
   };
 }

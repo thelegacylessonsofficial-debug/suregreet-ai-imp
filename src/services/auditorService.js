@@ -58,9 +58,21 @@ export async function fetchJinaMarkdown(url, timeoutMs = 4000) {
 /**
  * Run diagnostic analysis on website content to extract high-leverage sales hooks
  */
-export async function runDigitalAudit({ url, niche = 'medspa', businessName, doctorName }) {
+export async function runDigitalAudit({ url, niche = 'medspa', businessName, doctorName, htmlContent }) {
   console.log(`[Auditor] Running diagnostic audit on ${url} (${niche})...`);
-  const markdown = await fetchJinaMarkdown(url);
+  let markdown = '';
+
+  if (htmlContent) {
+    // High-performance local text extraction from already-downloaded HTML (0ms network overhead)
+    markdown = htmlContent
+      .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, ' ')
+      .replace(/<style\b[^<]*(?:(?!<\/style>)<[^<]*)*<\/style>/gi, ' ')
+      .replace(/<[^>]+>/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+  } else {
+    markdown = await fetchJinaMarkdown(url, 2500);
+  }
 
   if (!markdown) {
     const isHvacFallback = niche === 'hvac';

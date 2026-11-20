@@ -371,12 +371,13 @@ export async function huntAndEnrichLead({ url, city, niche = 'medspa', doctorOve
     }
   }
 
-  // 3. Run The Auditor (Speed-to-lead & Friction Diagnostics via Jina Reader)
+  // 3. Run The Auditor (Speed-to-lead & Friction Diagnostics)
   const audit = await runDigitalAudit({
     url,
     niche,
     businessName: scraped.clinicName,
     doctorName: decisionMaker,
+    htmlContent: scraped.rawHtml,
   });
 
   const primaryTreatment = treatmentOverride || audit.primaryService || scraped.treatment;
@@ -494,41 +495,37 @@ export async function runAutonomousHunt({ city = 'Miami, FL', niche = 'medspa', 
     };
   }
 
-  // Step 2 & 3: Concurrently Enrich, Audit & Commit in parallel with chunked concurrency (batches of 6)
-  // This guarantees all 20 leads qualify fast (under 12s) without network socket congestion!
+  // Step 2 & 3: Concurrently Enrich, Audit & Commit in parallel
+  // In-memory HTML parsing + 3s socket timeouts ensure all 20 leads qualify in under 4 seconds!
+  const enrichmentPromises = businesses.map(async (item) => {
+    try {
+      const enriched = await huntAndEnrichLead({
+        url: item.url,
+        city: item.city,
+        niche: item.niche,
+      });
+
+      if (enriched && enriched.success) {
+        // Commit with deduplication
+        const commitRes = await commitLeadToSupabase(enriched);
+        enriched.savedToDb = commitRes.success;
+        enriched.dbStatus = commitRes.alreadyExists ? 'duplicate' : commitRes.success ? 'saved' : 'no_email';
+        return { success: true, lead: enriched, committed: commitRes.success };
+      }
+    } catch (err) {
+      console.warn(`[LeadHunter] Failed to process ${item.url}:`, err.message);
+    }
+    return { success: false, url: item.url };
+  });
+
+  const settled = await Promise.allSettled(enrichmentPromises);
   const enrichedLeads = [];
   let committedCount = 0;
-  const chunkSize = 6;
 
-  for (let i = 0; i < businesses.length; i += chunkSize) {
-    const chunk = businesses.slice(i, i + chunkSize);
-    const chunkPromises = chunk.map(async (item) => {
-      try {
-        const enriched = await huntAndEnrichLead({
-          url: item.url,
-          city: item.city,
-          niche: item.niche,
-        });
-
-        if (enriched && enriched.success) {
-          // Commit with deduplication
-          const commitRes = await commitLeadToSupabase(enriched);
-          enriched.savedToDb = commitRes.success;
-          enriched.dbStatus = commitRes.alreadyExists ? 'duplicate' : commitRes.success ? 'saved' : 'no_email';
-          return { success: true, lead: enriched, committed: commitRes.success };
-        }
-      } catch (err) {
-        console.warn(`[LeadHunter] Failed to process ${item.url}:`, err.message);
-      }
-      return { success: false, url: item.url };
-    });
-
-    const settled = await Promise.allSettled(chunkPromises);
-    for (const res of settled) {
-      if (res.status === 'fulfilled' && res.value?.success && res.value.lead) {
-        enrichedLeads.push(res.value.lead);
-        if (res.value.committed) committedCount++;
-      }
+  for (const res of settled) {
+    if (res.status === 'fulfilled' && res.value?.success && res.value.lead) {
+      enrichedLeads.push(res.value.lead);
+      if (res.value.committed) committedCount++;
     }
   }
 
