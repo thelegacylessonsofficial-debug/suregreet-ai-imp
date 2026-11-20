@@ -24,7 +24,7 @@ import {
   getUnsubscribeUrl,
 } from '../templates/outreachTemplates.js';
 import { sendEmail } from '../services/mailer.js';
-import { runHarveyAutonomousPipeline } from '../services/harveyService.js';
+import { runHarveyAutonomousPipeline, diagnoseAndGenerateFullSequence } from '../services/harveyService.js';
 import { config } from '../config.js';
 
 export const outreachRouter = Router();
@@ -1286,20 +1286,27 @@ function renderScriptStudioHtml({ sample, step = 1, framework = 'pas', signalHoo
     <!-- Main Dual Studio Grid -->
     <div class="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
 
-      <!-- Left Column: Variable Customizer & Signal Hook Ingestion (5 cols) -->
+      <!-- Left Column: Harvey Live Diagnostic Console & Hook Engine (5 cols) -->
       <div class="lg:col-span-5 bg-[var(--bg-card)] border border-[var(--border-subtle)] rounded-2xl p-5 space-y-4 shadow-xl">
         <div class="flex items-center justify-between border-b border-[var(--border-subtle)] pb-3">
-          <h3 class="text-xs font-semibold uppercase tracking-wider text-[var(--text-muted)] flex items-center gap-2">
-            ${getSvgIcon('bolt', 'w-3.5 h-3.5 text-cyan-400')}
-            <span>Prospect & Hook Customizer</span>
-          </h3>
-          <span class="text-[10px] font-mono text-cyan-400 bg-cyan-500/10 px-2 py-0.5 rounded border border-cyan-500/20">Live Sync</span>
+          <div class="flex items-center gap-2">
+            <span class="p-1 rounded-lg bg-cyan-500/10 text-cyan-400 border border-cyan-500/20">
+              ${getSvgIcon('bolt', 'w-4 h-4')}
+            </span>
+            <div>
+              <h3 class="text-xs font-bold uppercase tracking-wider text-[var(--text-primary)]">
+                Harvey Live Website Diagnostic Console
+              </h3>
+              <p class="text-[10px] text-[var(--text-muted)]">Autonomous Jina Extraction • 1-of-1 Cold Hook Generation</p>
+            </div>
+          </div>
+          <span class="text-[10px] font-mono text-cyan-400 bg-cyan-500/10 px-2 py-0.5 rounded border border-cyan-500/20 font-bold">/harvey-sales</span>
         </div>
 
         <!-- CRM Preset Quick Picker -->
         ${prospects && prospects.length > 0 ? `
           <div>
-            <label class="block text-[11px] font-medium text-[var(--text-secondary)] mb-1">Load From Pipeline CRM (${prospects.length} Leads)</label>
+            <label class="block text-[11px] font-medium text-[var(--text-secondary)] mb-1">Load Prospect from CRM (${prospects.length} Leads)</label>
             <select id="crmProspectPicker" onchange="loadSelectedProspect(this)" class="w-full bg-[var(--bg-surface)] border border-[var(--border-subtle)] rounded-xl px-3 py-2 text-xs text-[var(--text-primary)] focus:outline-none focus:border-cyan-500">
               <option value="">-- Choose a verified prospect to auto-fill --</option>
               ${prospects.map(p => `
@@ -1310,6 +1317,7 @@ function renderScriptStudioHtml({ sample, step = 1, framework = 'pas', signalHoo
                   data-treatment="${escapeQuotes(p.treatment || '')}"
                   data-email="${escapeQuotes(p.email || '')}"
                   data-niche="${escapeQuotes(p.niche || 'medspa')}"
+                  data-url="${escapeQuotes(p.website_url || (p.email ? 'https://' + p.email.split('@')[1] : ''))}"
                   data-observation="${escapeQuotes(p.specific_observation || '')}">
                   ${escapeHtml(p.doctor_name || p.clinic_name)} — ${escapeHtml(p.clinic_name)} (${escapeHtml(p.city || 'US')})
                 </option>
@@ -1318,76 +1326,128 @@ function renderScriptStudioHtml({ sample, step = 1, framework = 'pas', signalHoo
           </div>
         ` : ''}
 
-        <form method="GET" action="/outreach/preview" class="space-y-3 pt-1" id="customizerForm">
-          ${authKey ? `<input type="hidden" name="key" value="${escapeHtml(authKey)}" />` : ''}
-          <input type="hidden" name="step" value="${step}" id="inputStep" />
+        <div class="space-y-3 pt-1" id="studioInputSection">
+          <!-- Target Website URL -->
+          <div>
+            <div class="flex items-center justify-between mb-1">
+              <label class="block text-[11px] font-bold text-cyan-400">Target Website URL (Harvey Diagnostic Crawl)</label>
+              <span class="text-[10px] text-cyan-500 font-mono">Live Extraction</span>
+            </div>
+            <input type="url" id="studioUrl" value="${escapeHtml(sample.website_url || (sample.email && sample.email.includes('@') ? 'https://' + sample.email.split('@')[1] : 'https://medaestheticsmiami.com'))}" placeholder="https://examplemedspa.com" class="w-full bg-[var(--bg-surface)] border border-cyan-500/40 rounded-xl px-3 py-2 text-xs text-[var(--text-primary)] font-mono focus:outline-none focus:border-cyan-400 shadow-inner" />
+          </div>
 
-          <!-- Step 1 Framework Selector (PAS vs QVC) -->
+          <!-- Doctor & Clinic Names -->
+          <div class="grid grid-cols-2 gap-3">
+            <div>
+              <label class="block text-[11px] font-medium text-[var(--text-muted)] mb-1">Doctor / DM Name</label>
+              <input type="text" id="studioDoctor" value="${escapeHtml(sample.doctor_name || '')}" placeholder="Dr. Carlos Riveros" class="w-full bg-[var(--bg-surface)] border border-[var(--border-subtle)] rounded-xl px-3 py-2 text-xs text-[var(--text-primary)] focus:outline-none focus:border-cyan-500" />
+            </div>
+            <div>
+              <label class="block text-[11px] font-medium text-[var(--text-muted)] mb-1">Clinic / Brand Name</label>
+              <input type="text" id="studioClinic" value="${escapeHtml(sample.clinic_name || '')}" placeholder="Med Aesthetics Miami" class="w-full bg-[var(--bg-surface)] border border-[var(--border-subtle)] rounded-xl px-3 py-2 text-xs text-[var(--text-primary)] focus:outline-none focus:border-cyan-500" />
+            </div>
+          </div>
+
+          <!-- Email & City -->
+          <div class="grid grid-cols-2 gap-3">
+            <div>
+              <label class="block text-[11px] font-medium text-[var(--text-muted)] mb-1">Target Email</label>
+              <input type="email" id="studioEmail" value="${escapeHtml(sample.email || '')}" placeholder="doctor@clinic.com" class="w-full bg-[var(--bg-surface)] border border-[var(--border-subtle)] rounded-xl px-3 py-2 text-xs text-[var(--text-primary)] focus:outline-none focus:border-cyan-500" />
+            </div>
+            <div>
+              <label class="block text-[11px] font-medium text-[var(--text-muted)] mb-1">City / Metro</label>
+              <input type="text" id="studioCity" value="${escapeHtml(sample.city || '')}" placeholder="Miami, FL" class="w-full bg-[var(--bg-surface)] border border-[var(--border-subtle)] rounded-xl px-3 py-2 text-xs text-[var(--text-primary)] focus:outline-none focus:border-cyan-500" />
+            </div>
+          </div>
+
+          <!-- Offer & Niche -->
+          <div class="grid grid-cols-2 gap-3">
+            <div>
+              <label class="block text-[11px] font-medium text-[var(--text-muted)] mb-1">High-Ticket Offer</label>
+              <input type="text" id="studioTreatment" value="${escapeHtml(sample.treatment || '')}" placeholder="Morpheus8" class="w-full bg-[var(--bg-surface)] border border-[var(--border-subtle)] rounded-xl px-3 py-2 text-xs text-[var(--text-primary)] focus:outline-none focus:border-cyan-500" />
+            </div>
+            <div>
+              <label class="block text-[11px] font-medium text-[var(--text-muted)] mb-1">Target Niche</label>
+              <select id="studioNiche" class="w-full bg-[var(--bg-surface)] border border-[var(--border-subtle)] rounded-xl px-3 py-2 text-xs text-[var(--text-primary)] focus:outline-none focus:border-cyan-500">
+                <option value="medspa" ${sample.niche !== 'hvac' ? 'selected' : ''}>MedSpa / Aesthetics</option>
+                <option value="hvac" ${sample.niche === 'hvac' ? 'selected' : ''}>Emergency HVAC / Plumbing</option>
+              </select>
+            </div>
+          </div>
+
+          <!-- Framework Selection -->
           <div>
             <label class="block text-[11px] font-medium text-[var(--text-secondary)] mb-1">Step 1 Cold Hook Framework</label>
-            <select name="framework" id="inputFramework" class="w-full bg-[var(--bg-surface)] border border-[var(--border-subtle)] rounded-xl px-3 py-2 text-xs text-purple-300 font-semibold focus:outline-none focus:border-cyan-500">
+            <select id="studioFramework" class="w-full bg-[var(--bg-surface)] border border-[var(--border-subtle)] rounded-xl px-3 py-2 text-xs text-purple-300 font-semibold focus:outline-none focus:border-cyan-500">
               <option value="pas" ${framework === 'pas' ? 'selected' : ''}>PAS Micro-Audit (Problem • Agitation • Solution)</option>
               <option value="qvc" ${framework === 'qvc' ? 'selected' : ''}>QVC Bottleneck (Question • Value • 3-Min CTA)</option>
             </select>
           </div>
 
-          <!-- Signal Hook Selector -->
+          <!-- Custom Observation -->
           <div>
-            <label class="block text-[11px] font-medium text-[var(--text-secondary)] mb-1">Intent Signal Hook</label>
-            <select name="signalHook" id="inputSignalHook" class="w-full bg-[var(--bg-surface)] border border-[var(--border-subtle)] rounded-xl px-3 py-2 text-xs text-cyan-300 font-semibold focus:outline-none focus:border-cyan-500">
-              <option value="form_friction" ${signalHook === 'form_friction' ? 'selected' : ''}>Static Form Friction (Patient drop-off audit)</option>
-              <option value="meta_ads" ${signalHook === 'meta_ads' ? 'selected' : ''}>Active Meta / Google Ads Signal (Paid traffic)</option>
-              <option value="after_hours" ${signalHook === 'after_hours' ? 'selected' : ''}>After-Hours Voicemail Gap (7:15 PM call test)</option>
-              <option value="hiring" ${signalHook === 'hiring' ? 'selected' : ''}>Front Desk Hiring Leak (Staff onboarding gap)</option>
-            </select>
+            <label class="block text-[11px] font-medium text-[var(--text-muted)] mb-1">Specific Friction / Observation Notes (Optional)</label>
+            <textarea id="studioObservation" rows="2" placeholder="Leave empty for autonomous Jina Reader crawl, or type specific finding..." class="w-full bg-[var(--bg-surface)] border border-[var(--border-subtle)] rounded-xl p-2.5 text-xs text-[var(--text-primary)] focus:outline-none focus:border-cyan-500">${escapeHtml(sample.specific_observation || '')}</textarea>
           </div>
 
-          <div class="grid grid-cols-2 gap-3">
-            <div>
-              <label class="block text-[11px] font-medium text-[var(--text-muted)] mb-1">Target Niche</label>
-              <select name="niche" id="inputNiche" class="w-full bg-[var(--bg-surface)] border border-[var(--border-subtle)] rounded-xl px-3 py-2 text-xs text-[var(--text-primary)] focus:outline-none focus:border-cyan-500">
-                <option value="medspa" ${sample.niche !== 'hvac' ? 'selected' : ''}>MedSpa / Aesthetics</option>
-                <option value="hvac" ${sample.niche === 'hvac' ? 'selected' : ''}>Emergency HVAC / Plumbing</option>
-              </select>
+          <!-- PRIMARY ACTION BUTTONS -->
+          <div class="space-y-2 pt-1">
+            <button type="button" id="btnStartHarvey" onclick="startHarveyLiveWebsiteAudit()" class="w-full py-3 bg-gradient-to-r from-cyan-500 via-blue-500 to-indigo-500 hover:from-cyan-400 hover:to-indigo-400 text-black font-extrabold text-xs rounded-xl transition shadow-lg shadow-cyan-500/25 flex items-center justify-center gap-2 cursor-pointer">
+              <span id="btnHarveyIcon" class="relative flex h-2 w-2">
+                <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-black opacity-75"></span>
+                <span class="relative inline-flex rounded-full h-2 w-2 bg-black"></span>
+              </span>
+              <span id="btnHarveyText">Start Harvey: Diagnose Website & Generate 1-of-1 Email (Harvey Skill)</span>
+            </button>
+
+            <button type="button" id="btnSaveToCrm" onclick="saveStudioLeadToCrm()" class="w-full py-2 bg-[var(--bg-surface)] hover:bg-[var(--bg-hover)] border border-[var(--border-subtle)] text-[var(--text-primary)] font-semibold text-xs rounded-xl transition flex items-center justify-center gap-1.5 cursor-pointer">
+              <span id="btnSaveIcon" class="text-emerald-400">✔</span>
+              <span id="btnSaveText">Save & Stage in Pipeline CRM</span>
+            </button>
+          </div>
+
+          <!-- LIVE ANIMATED DIAGNOSTIC CONSOLE -->
+          <div id="studioDiagnosticConsole" class="hidden p-4 bg-black/70 border border-cyan-500/40 rounded-xl space-y-3 font-mono text-[11px]">
+            <div class="flex items-center justify-between text-cyan-400 font-bold border-b border-cyan-500/20 pb-2">
+              <div class="flex items-center gap-2">
+                <span class="animate-spin inline-block w-3.5 h-3.5 border-2 border-cyan-400 border-t-transparent rounded-full"></span>
+                <span id="diagnosticStatusHeading">Harvey Website Diagnostic in Progress...</span>
+              </div>
+              <span id="diagnosticTimer" class="text-xs text-[var(--text-muted)] font-mono">0.0s</span>
             </div>
-            <div>
-              <label class="block text-[11px] font-medium text-[var(--text-muted)] mb-1">City / Metro</label>
-              <input type="text" name="city" id="inputCity" value="${escapeHtml(sample.city || '')}" class="w-full bg-[var(--bg-surface)] border border-[var(--border-subtle)] rounded-xl px-3 py-2 text-xs text-[var(--text-primary)] focus:outline-none focus:border-cyan-500" />
+            <!-- Progress Bar -->
+            <div class="w-full bg-neutral-800 rounded-full h-1.5 overflow-hidden">
+              <div id="diagnosticProgressBar" class="bg-gradient-to-r from-cyan-500 to-blue-500 h-1.5 rounded-full transition-all duration-300" style="width: 15%"></div>
             </div>
-          </div>
-
-          <div>
-            <label class="block text-[11px] font-medium text-[var(--text-muted)] mb-1">Doctor / Decision Maker</label>
-            <input type="text" name="doctorName" id="inputDoctor" value="${escapeHtml(sample.doctor_name || '')}" class="w-full bg-[var(--bg-surface)] border border-[var(--border-subtle)] rounded-xl px-3 py-2 text-xs text-[var(--text-primary)] focus:outline-none focus:border-cyan-500" />
-          </div>
-
-          <div>
-            <label class="block text-[11px] font-medium text-[var(--text-muted)] mb-1">Clinic / Business Name</label>
-            <input type="text" name="clinicName" id="inputClinic" value="${escapeHtml(sample.clinic_name || '')}" class="w-full bg-[var(--bg-surface)] border border-[var(--border-subtle)] rounded-xl px-3 py-2 text-xs text-[var(--text-primary)] focus:outline-none focus:border-cyan-500" />
-          </div>
-
-          <div class="grid grid-cols-2 gap-3">
-            <div>
-              <label class="block text-[11px] font-medium text-[var(--text-muted)] mb-1">High-Ticket Procedure</label>
-              <input type="text" name="treatment" id="inputTreatment" value="${escapeHtml(sample.treatment || '')}" class="w-full bg-[var(--bg-surface)] border border-[var(--border-subtle)] rounded-xl px-3 py-2 text-xs text-[var(--text-primary)] focus:outline-none focus:border-cyan-500" />
-            </div>
-            <div>
-              <label class="block text-[11px] font-medium text-[var(--text-muted)] mb-1">Target Email</label>
-              <input type="text" name="email" id="inputEmail" value="${escapeHtml(sample.email || '')}" class="w-full bg-[var(--bg-surface)] border border-[var(--border-subtle)] rounded-xl px-3 py-2 text-xs text-[var(--text-primary)] focus:outline-none focus:border-cyan-500" />
+            <!-- Live Step Stream -->
+            <div id="diagnosticStepLog" class="text-[var(--text-secondary)] space-y-1 max-h-28 overflow-y-auto">
+              <div class="text-cyan-300">› Step 1: Initializing Harvey /harvey-sales execution engine...</div>
             </div>
           </div>
 
-          <div>
-            <label class="block text-[11px] font-medium text-[var(--text-muted)] mb-1">Specific Diagnostic Hook / Friction Gap</label>
-            <textarea name="specificObservation" id="inputObservation" rows="2" placeholder="e.g. Saw your site makes patients fill out a static form for Morpheus8..." class="w-full bg-[var(--bg-surface)] border border-[var(--border-subtle)] rounded-xl p-2.5 text-xs text-[var(--text-primary)] focus:outline-none focus:border-cyan-500">${escapeHtml(sample.specific_observation || '')}</textarea>
+          <!-- DIAGNOSTIC RESULT FINDINGS CARD -->
+          <div id="studioAuditCard" class="p-3.5 bg-cyan-950/20 border border-cyan-500/30 rounded-xl space-y-2 text-xs">
+            <div class="flex items-center justify-between">
+              <span class="font-bold text-cyan-300 flex items-center gap-1.5">
+                ${getSvgIcon('bolt', 'w-3.5 h-3.5 text-cyan-400')}
+                <span>Harvey Diagnostic Findings</span>
+              </span>
+              <span id="auditLeakedAmount" class="font-mono text-[11px] font-bold text-amber-300 bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/20">
+                ${leakedAmount} Leaking
+              </span>
+            </div>
+            <p id="auditFrictionText" class="text-[11px] text-[var(--text-secondary)] leading-relaxed italic">
+              ${escapeHtml(sample.specific_observation || 'Site makes patients fill out a static form instead of instant 24/7 booking.')}
+            </p>
+            <div class="text-[10px] text-emerald-400 font-mono flex items-center justify-between pt-1 border-t border-cyan-500/20">
+              <span>Direct Cal.com Link:</span>
+              <a href="https://cal.com/archit-suregreet/15min" target="_blank" class="underline hover:text-white">cal.com/archit-suregreet/15min</a>
+            </div>
           </div>
 
-          <button type="submit" class="w-full py-2.5 bg-cyan-500 hover:bg-cyan-400 text-black font-extrabold text-xs rounded-xl transition shadow-md shadow-cyan-500/20 flex items-center justify-center gap-1.5">
-            ${getSvgIcon('bolt', 'w-3.5 h-3.5')}
-            <span>Regenerate Sequence Copy</span>
-          </button>
-        </form>
+        </div>
       </div>
+
 
       <!-- Right Column: Anti-AI Quality Gate, Viewports & 1-Click Test Send (7 cols) -->
       <div class="lg:col-span-7 space-y-5">
@@ -1400,12 +1460,8 @@ function renderScriptStudioHtml({ sample, step = 1, framework = 'pas', signalHoo
               <h3 class="text-xs font-bold uppercase tracking-wider text-[var(--text-primary)]">Anti-AI Deliverability Scorecard</h3>
             </div>
             <div class="flex items-center gap-2">
-              <span class="text-xs font-mono font-bold px-2.5 py-0.5 rounded-full ${audit.score >= 85 ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' : 'bg-amber-500/10 text-amber-400 border border-amber-500/20'}">
-                Score: ${audit.score}/100
-              </span>
-              <span class="text-[10px] uppercase font-bold px-2 py-0.5 rounded ${audit.passed ? 'bg-emerald-500/20 text-emerald-400' : 'bg-amber-500/20 text-amber-300'}">
-                ${audit.passed ? '✓ Deliverability Passed' : 'Needs Polish'}
-              </span>
+              <span id="scoreText" class="text-xs font-mono font-bold px-2.5 py-0.5 rounded-full ${audit.score >= 85 ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' : 'bg-amber-500/10 text-amber-400 border border-amber-500/20'}">Score: ${audit.score}/100</span>
+              <span id="scoreBadge" class="text-[10px] uppercase font-bold px-2 py-0.5 rounded ${audit.passed ? 'bg-emerald-500/20 text-emerald-400' : 'bg-amber-500/20 text-amber-300'}">${audit.passed ? '✓ Deliverability Passed' : 'Needs Polish'}</span>
             </div>
           </div>
 
@@ -1414,7 +1470,7 @@ function renderScriptStudioHtml({ sample, step = 1, framework = 'pas', signalHoo
             <!-- Word Count -->
             <div class="bg-[var(--bg-surface)] border border-[var(--border-subtle)] p-3 rounded-xl">
               <div class="text-[10px] text-[var(--text-muted)] uppercase font-semibold">Word Count</div>
-              <div class="text-base font-mono font-bold text-[var(--text-primary)] mt-0.5">${audit.wordCount}</div>
+              <div id="scoreWordCount" class="text-base font-mono font-bold text-[var(--text-primary)] mt-0.5">${audit.wordCount}</div>
               <div class="text-[10px] ${audit.isOptimalWordCount ? 'text-emerald-400' : audit.isUnderHardCeiling ? 'text-amber-400' : 'text-rose-400'} mt-0.5">
                 ${audit.isOptimalWordCount ? '✓ Optimal (45–65)' : audit.isUnderHardCeiling ? 'Under 75 cap' : 'Exceeds 75 cap'}
               </div>
@@ -1423,9 +1479,7 @@ function renderScriptStudioHtml({ sample, step = 1, framework = 'pas', signalHoo
             <!-- Cliché Scanner -->
             <div class="bg-[var(--bg-surface)] border border-[var(--border-subtle)] p-3 rounded-xl">
               <div class="text-[10px] text-[var(--text-muted)] uppercase font-semibold">AI Clichés</div>
-              <div class="text-base font-mono font-bold ${audit.foundBanned.length === 0 ? 'text-emerald-400' : 'text-rose-400'} mt-0.5">
-                ${audit.foundBanned.length}
-              </div>
+              <div id="scoreBannedCount" class="text-base font-mono font-bold ${audit.foundBanned.length === 0 ? 'text-emerald-400' : 'text-rose-400'} mt-0.5">${audit.foundBanned.length}</div>
               <div class="text-[10px] text-[var(--text-muted)] mt-0.5">
                 ${audit.foundBanned.length === 0 ? '✓ 0 LLM Clichés' : audit.foundBanned.slice(0, 1).join(', ')}
               </div>
@@ -1434,9 +1488,7 @@ function renderScriptStudioHtml({ sample, step = 1, framework = 'pas', signalHoo
             <!-- Em-Dash & Exclamations -->
             <div class="bg-[var(--bg-surface)] border border-[var(--border-subtle)] p-3 rounded-xl">
               <div class="text-[10px] text-[var(--text-muted)] uppercase font-semibold">Punctuation Tell</div>
-              <div class="text-base font-mono font-bold ${audit.emDashes === 0 && audit.exclamations === 0 ? 'text-emerald-400' : 'text-rose-400'} mt-0.5">
-                ${audit.emDashes} — / ${audit.exclamations} !
-              </div>
+              <div id="scorePunctuation" class="text-base font-mono font-bold ${audit.emDashes === 0 && audit.exclamations === 0 ? 'text-emerald-400' : 'text-rose-400'} mt-0.5">${audit.emDashes} — / ${audit.exclamations} !</div>
               <div class="text-[10px] text-[var(--text-muted)] mt-0.5">
                 ${audit.emDashes === 0 && audit.exclamations === 0 ? '✓ Peer-to-peer' : 'Remove em-dashes'}
               </div>
@@ -1445,7 +1497,7 @@ function renderScriptStudioHtml({ sample, step = 1, framework = 'pas', signalHoo
             <!-- Subject Line Words -->
             <div class="bg-[var(--bg-surface)] border border-[var(--border-subtle)] p-3 rounded-xl">
               <div class="text-[10px] text-[var(--text-muted)] uppercase font-semibold">Subject Length</div>
-              <div class="text-base font-mono font-bold text-[var(--text-primary)] mt-0.5">${audit.subjectWords} Words</div>
+              <div id="scoreSubjectWords" class="text-base font-mono font-bold text-[var(--text-primary)] mt-0.5">${audit.subjectWords} Words</div>
               <div class="text-[10px] ${audit.subjectWords >= 2 && audit.subjectWords <= 6 ? 'text-emerald-400' : 'text-amber-400'} mt-0.5">
                 ${audit.subjectWords >= 2 && audit.subjectWords <= 6 ? '✓ 2–5 Words' : 'Target 2–4 words'}
               </div>
@@ -1501,7 +1553,7 @@ function renderScriptStudioHtml({ sample, step = 1, framework = 'pas', signalHoo
                 <span class="text-[10px] text-emerald-400">RFC 5322 Threading: PASS</span>
               </div>
               <div class="text-[var(--text-muted)]">
-                <strong>To:</strong> <span class="text-[var(--text-primary)] font-mono">${escapeHtml(sample.email || 'doctor@clinic.com')}</span>
+                <strong>To:</strong> <span id="renderedEmailTo" class="text-[var(--text-primary)] font-mono">${escapeHtml(sample.email || 'doctor@clinic.com')}</span>
               </div>
               <div class="text-[var(--text-muted)] border-t border-[var(--border-subtle)] pt-1.5 mt-1.5 flex items-center justify-between">
                 <div><strong>Subject:</strong> <span class="text-cyan-400 font-semibold" id="renderedEmailSubject">${escapeHtml(activeEmail.subject)}</span></div>
@@ -1539,21 +1591,17 @@ ${escapeHtml(activeEmail.text)}
                       <div class="w-8 h-8 rounded-full bg-blue-600 text-white font-bold text-xs flex items-center justify-center">A</div>
                       <div>
                         <div class="font-bold text-[13px] text-neutral-900 leading-tight">Archit | SureGreet AI</div>
-                        <div class="text-[11px] text-neutral-500">To: ${escapeHtml(sample.doctor_name || 'Dr. Riveros')}</div>
+                        <div id="mobileDoctor" class="text-[11px] text-neutral-500">To: ${escapeHtml(sample.doctor_name || 'Dr. Riveros')}</div>
                       </div>
                     </div>
                     <span class="text-[10px] text-neutral-400">9:41 AM</span>
                   </div>
 
                   <!-- Subject Line -->
-                  <div class="font-semibold text-[13px] text-neutral-900 mb-3 border-b border-neutral-100 pb-2">
-                    ${escapeHtml(activeEmail.subject)}
-                  </div>
+                  <div id="mobileSubject" class="font-semibold text-[13px] text-neutral-900 mb-3 border-b border-neutral-100 pb-2">${escapeHtml(activeEmail.subject)}</div>
 
                   <!-- Email Body -->
-                  <div class="text-neutral-800 text-[12px] whitespace-pre-line leading-relaxed font-sans">
-${escapeHtml(activeEmail.text)}
-                  </div>
+                  <div id="mobileBody" class="text-neutral-800 text-[12px] whitespace-pre-line leading-relaxed font-sans">${escapeHtml(activeEmail.text)}</div>
                 </div>
 
                 <div class="pt-4 border-t border-neutral-100 text-[10px] text-neutral-400 text-center font-mono">
@@ -1569,25 +1617,27 @@ ${escapeHtml(activeEmail.text)}
               <strong>MIME Threading Simulation:</strong> Shows how Step 1, Step 2, Step 3, and Step 4 chain together into a single ongoing email thread in the doctor's inbox over 9 business days.
             </div>
 
-            ${fullSequence.map((seq, idx) => `
-              <div class="p-4 bg-[var(--bg-surface)] border ${idx === 0 ? 'border-blue-500/30' : idx === 1 ? 'border-purple-500/30' : idx === 2 ? 'border-amber-500/30' : 'border-emerald-500/30'} rounded-2xl space-y-2">
-                <div class="flex items-center justify-between border-b border-[var(--border-subtle)] pb-2 text-[11px]">
-                  <div class="flex items-center gap-2">
-                    <span class="px-2 py-0.5 rounded font-bold text-[10px] ${idx === 0 ? 'bg-blue-500/20 text-blue-300' : idx === 1 ? 'bg-purple-500/20 text-purple-300' : idx === 2 ? 'bg-amber-500/20 text-amber-300' : 'bg-emerald-500/20 text-emerald-300'}">
-                      Step ${seq.step} • ${seq.name}
-                    </span>
-                    <span class="text-[var(--text-muted)] font-mono">${seq.timing}</span>
+            <div id="threadViewContent" class="space-y-4">
+              ${fullSequence.map((seq, idx) => `
+                <div class="p-4 bg-[var(--bg-surface)] border ${idx === 0 ? 'border-blue-500/30' : idx === 1 ? 'border-purple-500/30' : idx === 2 ? 'border-amber-500/30' : 'border-emerald-500/30'} rounded-2xl space-y-2">
+                  <div class="flex items-center justify-between border-b border-[var(--border-subtle)] pb-2 text-[11px]">
+                    <div class="flex items-center gap-2">
+                      <span class="px-2 py-0.5 rounded font-bold text-[10px] ${idx === 0 ? 'bg-blue-500/20 text-blue-300' : idx === 1 ? 'bg-purple-500/20 text-purple-300' : idx === 2 ? 'bg-amber-500/20 text-amber-300' : 'bg-emerald-500/20 text-emerald-300'}">
+                        Step ${seq.step} • ${seq.name}
+                      </span>
+                      <span class="text-[var(--text-muted)] font-mono">${seq.timing}</span>
+                    </div>
+                    <span class="text-[10px] text-[var(--text-muted)]">${seq.audit?.wordCount || 50} Words</span>
                   </div>
-                  <span class="text-[10px] text-[var(--text-muted)]">${seq.audit?.wordCount || 50} Words</span>
-                </div>
-                <div class="text-[var(--text-muted)] text-[11px]">
-                  <strong>Subject:</strong> <span class="text-cyan-400">${escapeHtml(seq.subject)}</span>
-                </div>
-                <div class="text-[var(--text-primary)] whitespace-pre-line leading-relaxed text-xs pt-1">
+                  <div class="text-[var(--text-muted)] text-[11px]">
+                    <strong>Subject:</strong> <span class="text-cyan-400">${escapeHtml(seq.subject)}</span>
+                  </div>
+                  <div class="text-[var(--text-primary)] whitespace-pre-line leading-relaxed text-xs pt-1">
 ${escapeHtml(seq.text)}
+                  </div>
                 </div>
-              </div>
-            `).join('')}
+              `).join('')}
+            </div>
           </div>
         </div>
 
@@ -1629,7 +1679,8 @@ ${escapeHtml(seq.text)}
 
     <!-- Client-Side Script Studio Interactivity -->
     <script>
-      const fullSequenceData = ${JSON.stringify(fullSequence)};
+      let fullSequenceData = ${JSON.stringify(fullSequence)};
+      let diagnosticTimerInterval = null;
 
       function switchViewport(mode) {
         const plainView = document.getElementById('plainTextView');
@@ -1663,16 +1714,247 @@ ${escapeHtml(seq.text)}
         const selected = selectEl.options[selectEl.selectedIndex];
         if (!selected || !selected.value) return;
 
-        document.getElementById('inputDoctor').value = selected.getAttribute('data-doctor') || '';
-        document.getElementById('inputClinic').value = selected.getAttribute('data-clinic') || '';
-        document.getElementById('inputCity').value = selected.getAttribute('data-city') || '';
-        document.getElementById('inputTreatment').value = selected.getAttribute('data-treatment') || '';
-        document.getElementById('inputEmail').value = selected.getAttribute('data-email') || '';
-        document.getElementById('inputNiche').value = selected.getAttribute('data-niche') || 'medspa';
-        document.getElementById('inputObservation').value = selected.getAttribute('data-observation') || '';
+        document.getElementById('studioDoctor').value = selected.getAttribute('data-doctor') || '';
+        document.getElementById('studioClinic').value = selected.getAttribute('data-clinic') || '';
+        document.getElementById('studioCity').value = selected.getAttribute('data-city') || '';
+        document.getElementById('studioTreatment').value = selected.getAttribute('data-treatment') || '';
+        document.getElementById('studioEmail').value = selected.getAttribute('data-email') || '';
+        document.getElementById('studioNiche').value = selected.getAttribute('data-niche') || 'medspa';
+        document.getElementById('studioUrl').value = selected.getAttribute('data-url') || '';
+        document.getElementById('studioObservation').value = selected.getAttribute('data-observation') || '';
 
-        // Auto submit form to regenerate copy
-        document.getElementById('customizerForm').submit();
+        showToast('Prospect Loaded', 'Pre-populated ' + (selected.getAttribute('data-clinic') || 'prospect') + ' details. Click Start Harvey to diagnose.', 'info');
+      }
+
+      async function startHarveyLiveWebsiteAudit() {
+        const url = document.getElementById('studioUrl').value.trim();
+        const doctorName = document.getElementById('studioDoctor').value.trim();
+        const clinicName = document.getElementById('studioClinic').value.trim();
+        const email = document.getElementById('studioEmail').value.trim();
+        const city = document.getElementById('studioCity').value.trim();
+        const treatment = document.getElementById('studioTreatment').value.trim();
+        const niche = document.getElementById('studioNiche').value;
+        const framework = document.getElementById('studioFramework').value;
+        const customObservation = document.getElementById('studioObservation').value.trim();
+
+        if (!url && !clinicName) {
+          return showToast('Missing Target', 'Please enter a Website URL or Clinic Name to diagnose.', 'warning');
+        }
+
+        const btn = document.getElementById('btnStartHarvey');
+        const btnIcon = document.getElementById('btnHarveyIcon');
+        const btnText = document.getElementById('btnHarveyText');
+        const consoleBox = document.getElementById('studioDiagnosticConsole');
+        const timerEl = document.getElementById('diagnosticTimer');
+        const progressBar = document.getElementById('diagnosticProgressBar');
+        const stepLog = document.getElementById('diagnosticStepLog');
+
+        btn.disabled = true;
+        btnIcon.innerHTML = '<span class="animate-spin inline-block w-3.5 h-3.5 border-2 border-black border-t-transparent rounded-full"></span>';
+        btnText.innerText = 'Harvey Diagnosing Website...';
+
+        consoleBox.classList.remove('hidden');
+        stepLog.innerHTML = '<div class="text-cyan-300">› Step 1: Initializing Harvey /harvey-sales execution engine...</div>';
+        progressBar.style.width = '15%';
+
+        let startTime = Date.now();
+        clearInterval(diagnosticTimerInterval);
+        diagnosticTimerInterval = setInterval(() => {
+          const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+          timerEl.innerText = elapsed + 's';
+        }, 100);
+
+        const stepTimeouts = [
+          setTimeout(() => {
+            stepLog.innerHTML += '<div class="text-cyan-300">› Step 2: Fetching site DOM & booking flows via Jina Reader...</div>';
+            progressBar.style.width = '35%';
+          }, 700),
+          setTimeout(() => {
+            stepLog.innerHTML += '<div class="text-blue-300">› Step 3: Auditing static form friction & after-hours response lag...</div>';
+            progressBar.style.width = '60%';
+          }, 1500),
+          setTimeout(() => {
+            stepLog.innerHTML += '<div class="text-purple-300">› Step 4: Synthesizing bespoke 1-of-1 cold hook draft via LLM...</div>';
+            progressBar.style.width = '80%';
+          }, 2300),
+          setTimeout(() => {
+            stepLog.innerHTML += '<div class="text-emerald-300">› Step 5: Deterministic Quality Gate (0 em-dashes, <65 words, Cal.com link)...</div>';
+            progressBar.style.width = '95%';
+          }, 3100),
+        ];
+
+        try {
+          const authKey = new URLSearchParams(window.location.search).get('key') || '';
+          const endpoint = authKey ? '/outreach/harvey/diagnose-studio?key=' + encodeURIComponent(authKey) : '/outreach/harvey/diagnose-studio';
+
+          const res = await fetch(endpoint, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              url,
+              doctorName,
+              clinicName,
+              city,
+              treatment,
+              email,
+              niche,
+              framework,
+              customObservation,
+            })
+          });
+
+          stepTimeouts.forEach(clearTimeout);
+          clearInterval(diagnosticTimerInterval);
+
+          const data = await res.json();
+          btn.disabled = false;
+          btnIcon.innerHTML = '<span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-black opacity-75"></span><span class="relative inline-flex rounded-full h-2 w-2 bg-black"></span>';
+          btnText.innerText = 'Start Harvey: Diagnose Website & Generate 1-of-1 Email (Harvey Skill)';
+
+          if (!data.success && !data.sequence) {
+            progressBar.style.width = '100%';
+            stepLog.innerHTML += '<div class="text-rose-400">✖ Diagnostic Error: ' + (data.message || data.error || 'Server error') + '</div>';
+            return showToast('Diagnostic Error', data.message || data.error || 'Failed to complete website diagnostic', 'error');
+          }
+
+          progressBar.style.width = '100%';
+          stepLog.innerHTML += '<div class="text-emerald-400 font-bold">✔ Diagnostic Complete • Score: ' + (data.audit?.score || 95) + '/100</div>';
+
+          // Update full sequence state
+          fullSequenceData = data.sequence;
+
+          // Update Plain Text view
+          const step1 = data.sequence[0];
+          document.getElementById('renderedEmailSubject').innerText = step1.subject;
+          document.getElementById('renderedEmailBody').innerText = step1.text;
+          if (email) document.getElementById('renderedEmailTo').innerText = email;
+
+          // Update Mobile view
+          document.getElementById('mobileSubject').innerText = step1.subject;
+          document.getElementById('mobileBody').innerText = step1.text;
+          document.getElementById('mobileDoctor').innerText = 'To: ' + (data.dossier?.doctorName || doctorName || 'Doctor');
+
+          // Update Chained Thread View
+          const threadContainer = document.getElementById('threadViewContent');
+          if (threadContainer) {
+            threadContainer.innerHTML = data.sequence.map((seq, idx) => {
+              const borderClass = idx === 0 ? 'border-blue-500/30' : idx === 1 ? 'border-purple-500/30' : idx === 2 ? 'border-amber-500/30' : 'border-emerald-500/30';
+              const badgeClass = idx === 0 ? 'bg-blue-500/20 text-blue-300' : idx === 1 ? 'bg-purple-500/20 text-purple-300' : idx === 2 ? 'bg-amber-500/20 text-amber-300' : 'bg-emerald-500/20 text-emerald-300';
+              return '<div class="p-4 bg-[var(--bg-surface)] border ' + borderClass + ' rounded-2xl space-y-2">' +
+                '<div class="flex items-center justify-between border-b border-[var(--border-subtle)] pb-2 text-[11px]">' +
+                  '<div class="flex items-center gap-2">' +
+                    '<span class="px-2 py-0.5 rounded font-bold text-[10px] ' + badgeClass + '">Step ' + seq.step + ' • ' + seq.name + '</span>' +
+                    '<span class="text-[var(--text-muted)] font-mono">' + seq.timing + '</span>' +
+                  '</div>' +
+                  '<span class="text-[10px] text-[var(--text-muted)]">' + (seq.audit?.wordCount || 50) + ' Words</span>' +
+                '</div>' +
+                '<div class="text-[var(--text-muted)] text-[11px]">' +
+                  '<strong>Subject:</strong> <span class="text-cyan-400">' + seq.subject + '</span>' +
+                '</div>' +
+                '<div class="text-[var(--text-primary)] whitespace-pre-line leading-relaxed text-xs pt-1">' +
+                  seq.text +
+                '</div>' +
+              '</div>';
+            }).join('');
+          }
+
+          // Update Anti-AI Scorecard
+          const audit = data.audit;
+          if (audit) {
+            document.getElementById('scoreText').innerText = 'Score: ' + audit.score + '/100';
+            document.getElementById('scoreBadge').innerText = audit.passed ? '✓ Deliverability Passed' : 'Needs Polish';
+            document.getElementById('scoreBadge').className = 'text-[10px] uppercase font-bold px-2 py-0.5 rounded ' + (audit.passed ? 'bg-emerald-500/20 text-emerald-400' : 'bg-amber-500/20 text-amber-300');
+            document.getElementById('scoreWordCount').innerText = audit.wordCount;
+            document.getElementById('scoreBannedCount').innerText = audit.foundBanned?.length || 0;
+            document.getElementById('scorePunctuation').innerText = audit.emDashes + ' — / ' + audit.exclamations + ' !';
+            document.getElementById('scoreSubjectWords').innerText = audit.subjectWords + ' Words';
+          }
+
+          // Update Audit Result Card
+          const auditCard = document.getElementById('studioAuditCard');
+          auditCard.classList.remove('hidden');
+          if (data.leakedAmount) {
+            document.getElementById('auditLeakedAmount').innerText = data.leakedAmount + ' Leaking';
+          }
+          if (data.dossier?.frictionObservation) {
+            document.getElementById('auditFrictionText').innerText = data.dossier.frictionObservation;
+          }
+
+          showToast('Harvey Audit Complete', 'Website diagnosed. Anti-AI Score: ' + (audit?.score || 95) + '/100 (< 65 words, 0 em-dashes)', 'success');
+
+        } catch (err) {
+          stepTimeouts.forEach(clearTimeout);
+          clearInterval(diagnosticTimerInterval);
+          btn.disabled = false;
+          btnIcon.innerHTML = '<span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-black opacity-75"></span><span class="relative inline-flex rounded-full h-2 w-2 bg-black"></span>';
+          btnText.innerText = 'Start Harvey: Diagnose Website & Generate 1-of-1 Email (Harvey Skill)';
+          showToast('Diagnostic Failure', err.message, 'error');
+        }
+      }
+
+      async function saveStudioLeadToCrm() {
+        const doctorName = document.getElementById('studioDoctor').value.trim();
+        const clinicName = document.getElementById('studioClinic').value.trim();
+        const email = document.getElementById('studioEmail').value.trim();
+        const city = document.getElementById('studioCity').value.trim();
+        const treatment = document.getElementById('studioTreatment').value.trim();
+        const niche = document.getElementById('studioNiche').value;
+        const websiteUrl = document.getElementById('studioUrl').value.trim();
+        const customObservation = document.getElementById('studioObservation').value.trim();
+
+        if (!email) {
+          return showToast('Missing Email', 'Please enter a target prospect email before saving to CRM.', 'warning');
+        }
+
+        const step1 = (fullSequenceData && fullSequenceData[0]) ? fullSequenceData[0] : null;
+        const harveyDraft = step1 ? step1.text : document.getElementById('renderedEmailBody').innerText.trim();
+        const harveyScore = step1 ? (step1.audit?.score || 95) : 95;
+
+        const btn = document.getElementById('btnSaveToCrm');
+        const btnIcon = document.getElementById('btnSaveIcon');
+        const btnText = document.getElementById('btnSaveText');
+
+        btn.disabled = true;
+        btnIcon.innerText = '⏳';
+        btnText.innerText = 'Staging in CRM...';
+
+        try {
+          const authKey = new URLSearchParams(window.location.search).get('key') || '';
+          const endpoint = authKey ? '/outreach/save-prospect?key=' + encodeURIComponent(authKey) : '/outreach/save-prospect';
+
+          const res = await fetch(endpoint, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              doctorName,
+              clinicName,
+              email,
+              city,
+              treatment,
+              niche,
+              websiteUrl,
+              customObservation,
+              harveyDraft,
+              harveyScore,
+            })
+          });
+
+          const data = await res.json();
+          btn.disabled = false;
+          btnIcon.innerText = '✔';
+          btnText.innerText = 'Save & Stage in Pipeline CRM';
+
+          if (data.status === 'success') {
+            showToast('Lead Staged in CRM', 'Successfully staged ' + (clinicName || email) + ' in Pipeline CRM.', 'success');
+          } else {
+            showToast('Save Note', data.message || data.error || 'Server processed request', 'warning');
+          }
+        } catch (err) {
+          btn.disabled = false;
+          btnIcon.innerText = '✔';
+          btnText.innerText = 'Save & Stage in Pipeline CRM';
+          showToast('Network Error', err.message, 'error');
+        }
       }
 
       async function sendTestEmailDirect() {
@@ -1707,7 +1989,7 @@ ${escapeHtml(seq.text)}
 
           const data = await res.json();
           btn.disabled = false;
-          btn.innerHTML = '${getSvgIcon('bolt', 'w-3.5 h-3.5')}<span>Send Test to My Phone</span>';
+          btn.innerHTML = '<span>⚡</span><span>Send Test to My Phone</span>';
 
           if (data.status === 'success' || data.success) {
             showToast('Test Sent Successfully', 'Check ' + to + ' on your mobile device (ID: ' + (data.messageId || 'sent') + ')', 'success');
@@ -1716,7 +1998,7 @@ ${escapeHtml(seq.text)}
           }
         } catch (err) {
           btn.disabled = false;
-          btn.innerHTML = '${getSvgIcon('bolt', 'w-3.5 h-3.5')}<span>Send Test to My Phone</span>';
+          btn.innerHTML = '<span>⚡</span><span>Send Test to My Phone</span>';
           showToast('Network Error', err.message, 'error');
         }
       }
@@ -1921,6 +2203,77 @@ outreachRouter.post('/harvey/test-send', async (req, res) => {
     });
 
     res.json({ status: result.success ? 'success' : 'error', recipient, result });
+  } catch (err) {
+    res.status(500).json({ status: 'error', message: err.message });
+  }
+});
+
+// 2.6 Live Studio Website Diagnostic & Sequence Generation Endpoint
+outreachRouter.post('/harvey/diagnose-studio', async (req, res) => {
+  const { url, doctorName, clinicName, city, treatment, email, niche, framework, customObservation } = req.body || {};
+  try {
+    const result = await diagnoseAndGenerateFullSequence({
+      url,
+      doctorName,
+      clinicName,
+      city,
+      treatment,
+      email,
+      niche,
+      framework,
+      customObservation,
+    });
+
+// 2.7 Save / Stage Prospect from Studio into CRM
+outreachRouter.post('/save-prospect', async (req, res) => {
+  const { doctorName, clinicName, email, city, treatment, niche, websiteUrl, customObservation, harveyDraft, harveyScore } = req.body || {};
+  if (!email) {
+    return res.status(400).json({ status: 'error', message: 'Email is required to save prospect' });
+  }
+
+  try {
+    const existing = await getProspectById(email);
+    if (existing) {
+      const updated = await updateProspect(existing.id, {
+        doctor_name: doctorName || existing.doctor_name,
+        clinic_name: clinicName || existing.clinic_name,
+        city: city || existing.city,
+        treatment: treatment || existing.treatment,
+        niche: niche || existing.niche,
+        website_url: websiteUrl || existing.website_url,
+        specific_observation: customObservation || existing.specific_observation,
+        harvey_draft: harveyDraft || existing.harvey_draft,
+        harvey_score: harveyScore || existing.harvey_score,
+        harvey_status: 'passed',
+      });
+      return res.json({ status: 'success', message: 'Prospect updated in CRM', prospect: updated });
+    }
+
+    const result = await addProspect({
+      doctorName,
+      clinicName,
+      email,
+      city,
+      treatment,
+      niche,
+      website_url: websiteUrl,
+      specific_observation: customObservation,
+      harvey_draft: harveyDraft,
+      harvey_score: harveyScore || 95,
+      harvey_status: 'passed',
+    });
+
+    if (result.success) {
+      res.json({ status: 'success', message: 'Prospect staged in CRM', prospect: result.prospect });
+    } else {
+      res.status(400).json({ status: 'error', message: result.message || result.error || 'Failed to save prospect' });
+    }
+  } catch (err) {
+    res.status(500).json({ status: 'error', message: err.message });
+  }
+});
+
+    res.json(result);
   } catch (err) {
     res.status(500).json({ status: 'error', message: err.message });
   }

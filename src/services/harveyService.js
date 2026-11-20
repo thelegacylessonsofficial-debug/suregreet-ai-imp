@@ -375,3 +375,147 @@ export async function runHarveyAutonomousPipeline({ prospectId, url, htmlContent
     prospect: stagedProspect,
   };
 }
+
+/**
+ * LIVE WEBSITE DIAGNOSTIC & FULL 4-STEP SEQUENCE GENERATION (HARVEY-SALES SKILL)
+ */
+export async function diagnoseAndGenerateFullSequence({
+  url,
+  doctorName,
+  clinicName,
+  city,
+  email,
+  niche,
+  treatment,
+  customObservation,
+  framework = 'pas',
+}) {
+  console.log(`[Harvey Studio] Diagnosing website ${url || clinicName}...`);
+
+  // 1. Deep Extraction & Dossier
+  const dossier = await extractClinicDossier(url, '', niche);
+
+  // 2. Resolve Overrides
+  const isHvac = (niche === 'hvac') || dossier.isHvac;
+  const doc = doctorName || dossier.doctorName || (isHvac ? 'Owner' : 'Doctor');
+  const clinic = clinicName || (url ? url.replace(/^https?:\/\//, '').split('/')[0] : 'Practice');
+  const cleanClinic = (clinic.split("'")[0].split("-")[0] || clinic).trim();
+  const cCity = city || 'US';
+  const treat = treatment || dossier.primaryTreatment || (isHvac ? 'emergency HVAC repair' : 'Morpheus8');
+  const salutation = formatSalutation(doc, cleanClinic, isHvac ? 'hvac' : 'medspa');
+  const calUrl = 'https://cal.com/archit-suregreet/15min';
+
+  // 3. Verifiable Hook from /harvey-sales skill
+  let hook = (customObservation || '').trim() || dossier.frictionObservation;
+  if (!hook) {
+    if (isHvac) {
+      hook = `Saw your emergency repair page in ${cCity} routes calls to a static contact form instead of live dispatch.`;
+    } else {
+      hook = `Saw your site makes patients fill out a static contact form for ${treat} instead of booking directly.`;
+    }
+  }
+
+  // 4. Generate Step 1 based on selected framework (PAS vs QVC)
+  let step1Subject = isHvac ? `quick question - ${cleanClinic.toLowerCase()} calls` : `quick question - ${cleanClinic.toLowerCase()} inquiries`;
+  let step1Body = '';
+
+  if (framework === 'qvc') {
+    // Framework B: QVC from /harvey-sales
+    step1Subject = isHvac ? `after-hours calls at ${cleanClinic.toLowerCase()}` : `after-hours inquiries at ${cleanClinic.toLowerCase()}`;
+    const question = isHvac
+      ? `How does ${cleanClinic} handle emergency service calls between 5 PM and 8 AM?`
+      : `How does ${cleanClinic} handle patient inquiries that come in between 5 PM and 8 AM?`;
+    const value = isHvac
+      ? `Most contractors lose 3 to 5 emergency jobs every weekend because callers dislike voicemails. SureGreet AI acts as your 24/7 voice dispatcher, booking calls directly into your calendar in 2 rings.`
+      : `Most clinics lose 3 to 5 consultation bookings every weekend because patients dislike voicemails. SureGreet AI acts as your 24/7 receptionist, answering procedure pricing and booking consults automatically.`;
+
+    step1Body = `Hey ${salutation},\n\n${question}\n\n${value}\n\nWorth a 3-minute walkthrough to see if it makes sense for your lines?\n\nBest,\nArchit`;
+  } else {
+    // Framework A: PAS from /harvey-sales
+    const pivot = isHvac
+      ? `Quick question - when an emergency AC call comes in after 7 PM, does someone answer live or do they hit voicemail? 78% of homeowners call the next contractor if nobody picks up.`
+      : `Quick question - when an inquiry comes in after 6 PM, does someone call in 2 minutes, or wait until morning? 78% of high-intent patients book with whoever responds first.`;
+    const solution = isHvac
+      ? `Put together a 60-second demo of our AI voice dispatcher answering in 2 rings and booking service calls 24/7.`
+      : `Put together a 60-second demo showing our AI receptionist answering procedure pricing and booking consults 24/7.`;
+
+    step1Body = `Hey ${salutation},\n\n${hook}\n\n${pivot}\n\n${solution}\n\nWorth a quick look?\n\nBest,\nArchit`;
+  }
+
+  // 5. Generate Step 2: Proof & Audio Demo (Threaded Re: from /harvey-sales)
+  const step2Subject = `Re: ${step1Subject}`;
+  const step2Body = isHvac
+    ? `hey ${salutation},\n\nfloating this back up - happy to text over a test line so you can hear how our AI voice dispatcher handles emergency callers after 7 PM.\n\nBest,\nArchit`
+    : `hey ${salutation},\n\njust floating this back up - still happy to send over that test line if you want to hear how it handles after-hours callers.\n\nBest,\nArchit`;
+
+  // 6. Generate Step 3: Economic Napkin Math & 14-Day Trial with Cal.com link (from /harvey-sales)
+  const step3Subject = `Re: ${step1Subject}`;
+  const math = isHvac
+    ? `Quick napkin math - average emergency ticket is $2,000+. Missing just 2 after-hours calls a month to voicemail is $4,000+ in leaked revenue.`
+    : `Quick napkin math - average ${treat} ticket is $1,500+. Missing just 2 evening leads a week to voicemail is $12,000/mo in lost bookings.`;
+
+  const step3Body = isHvac
+    ? `Hey ${salutation},\n\n${math}\n\nWe can plug our 24/7 AI voice dispatcher into your lines for 14 days to capture those emergency jobs at zero risk, or grab 10 minutes on my direct calendar (${calUrl}).\n\nFair enough?\n\nBest,\nArchit`
+    : `Hey ${salutation},\n\n${math}\n\nWe can plug our 24/7 AI voice receptionist into your lines for 14 days to capture those consults at zero risk, or grab 10 minutes on my direct calendar (${calUrl}).\n\nWorth a 5-minute look?\n\nBest,\nArchit`;
+
+  // 7. Generate Step 4: Clean Breakup (Threaded Re: from /harvey-sales)
+  const step4Subject = `Re: ${step1Subject}`;
+  const step4Body = isHvac
+    ? `hey ${salutation},\n\nassuming you're all set on after-hours dispatch coverage for now - i'll get out of your hair. if missed evening calls ever become a headache, just reply here.\n\nBest,\nArchit`
+    : `hey ${salutation},\n\nassuming you're all set on front desk coverage for now - i'll get out of your hair. if missed after-hours calls ever become a headache, just reply here.\n\nBest,\nArchit`;
+
+  // 8. Quality Gate Audit for each step
+  const unsubUrl = getUnsubscribeUrl(email || 'doctor@clinic.com');
+  const makeHtml = (body) => `<div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 14px; line-height: 1.6; color: #111827; max-width: 520px;">
+    ${body.split('\n\n').map(p => `<p style="margin: 0 0 12px 0;">${p.replace(/\n/g, '<br>')}</p>`).join('\n')}
+    <p style="margin: 16px 0 0 0; font-size: 11px; color: #9ca3af; border-top: 1px solid #e5e7eb; padding-top: 8px;">Opt out: <a href="${unsubUrl}" style="color: #9ca3af;">unsubscribe</a></p>
+  </div>`;
+
+  const sequence = [
+    {
+      step: 1,
+      name: 'Cold Hook (Micro-Audit)',
+      timing: 'Day 1',
+      subject: step1Subject,
+      text: `${step1Body}\n\n--\nOpt out: ${unsubUrl}`,
+      html: makeHtml(step1Body),
+      audit: auditHarveyCopy(step1Body, step1Subject),
+    },
+    {
+      step: 2,
+      name: 'Proof & 30s Audio Demo',
+      timing: '+2 Biz Days',
+      subject: step2Subject,
+      text: `${step2Body}\n\n--\nOpt out: ${unsubUrl}`,
+      html: makeHtml(step2Body),
+      audit: auditHarveyCopy(step2Body, step2Subject),
+    },
+    {
+      step: 3,
+      name: 'Revenue Leak Automation & Calendar',
+      timing: '+3 Biz Days',
+      subject: step3Subject,
+      text: `${step3Body}\n\n--\nOpt out: ${unsubUrl}`,
+      html: makeHtml(step3Body),
+      audit: auditHarveyCopy(step3Body, step3Subject),
+    },
+    {
+      step: 4,
+      name: 'Clean Breakup',
+      timing: '+3 Biz Days',
+      subject: step4Subject,
+      text: `${step4Body}\n\n--\nOpt out: ${unsubUrl}`,
+      html: makeHtml(step4Body),
+      audit: auditHarveyCopy(step4Body, step4Subject),
+    },
+  ];
+
+  return {
+    success: true,
+    dossier,
+    sequence,
+    audit: sequence[0].audit,
+    calUrl,
+    leakedAmount: dossier.napkinMathLoss,
+  };
+}
