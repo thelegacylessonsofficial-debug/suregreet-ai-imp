@@ -38,11 +38,10 @@ const JUNK_EMAIL_DOMAINS = [
 /**
  * Fetches page HTML with standard browser headers and timeout
  */
-async function fetchHtml(url, timeoutMs = 3000) {
+async function fetchHtml(url, timeoutMs = 2000) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), timeoutMs);
-
     const res = await fetch(url, {
       signal: controller.signal,
       headers: {
@@ -53,28 +52,12 @@ async function fetchHtml(url, timeoutMs = 3000) {
       redirect: 'follow',
     });
 
-    clearTimeout(timer);
     if (res.ok) return await res.text();
-  } catch (err) {}
-
-  // Cloudflare or firewall fallback: fetch via Jina Reader
-  try {
-    const jinaController = new AbortController();
-    const jinaTimer = setTimeout(() => jinaController.abort(), 6000);
-    const jinaRes = await fetch(`https://r.jina.ai/${url}`, {
-      signal: jinaController.signal,
-      headers: {
-        'User-Agent': USER_AGENT,
-        Accept: 'text/plain,text/markdown',
-      },
-    });
-    clearTimeout(jinaTimer);
-    if (jinaRes.ok) {
-      const markdown = await jinaRes.text();
-      return `<html><body>${markdown}</body></html>`;
-    }
-  } catch (e) {}
-
+  } catch (err) {
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
   return null;
 }
 

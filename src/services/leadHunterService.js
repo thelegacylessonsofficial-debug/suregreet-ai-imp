@@ -510,12 +510,15 @@ export async function runAutonomousHunt({ city = 'Miami, FL', niche = 'medspa', 
   // Fast mode + in-memory HTML parsing + 1-trip inserts ensure all 20 leads qualify in 2.5 seconds!
   const enrichmentPromises = businesses.map(async (item) => {
     try {
-      const enriched = await huntAndEnrichLead({
-        url: item.url,
-        city: item.city,
-        niche: item.niche,
-        fast: true,
-      });
+      const enriched = await Promise.race([
+        huntAndEnrichLead({
+          url: item.url,
+          city: item.city,
+          niche: item.niche,
+          fast: true,
+        }),
+        new Promise((_, reject) => setTimeout(() => reject(new Error('Domain timeout (3s)')), 3000)),
+      ]);
 
       if (enriched && enriched.success) {
         // Commit with single-trip deduplication
