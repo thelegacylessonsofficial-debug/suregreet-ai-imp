@@ -43,11 +43,12 @@ export function renderSaasShell({
   bodyContent = '',
   extraScripts = '',
   authKeyParam = '',
+  dynamicCounts = {},
 }) {
   const keyQuery = authKeyParam ? `?key=${encodeURIComponent(authKeyParam)}` : '';
 
   const navItems = [
-    { id: 'pipeline', label: 'Pipeline CRM', href: `/outreach/prospects${keyQuery}`, icon: 'pipeline', count: '11' },
+    { id: 'pipeline', label: 'Pipeline CRM', href: `/outreach/prospects${keyQuery}`, icon: 'pipeline', count: String(dynamicCounts?.pipeline ?? '') },
     { id: 'scraper', label: 'Lead Hunter Studio', href: `/scraper/dashboard${keyQuery}`, icon: 'hunter', count: 'Free' },
     { id: 'bots', label: 'Agency Operators', href: `/outreach/prospects${keyQuery}#bots`, icon: 'bots', badge: '4 Active' },
     { id: 'calls', label: 'Daily Dials & Logs', href: `/calls${keyQuery}`, icon: 'calls', count: '10 RGA' },

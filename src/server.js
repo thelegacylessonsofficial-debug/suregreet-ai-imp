@@ -72,7 +72,7 @@ app.get('/', (req, res) => {
       'POST /inbox/test-triage',
       'GET /inbox/dashboard',
       'GET /outreach/prospects',
-      'POST /outreach/add',
+      'POST /outreach/save-prospect',
       'POST /outreach/activate',
       'POST /outreach/send',
       'POST /outreach/mark-replied',

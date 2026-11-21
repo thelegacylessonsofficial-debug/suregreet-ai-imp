@@ -40,7 +40,7 @@ export async function extractClinicDossier(url, htmlContent = '', nicheHint = nu
       .replace(/\s+/g, ' ')
       .trim();
   } else if (url) {
-    text = (await fetchJinaMarkdown(url, 3000)) || '';
+    text = (await fetchJinaMarkdown(url, 8000)) || '';
   }
 
   // Determine Niche

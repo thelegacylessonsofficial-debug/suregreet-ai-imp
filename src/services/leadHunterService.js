@@ -251,7 +251,7 @@ export async function searchLocalBusinesses({ query, city = 'Miami, FL', niche =
   try {
     const searchUrl = `https://html.duckduckgo.com/html/?q=${encodeURIComponent(fullQuery)}`;
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 1200);
+    const timer = setTimeout(() => controller.abort(), 3500);
 
     const res = await fetch(searchUrl, {
       signal: controller.signal,
@@ -303,7 +303,7 @@ export async function searchLocalBusinesses({ query, city = 'Miami, FL', niche =
     console.log('[LeadHunter] DDG standard returned 0. Trying DuckDuckGo Lite fallback...');
     try {
       const controllerLite = new AbortController();
-      const timerLite = setTimeout(() => controllerLite.abort(), 1200);
+      const timerLite = setTimeout(() => controllerLite.abort(), 3500);
       const liteRes = await fetch('https://lite.duckduckgo.com/lite/', {
         signal: controllerLite.signal,
         method: 'POST',
@@ -440,7 +440,7 @@ export async function huntAndEnrichLead({ url, city, niche = 'medspa', doctorOve
       city: city || 'US',
       treatment: treatmentOverride || fallbackTreatment,
       allTreatments: [fallbackTreatment],
-      adSignals: { hasPaidAds: true, metaPixel: false, googleAds: true, tikTokPixel: false },
+      adSignals: { hasPaidAds: false, metaPixel: false, googleAds: false, tikTokPixel: false, source: 'fallback_unverified' },
       rawHtml: null,
     };
   }
@@ -465,8 +465,12 @@ export async function huntAndEnrichLead({ url, city, niche = 'medspa', doctorOve
   });
 
   let primaryTreatment = treatmentOverride || audit.primaryService || scraped.treatment;
-  if (niche === 'hvac' && (!primaryTreatment || /morpheus|botox|injectable|filler|sculptra|hydrafacial/i.test(primaryTreatment))) {
-    primaryTreatment = 'Emergency AC & Heating Repair';
+  const HVAC_VALID_TREATMENTS = ['Emergency AC Repair', 'HVAC Replacement', 'Heat Pump Repair', 'Furnace Maintenance', 'Ductless Mini-Split', 'Commercial Refrigeration', 'Emergency Plumbing', 'Emergency AC & Heating Repair', 'Air Conditioning Repair Replacement'];
+  if (niche === 'hvac') {
+    const isValidHvac = HVAC_VALID_TREATMENTS.some(t => primaryTreatment && primaryTreatment.toLowerCase().includes(t.toLowerCase()));
+    if (!primaryTreatment || !isValidHvac) {
+      primaryTreatment = 'Emergency AC & Heating Repair';
+    }
   }
 
   // 4. Construct direct email or fallback domain email so clinics with verified phones are never discarded
@@ -607,7 +611,7 @@ export async function runAutonomousHunt({ city = 'Miami, FL', niche = 'medspa', 
           businessNameOverride: item.title,
           fast: true,
         }),
-        new Promise((_, reject) => setTimeout(() => reject(new Error('Domain timeout (4s)')), 4000)),
+        new Promise((_, reject) => setTimeout(() => reject(new Error('Domain timeout (8s)')), 8000)),
       ]);
 
       if (enriched && enriched.success) {

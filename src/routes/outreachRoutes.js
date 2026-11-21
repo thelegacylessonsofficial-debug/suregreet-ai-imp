@@ -74,6 +74,12 @@ function renderProspectsHtml(list, authKey = '') {
   const completedCount = list.filter((p) => p.status === 'completed').length;
   const phoneCount = list.filter((p) => Boolean(p.phone)).length;
 
+  // Harvey Pipeline Stats
+  const harveyPassedCount = list.filter((p) => p.harvey_status === 'passed').length;
+  const harveyFlaggedCount = list.filter((p) => p.harvey_status === 'flagged').length;
+  const harveyPendingCount = list.filter((p) => !p.harvey_status).length;
+  const harveyReadyToActivate = list.filter((p) => p.harvey_status === 'passed' && p.status === 'pending').length;
+
   // Pre-render step 1 preview for each prospect so client modal is 100% accurate
   const listWithPreview = list.map((p) => {
     try {
@@ -161,6 +167,61 @@ function renderProspectsHtml(list, authKey = '') {
           </div>
           <div class="text-2xl font-bold text-emerald-300 tracking-tight">${repliedCount + bookedCount}</div>
           <div class="text-[11px] text-emerald-400/80 font-mono">Discovery Ready</div>
+        </div>
+      </div>
+
+      <!-- Search & Status Filter Controls -->
+      <div class="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 bg-[var(--bg-card)] p-3.5 rounded-2xl border border-[var(--border-subtle)]">
+
+      <!-- Harvey Pipeline Command Bar -->
+      <div class="bg-[var(--bg-card)] border border-[var(--border-subtle)] border-l-4 border-l-purple-500 rounded-2xl p-4 space-y-3 shadow-xl">
+        <div class="flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div class="flex items-center gap-3">
+            <div class="w-10 h-10 rounded-xl bg-purple-500/10 border border-purple-500/20 flex items-center justify-center text-purple-400 shrink-0">
+              ${getSvgIcon('studio', 'w-5 h-5')}
+            </div>
+            <div>
+              <div class="flex items-center gap-2">
+                <h3 class="text-xs font-bold text-[var(--text-primary)] uppercase tracking-wider">Harvey Autonomous Email Engine</h3>
+                <span class="text-[10px] px-2 py-0.5 rounded font-mono font-bold ${harveyPassedCount > 0 ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' : 'bg-amber-500/10 text-amber-400 border border-amber-500/20'}">${harveyPassedCount}/${total} Drafted</span>
+              </div>
+              <p class="text-[11px] text-[var(--text-secondary)] mt-0.5">
+                Website Diagnostic → Harvey Prompt → Gemini Draft → Quality Gate → CRM Stage. ${harveyPendingCount > 0 ? harveyPendingCount + ' prospects need Harvey audit.' : 'All prospects audited.'}
+              </p>
+            </div>
+          </div>
+
+          <div class="flex items-center gap-2 shrink-0 flex-wrap">
+            <div class="flex items-center gap-1.5 text-[11px]">
+              <span class="px-2 py-1 rounded-lg bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-mono font-bold">${harveyPassedCount} Passed</span>
+              <span class="px-2 py-1 rounded-lg bg-amber-500/10 text-amber-400 border border-amber-500/20 font-mono font-bold">${harveyPendingCount} Pending</span>
+              ${harveyFlaggedCount > 0 ? '<span class="px-2 py-1 rounded-lg bg-rose-500/10 text-rose-400 border border-rose-500/20 font-mono font-bold">' + harveyFlaggedCount + ' Flagged</span>' : ''}
+            </div>
+            <button onclick="runBatchHarvey()" id="btnBatchHarvey" class="px-4 py-2 rounded-xl bg-purple-500 hover:bg-purple-400 text-white font-extrabold text-xs transition shadow-md shadow-purple-500/20 flex items-center gap-1.5 cursor-pointer active:scale-95">
+              ${getSvgIcon('bolt', 'w-3.5 h-3.5')}
+              <span>Run Harvey on All Pending</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Harvey Batch Progress Console (hidden by default) -->
+        <div id="harveyBatchConsole" class="hidden bg-[var(--bg-surface)] rounded-xl p-4 border border-purple-500/30 space-y-2.5 shadow-inner">
+          <div class="flex items-center justify-between text-xs">
+            <span class="text-purple-400 font-mono font-medium flex items-center gap-2">
+              <span class="relative flex h-2 w-2">
+                <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-purple-400 opacity-75"></span>
+                <span class="relative inline-flex rounded-full h-2 w-2 bg-purple-500"></span>
+              </span>
+              <span id="harveyBatchStatus">Initializing Harvey pipeline...</span>
+            </span>
+            <div class="flex items-center gap-2">
+              <span id="harveyBatchCount" class="text-[var(--text-muted)] font-mono text-[11px]">0/${harveyPendingCount}</span>
+              <span id="harveyBatchPercent" class="text-purple-400 font-mono font-bold text-xs">0%</span>
+            </div>
+          </div>
+          <div class="w-full bg-[var(--bg-card)] rounded-full h-2 overflow-hidden border border-[var(--border-subtle)]">
+            <div id="harveyBatchBar" class="bg-gradient-to-r from-purple-500 to-cyan-400 h-2 transition-all duration-500 rounded-full" style="width: 0%"></div>
+          </div>
         </div>
       </div>
 
@@ -1139,6 +1200,73 @@ function renderProspectsHtml(list, authKey = '') {
           }
         });
       }
+
+      // ===== BATCH HARVEY PIPELINE =====
+      async function runBatchHarvey() {
+        const btn = document.getElementById('btnBatchHarvey');
+        const console = document.getElementById('harveyBatchConsole');
+        const statusEl = document.getElementById('harveyBatchStatus');
+        const countEl = document.getElementById('harveyBatchCount');
+        const percentEl = document.getElementById('harveyBatchPercent');
+        const barEl = document.getElementById('harveyBatchBar');
+
+        if (btn) {
+          btn.disabled = true;
+          btn.innerHTML = '${getSvgIcon('spinner', 'w-3.5 h-3.5 animate-spin')}<span>Running Harvey Pipeline...</span>';
+        }
+        if (console) console.classList.remove('hidden');
+        if (statusEl) statusEl.innerText = 'Analyzing all pending prospects through Harvey pipeline...';
+        if (barEl) barEl.style.width = '10%';
+        if (percentEl) percentEl.innerText = '10%';
+
+        let progressSim = 10;
+        const simInterval = setInterval(() => {
+          if (progressSim < 85) {
+            progressSim += 3;
+            if (barEl) barEl.style.width = progressSim + '%';
+            if (percentEl) percentEl.innerText = progressSim + '%';
+            if (progressSim > 30 && progressSim < 50 && statusEl) {
+              statusEl.innerText = 'Crawling websites via Jina AI Reader for dossier extraction...';
+            } else if (progressSim >= 50 && progressSim < 70 && statusEl) {
+              statusEl.innerText = 'Generating personalized Harvey drafts via Gemini API...';
+            } else if (progressSim >= 70 && statusEl) {
+              statusEl.innerText = 'Running quality gate audits and self-healing...';
+            }
+          }
+        }, 2000);
+
+        try {
+          const res = await fetch(getAuthUrl('/outreach/harvey/batch'), {
+            method: 'POST',
+            credentials: 'include',
+            headers: getAuthHeaders()
+          });
+          const data = await res.json();
+
+          clearInterval(simInterval);
+          if (barEl) barEl.style.width = '100%';
+          if (percentEl) percentEl.innerText = '100%';
+          if (countEl) countEl.innerText = (data.succeeded || 0) + '/' + (data.processed || 0);
+
+          if (data.success) {
+            if (statusEl) statusEl.innerText = 'Harvey pipeline complete. ' + (data.succeeded || 0) + ' drafts generated, ' + (data.failed || 0) + ' failed.';
+            showToast('Harvey Complete', (data.succeeded || 0) + ' prospects audited and drafted', 'success');
+            setTimeout(() => window.location.reload(), 2500);
+          } else {
+            if (statusEl) statusEl.innerText = 'Harvey pipeline error: ' + (data.error || 'Unknown');
+            showToast('Harvey Error', data.error || 'Failed', 'error');
+          }
+        } catch (e) {
+          clearInterval(simInterval);
+          showToast('Network Error', e.message, 'error');
+          if (statusEl) statusEl.innerText = 'Error: ' + e.message;
+        } finally {
+          if (btn) {
+            btn.disabled = false;
+            btn.innerHTML = '${getSvgIcon('bolt', 'w-3.5 h-3.5')}<span>Run Harvey on All Pending</span>';
+          }
+        }
+      }
     </script>
   `;
 
@@ -1146,10 +1274,11 @@ function renderProspectsHtml(list, authKey = '') {
     title: 'SureGreet AI — Pipeline CRM & Lead Bots Operating System',
     activeNav: 'pipeline',
     pageHeading: 'Outbound Pipeline CRM',
-    badgeText: 'Live DB • 11 Verified Leads',
+    badgeText: `Live DB • ${total} Verified Leads`,
     bodyContent,
     extraScripts,
     authKeyParam: authKey,
+    dynamicCounts: { pipeline: total },
   });
 }
 
@@ -2002,6 +2131,73 @@ ${escapeHtml(seq.text)}
           showToast('Network Error', err.message, 'error');
         }
       }
+
+      // ===== BATCH HARVEY PIPELINE =====
+      async function runBatchHarvey() {
+        const btn = document.getElementById('btnBatchHarvey');
+        const console = document.getElementById('harveyBatchConsole');
+        const statusEl = document.getElementById('harveyBatchStatus');
+        const countEl = document.getElementById('harveyBatchCount');
+        const percentEl = document.getElementById('harveyBatchPercent');
+        const barEl = document.getElementById('harveyBatchBar');
+
+        if (btn) {
+          btn.disabled = true;
+          btn.innerHTML = '${getSvgIcon('spinner', 'w-3.5 h-3.5 animate-spin')}<span>Running Harvey Pipeline...</span>';
+        }
+        if (console) console.classList.remove('hidden');
+        if (statusEl) statusEl.innerText = 'Analyzing all pending prospects through Harvey pipeline...';
+        if (barEl) barEl.style.width = '10%';
+        if (percentEl) percentEl.innerText = '10%';
+
+        let progressSim = 10;
+        const simInterval = setInterval(() => {
+          if (progressSim < 85) {
+            progressSim += 3;
+            if (barEl) barEl.style.width = progressSim + '%';
+            if (percentEl) percentEl.innerText = progressSim + '%';
+            if (progressSim > 30 && progressSim < 50 && statusEl) {
+              statusEl.innerText = 'Crawling websites via Jina AI Reader for dossier extraction...';
+            } else if (progressSim >= 50 && progressSim < 70 && statusEl) {
+              statusEl.innerText = 'Generating personalized Harvey drafts via Gemini API...';
+            } else if (progressSim >= 70 && statusEl) {
+              statusEl.innerText = 'Running quality gate audits and self-healing...';
+            }
+          }
+        }, 2000);
+
+        try {
+          const res = await fetch(getAuthUrl('/outreach/harvey/batch'), {
+            method: 'POST',
+            credentials: 'include',
+            headers: getAuthHeaders()
+          });
+          const data = await res.json();
+
+          clearInterval(simInterval);
+          if (barEl) barEl.style.width = '100%';
+          if (percentEl) percentEl.innerText = '100%';
+          if (countEl) countEl.innerText = (data.succeeded || 0) + '/' + (data.processed || 0);
+
+          if (data.success) {
+            if (statusEl) statusEl.innerText = 'Harvey pipeline complete. ' + (data.succeeded || 0) + ' drafts generated, ' + (data.failed || 0) + ' failed.';
+            showToast('Harvey Complete', (data.succeeded || 0) + ' prospects audited and drafted', 'success');
+            setTimeout(() => window.location.reload(), 2500);
+          } else {
+            if (statusEl) statusEl.innerText = 'Harvey pipeline error: ' + (data.error || 'Unknown');
+            showToast('Harvey Error', data.error || 'Failed', 'error');
+          }
+        } catch (e) {
+          clearInterval(simInterval);
+          showToast('Network Error', e.message, 'error');
+          if (statusEl) statusEl.innerText = 'Error: ' + e.message;
+        } finally {
+          if (btn) {
+            btn.disabled = false;
+            btn.innerHTML = '${getSvgIcon('bolt', 'w-3.5 h-3.5')}<span>Run Harvey on All Pending</span>';
+          }
+        }
+      }
     </script>
   `;
 
@@ -2224,8 +2420,84 @@ outreachRouter.post('/harvey/diagnose-studio', async (req, res) => {
       customObservation,
     });
 
+// 2.6b Batch Harvey Pipeline — Run Harvey on all pending prospects
+outreachRouter.post('/harvey/batch', async (req, res) => {
+  try {
+    const allProspects = await getProspects({ limit: 500 });
+    const pending = allProspects.filter((p) => !p.harvey_status && p.email);
+
+    if (pending.length === 0) {
+      return res.json({ success: true, message: 'All prospects already have Harvey drafts', processed: 0, total: allProspects.length });
+    }
+
+    // Process in batches of 3 concurrently to avoid overloading Gemini/Jina
+    const results = [];
+    const batchSize = 3;
+    for (let i = 0; i < pending.length; i += batchSize) {
+      const batch = pending.slice(i, i + batchSize);
+      const batchResults = await Promise.allSettled(
+        batch.map(async (prospect) => {
+          try {
+            const result = await runHarveyAutonomousPipeline({ prospectId: prospect.id });
+            return { id: prospect.id, email: prospect.email, success: true, score: result.audit?.score, engine: result.draft?.engine };
+          } catch (err) {
+            return { id: prospect.id, email: prospect.email, success: false, error: err.message };
+          }
+        })
+      );
+      for (const r of batchResults) {
+        results.push(r.status === 'fulfilled' ? r.value : { success: false, error: 'Promise rejected' });
+      }
+    }
+
+    const successCount = results.filter((r) => r.success).length;
+    res.json({
+      success: true,
+      processed: results.length,
+      succeeded: successCount,
+      failed: results.length - successCount,
+      results,
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// 2.6c Batch Activate — Activate all Harvey-passed pending prospects
+outreachRouter.post('/harvey/batch-activate', async (req, res) => {
+  try {
+    const allProspects = await getProspects({ limit: 500 });
+    const readyToActivate = allProspects.filter((p) => p.harvey_status === 'passed' && p.status === 'pending' && p.email);
+
+    if (readyToActivate.length === 0) {
+      return res.json({ success: true, message: 'No Harvey-passed pending prospects to activate', activated: 0 });
+    }
+
+    // Activate sequentially to respect email sending rate limits
+    const results = [];
+    for (const prospect of readyToActivate) {
+      try {
+        const result = await activateProspect(prospect.id);
+        results.push({ id: prospect.id, email: prospect.email, success: result.success, step: result.step });
+      } catch (err) {
+        results.push({ id: prospect.id, email: prospect.email, success: false, error: err.message });
+      }
+    }
+
+    const successCount = results.filter((r) => r.success).length;
+    res.json({
+      success: true,
+      activated: successCount,
+      failed: results.length - successCount,
+      results,
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 // 2.7 Save / Stage Prospect from Studio into CRM
-outreachRouter.post('/save-prospect', async (req, res) => {
+outreachRouter.post('/save-prospect', async (req, res) => { {
   const { doctorName, clinicName, email, city, treatment, niche, websiteUrl, customObservation, harveyDraft, harveyScore } = req.body || {};
   if (!email) {
     return res.status(400).json({ status: 'error', message: 'Email is required to save prospect' });

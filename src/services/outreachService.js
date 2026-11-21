@@ -296,9 +296,12 @@ export async function getDueProspects(limit = 10) {
 }
 
 /**
- * Render email content and subject based on step number
+ * Render email content and subject based on step number.
+ * PRIORITY: If the prospect has a Harvey-generated draft (harvey_draft + harvey_status=passed),
+ * use that for Step 1 instead of the static template. Steps 2-4 always use templates.
  */
 export function renderStepContent(stepNumber, prospect) {
+  const step = Number(stepNumber);
   const data = {
     doctorName: prospect.doctor_name,
     clinicName: prospect.clinic_name,
@@ -310,7 +313,25 @@ export function renderStepContent(stepNumber, prospect) {
     niche: prospect.niche || 'medspa',
   };
 
-  switch (Number(stepNumber)) {
+  // For Step 1: Use Harvey's personalized draft if available and passed quality gate
+  if (step === 1 && prospect.harvey_draft && prospect.harvey_status === 'passed') {
+    const harveyBody = prospect.harvey_draft.split('\n\n--\n')[0].trim();
+    const harveySubject = prospect.original_subject || `quick question - ${(prospect.clinic_name || 'practice').toLowerCase()} inquiries`;
+    const unsubUrl = `https://suregreet-automation.onrender.com/outreach/unsubscribe?email=${encodeURIComponent(prospect.email)}`;
+    const html = `<div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 14px; line-height: 1.6; color: #111827; max-width: 520px;">
+      ${harveyBody.split('\n\n').map(p => `<p style="margin: 0 0 12px 0;">${p.replace(/\n/g, '<br>')}</p>`).join('\n')}
+      <p style="margin: 16px 0 0 0; font-size: 11px; color: #9ca3af; border-top: 1px solid #e5e7eb; padding-top: 8px;">Opt out: <a href="${unsubUrl}" style="color: #9ca3af;">unsubscribe</a></p>
+    </div>`;
+
+    return {
+      subject: harveySubject,
+      text: prospect.harvey_draft,
+      html,
+      engine: 'harvey',
+    };
+  }
+
+  switch (step) {
     case 1:
       return outreachStep1Template(data);
     case 2:
