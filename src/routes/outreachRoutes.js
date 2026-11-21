@@ -170,8 +170,6 @@ function renderProspectsHtml(list, authKey = '') {
         </div>
       </div>
 
-      <!-- Search & Status Filter Controls -->
-      <div class="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 bg-[var(--bg-card)] p-3.5 rounded-2xl border border-[var(--border-subtle)]">
 
       <!-- Harvey Pipeline Command Bar -->
       <div class="bg-[var(--bg-card)] border border-[var(--border-subtle)] border-l-4 border-l-purple-500 rounded-2xl p-4 space-y-3 shadow-xl">
@@ -2420,6 +2418,12 @@ outreachRouter.post('/harvey/diagnose-studio', async (req, res) => {
       customObservation,
     });
 
+    res.json(result);
+  } catch (err) {
+    res.status(500).json({ status: 'error', message: err.message });
+  }
+});
+
 // 2.6b Batch Harvey Pipeline — Run Harvey on all pending prospects
 outreachRouter.post('/harvey/batch', async (req, res) => {
   try {
@@ -2497,7 +2501,7 @@ outreachRouter.post('/harvey/batch-activate', async (req, res) => {
 });
 
 // 2.7 Save / Stage Prospect from Studio into CRM
-outreachRouter.post('/save-prospect', async (req, res) => { {
+outreachRouter.post('/save-prospect', async (req, res) => {
   const { doctorName, clinicName, email, city, treatment, niche, websiteUrl, customObservation, harveyDraft, harveyScore } = req.body || {};
   if (!email) {
     return res.status(400).json({ status: 'error', message: 'Email is required to save prospect' });
@@ -2540,12 +2544,6 @@ outreachRouter.post('/save-prospect', async (req, res) => { {
     } else {
       res.status(400).json({ status: 'error', message: result.message || result.error || 'Failed to save prospect' });
     }
-  } catch (err) {
-    res.status(500).json({ status: 'error', message: err.message });
-  }
-});
-
-    res.json(result);
   } catch (err) {
     res.status(500).json({ status: 'error', message: err.message });
   }
