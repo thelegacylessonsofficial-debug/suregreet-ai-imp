@@ -134,6 +134,7 @@ scraperRouter.post(['/lead/delete', '/remove'], async (req, res) => {
 // 7. Standalone Web Dashboard for Lead Hunting, Scraping & Auditing
 scraperRouter.get('/dashboard', async (req, res) => {
   const authKey = req.query.key || '';
+  const keyParam = authKey ? '?key=' + encodeURIComponent(authKey) : '';
 
   const bodyContent = `
     <!-- Top Hero Header -->
@@ -155,7 +156,7 @@ scraperRouter.get('/dashboard', async (req, res) => {
           <span>Meta Ads Library</span>
           ${getSvgIcon('external', 'w-3 h-3 text-cyan-400')}
         </a>
-        <a href="/outreach/prospects" class="text-xs bg-[var(--bg-card)] hover:bg-[var(--bg-hover)] text-[var(--text-primary)] border border-[var(--border-subtle)] px-4 py-2 rounded-xl transition flex items-center gap-1.5 font-semibold">
+        <a href="/outreach/prospects${keyParam}" class="text-xs bg-[var(--bg-card)] hover:bg-[var(--bg-hover)] text-[var(--text-primary)] border border-[var(--border-subtle)] px-4 py-2 rounded-xl transition flex items-center gap-1.5 font-semibold">
           <span>View Pipeline CRM</span>
           ${getSvgIcon('external', 'w-3 h-3 text-[var(--text-muted)]')}
         </a>
@@ -438,7 +439,7 @@ scraperRouter.get('/dashboard', async (req, res) => {
               <span>Saved in Pipeline CRM</span>
             </span>
             <div class="flex items-center gap-2">
-              <a href="/outreach/prospects" class="text-[11px] text-cyan-400 hover:underline font-semibold flex items-center gap-1">
+              <a href="/outreach/prospects${keyParam}" class="text-[11px] text-cyan-400 hover:underline font-semibold flex items-center gap-1">
                 <span>View in CRM →</span>
               </a>
               <button onclick="removeSingleScrapedLead()" class="px-2 py-1 rounded-lg bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/30 text-[10px] font-semibold transition flex items-center gap-1 cursor-pointer" title="Remove this lead from CRM database">
@@ -510,7 +511,7 @@ scraperRouter.get('/dashboard', async (req, res) => {
                 <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
                 <span id="bulkSummaryText" class="font-bold text-emerald-300"></span>
               </div>
-              <a href="/outreach/prospects" class="px-3 py-1.5 bg-emerald-500 hover:bg-emerald-400 text-black font-extrabold rounded-lg text-[11px] transition whitespace-nowrap flex items-center gap-1 shadow-sm">
+              <a href="/outreach/prospects${keyParam}" class="px-3 py-1.5 bg-emerald-500 hover:bg-emerald-400 text-black font-extrabold rounded-lg text-[11px] transition whitespace-nowrap flex items-center gap-1 shadow-sm">
                 <span>View in CRM →</span>
               </a>
             </div>

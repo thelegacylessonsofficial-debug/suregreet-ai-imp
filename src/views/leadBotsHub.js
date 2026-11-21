@@ -3,7 +3,7 @@ import { getSvgIcon } from './saasLayout.js';
 /**
  * Returns the interactive HTML for the 4 Lead Bots Control Hub
  */
-export function renderLeadBotsHubHtml() {
+export function renderLeadBotsHubHtml(keyQuery = '') {
   return `
   <section id="leadBotsControlHub" class="space-y-6">
     <!-- Hub Header -->
@@ -70,7 +70,7 @@ export function renderLeadBotsHubHtml() {
         </div>
 
         <div class="flex gap-2">
-          <a href="/scraper/dashboard" class="flex-1 py-2 rounded-xl bg-cyan-500 hover:opacity-90 text-black font-bold text-xs text-center transition flex items-center justify-center gap-1.5 shadow-md shadow-cyan-500/15">
+          <a href="/scraper/dashboard${keyQuery}" class="flex-1 py-2 rounded-xl bg-cyan-500 hover:opacity-90 text-black font-bold text-xs text-center transition flex items-center justify-center gap-1.5 shadow-md shadow-cyan-500/15">
             ${getSvgIcon('bolt', 'w-3.5 h-3.5')}
             <span>Open Autonomous Lead Hunter</span>
           </a>
@@ -118,7 +118,7 @@ export function renderLeadBotsHubHtml() {
         </div>
 
         <div class="flex gap-2">
-          <a href="/outreach/preview" class="flex-1 py-2 rounded-xl bg-purple-500 hover:opacity-90 text-white font-bold text-xs text-center transition flex items-center justify-center gap-1.5 shadow-md shadow-purple-500/15">
+          <a href="/outreach/preview${keyQuery}" class="flex-1 py-2 rounded-xl bg-purple-500 hover:opacity-90 text-white font-bold text-xs text-center transition flex items-center justify-center gap-1.5 shadow-md shadow-purple-500/15">
             ${getSvgIcon('mail', 'w-3.5 h-3.5')}
             <span>Open 4-Step Script Studio</span>
           </a>
@@ -232,7 +232,7 @@ export function renderLeadBotsHubHtml() {
               ${getSvgIcon('bolt', 'w-3.5 h-3.5')}
               <span>Classify Sentiment & Draft LAARC Reply</span>
             </button>
-            <a href="/inbox/dashboard" class="px-3 py-2 rounded-xl bg-[var(--bg-card-subtle)] hover:bg-[var(--bg-hover)] border border-[var(--border-subtle)] text-[var(--text-primary)] text-xs font-semibold transition text-center">
+            <a href="/inbox/dashboard${keyQuery}" class="px-3 py-2 rounded-xl bg-[var(--bg-card-subtle)] hover:bg-[var(--bg-hover)] border border-[var(--border-subtle)] text-[var(--text-primary)] text-xs font-semibold transition text-center">
               Full Inbox
             </a>
           </div>

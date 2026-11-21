@@ -33,6 +33,19 @@ async function getDiscoveryBookings({ limit = 20 } = {}) {
   }
 }
 
+callsRouter.post(['/delete', '/remove'], async (req, res) => {
+  const { id } = req.body || {};
+  if (!id) return res.status(400).json({ status: 'error', message: 'Field "id" is required' });
+  try {
+    await supabaseFetch(`/call_logs?id=eq.${encodeURIComponent(id)}`, {
+      method: 'DELETE',
+    });
+    return res.json({ status: 'success', message: 'Call log removed' });
+  } catch (err) {
+    return res.status(500).json({ status: 'error', message: err.message });
+  }
+});
+
 /**
  * 1. Log an Outbound Call Dial (Archit's Daily 10 RGAs)
  */
@@ -278,10 +291,16 @@ callsRouter.get(['/', '/dashboard'], async (req, res) => {
                   </thead>
                   <tbody class="divide-y divide-[var(--border-subtle)]/60 font-mono">
                     ${bookings
-                      .map(
-                        (b) => `
+                      .map((b) => {
+                        let formattedSlot = b.start_time || 'Upcoming';
+                        try {
+                          if (b.start_time) {
+                            formattedSlot = DateTime.fromISO(b.start_time).setZone(config.timezone).toFormat('LLL dd, hh:mm a EST');
+                          }
+                        } catch (e) {}
+                        return `
                       <tr class="hover:bg-[var(--bg-hover)] transition">
-                        <td class="py-3 text-[var(--accent-emerald)] font-bold">${b.start_time || 'Upcoming'}</td>
+                        <td class="py-3 text-[var(--accent-emerald)] font-bold">${formattedSlot}</td>
                         <td class="py-3 text-[var(--text-primary)] font-medium">${b.attendee_name || 'Client'}</td>
                         <td class="py-3 text-[var(--text-secondary)]">
                           <div>${b.attendee_email || ''}</div>
@@ -295,8 +314,8 @@ callsRouter.get(['/', '/dashboard'], async (req, res) => {
                           </a>
                         </td>
                       </tr>
-                    `
-                      )
+                    `;
+                      })
                       .join('')}
                   </tbody>
                 </table>
@@ -329,6 +348,7 @@ callsRouter.get(['/', '/dashboard'], async (req, res) => {
                       <th class="pb-2.5">Outcome</th>
                       <th class="pb-2.5">Summary / Notes</th>
                       <th class="pb-2.5">Recording</th>
+                      <th class="pb-2.5 text-right">Action</th>
                     </tr>
                   </thead>
                   <tbody id="callTableBody" class="divide-y divide-[var(--border-subtle)]/60 font-mono">
@@ -379,6 +399,11 @@ callsRouter.get(['/', '/dashboard'], async (req, res) => {
                                   </a>`
                                 : '<span class="text-[var(--text-muted)]">—</span>'
                             }
+                          </td>
+                          <td class="py-3 text-right">
+                            <button onclick="deleteCallLog('${c.id}')" title="Delete call log" class="p-1 rounded hover:bg-rose-500/20 text-[var(--text-muted)] hover:text-rose-400 border border-transparent hover:border-rose-500/30 transition">
+                              ${getSvgIcon('trash', 'w-3 h-3')}
+                            </button>
                           </td>
                         </tr>
                       `;
@@ -452,6 +477,27 @@ callsRouter.get(['/', '/dashboard'], async (req, res) => {
           btn.disabled = false;
           btn.innerText = '+ Log Call to Daily Quota';
           showToast('Network Error', err.message, 'error');
+        }
+      }
+
+      async function deleteCallLog(id) {
+        if (!confirm('Permanently remove this call dial log?')) return;
+        try {
+          const res = await fetch(getAuthUrl('/calls/delete'), {
+            method: 'POST',
+            credentials: 'include',
+            headers: getAuthHeaders(),
+            body: JSON.stringify({ id })
+          });
+          const data = await res.json();
+          if (data.status === 'success') {
+            showToast('Log Removed', 'Call record deleted.', 'success');
+            setTimeout(() => window.location.reload(), 600);
+          } else {
+            showToast('Delete Failed', data.message || 'Error', 'error');
+          }
+        } catch (e) {
+          showToast('Error', e.message, 'error');
         }
       }
     </script>

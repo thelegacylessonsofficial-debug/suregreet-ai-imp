@@ -402,14 +402,20 @@ function renderProspectsHtml(list, authKey = '') {
                       <div class="space-y-1.5">
                         <div class="flex items-center gap-1.5 flex-wrap">
                           ${
-                            p.harvey_score
-                              ? `<span class="px-2 py-0.5 rounded text-[10px] font-bold font-mono ${p.harvey_score >= 85 ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' : 'bg-amber-500/10 text-amber-400 border border-amber-500/20'}">Score: ${p.harvey_score}/100</span>`
-                              : `<span class="px-2 py-0.5 rounded text-[10px] font-mono text-[var(--text-muted)] bg-[var(--bg-surface)] border border-[var(--border-subtle)]">Audit Ready</span>`
+                            p.harvey_status === 'passed'
+                              ? `<span class="px-2 py-0.5 rounded text-[10px] font-bold font-mono bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">✓ Passed (${p.harvey_score || 95}/100)</span>`
+                              : p.harvey_status === 'flagged'
+                              ? `<span class="px-2 py-0.5 rounded text-[10px] font-bold font-mono bg-rose-500/20 text-rose-400 border border-rose-500/30">⚠ Flagged (${p.harvey_score || 60}/100)</span>`
+                              : `<span class="px-2 py-0.5 rounded text-[10px] font-mono text-cyan-400 bg-cyan-500/10 border border-cyan-500/20">○ Pending Harvey</span>`
                           }
-                          <span class="text-[10px] text-[var(--text-muted)] font-mono">0 Clichés • 0 Em-dashes</span>
+                          ${
+                            p.harvey_draft
+                              ? `<span class="px-1.5 py-0.5 rounded text-[9px] font-bold font-mono bg-purple-500/20 text-purple-300 border border-purple-500/30">1-of-1 Draft</span>`
+                              : `<span class="text-[10px] text-[var(--text-muted)] font-mono">0 Clichés</span>`
+                          }
                         </div>
-                        <p class="text-[11px] text-[var(--text-primary)] font-medium leading-tight line-clamp-2" title="${escapeHtml(p.specific_observation || p.harvey_draft || 'Click Run Harvey to inspect site & compile bespoke hook')}">
-                          ${escapeHtml(p.specific_observation || 'Static form friction detected')}
+                        <p class="text-[11px] text-[var(--text-primary)] font-medium leading-tight line-clamp-2" title="${escapeHtml(p.specific_observation || p.harvey_draft || 'Click Audit to inspect site & compile bespoke hook')}">
+                          ${escapeHtml(p.specific_observation || (p.harvey_draft ? p.harvey_draft.slice(0, 100) : 'Static form friction detected'))}
                         </p>
                         <div class="flex items-center gap-1.5 pt-0.5">
                           <button 
@@ -533,7 +539,7 @@ function renderProspectsHtml(list, authKey = '') {
 
     <!-- VIEW 2: LEAD BOTS CONTROL HUB (TOGGLED) -->
     <div id="botsViewContainer" class="hidden space-y-6">
-      ${renderLeadBotsHubHtml()}
+      ${renderLeadBotsHubHtml(authKey ? '?key=' + encodeURIComponent(authKey) : '')}
     </div>
   `;
 
@@ -872,8 +878,8 @@ function renderProspectsHtml(list, authKey = '') {
             if (cell && p) {
               cell.innerHTML = '<div class="space-y-1.5">' +
                 '<div class="flex items-center gap-1.5 flex-wrap">' +
-                  '<span class="px-2 py-0.5 rounded text-[10px] font-bold font-mono bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">Score: ' + (p.harvey_score) + '/100</span>' +
-                  '<span class="text-[10px] text-[var(--text-muted)] font-mono">0 Clichés • 0 Em-dashes</span>' +
+                  '<span class="px-2 py-0.5 rounded text-[10px] font-bold font-mono bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">✓ Passed (' + (p.harvey_score) + '/100)</span>' +
+                  '<span class="px-1.5 py-0.5 rounded text-[9px] font-bold font-mono bg-purple-500/20 text-purple-300 border border-purple-500/30">1-of-1 Draft</span>' +
                 '</div>' +
                 '<p class="text-[11px] text-[var(--text-primary)] font-medium leading-tight line-clamp-2" title="' + (p.specific_observation || '').replace(/"/g, '&quot;') + '">' +
                   (p.specific_observation || 'Static form friction detected') +
@@ -1436,7 +1442,9 @@ function renderScriptStudioHtml({ sample, step = 1, framework = 'pas', signalHoo
             <label class="block text-[11px] font-medium text-[var(--text-secondary)] mb-1">Load Prospect from CRM (${prospects.length} Leads)</label>
             <select id="crmProspectPicker" onchange="loadSelectedProspect(this)" class="w-full bg-[var(--bg-surface)] border border-[var(--border-subtle)] rounded-xl px-3 py-2 text-xs text-[var(--text-primary)] focus:outline-none focus:border-cyan-500">
               <option value="">-- Choose a verified prospect to auto-fill --</option>
-              ${prospects.map(p => `
+              ${prospects.map(p => {
+                const harveyBadge = p.harvey_status === 'passed' ? '✓ Harvey' : p.harvey_status === 'flagged' ? '⚠ Flagged' : '○ Pending';
+                return `
                 <option value="${p.id}"
                   data-doctor="${escapeQuotes(p.doctor_name || '')}"
                   data-clinic="${escapeQuotes(p.clinic_name || '')}"
@@ -1446,9 +1454,9 @@ function renderScriptStudioHtml({ sample, step = 1, framework = 'pas', signalHoo
                   data-niche="${escapeQuotes(p.niche || 'medspa')}"
                   data-url="${escapeQuotes(p.website_url || (p.email ? 'https://' + p.email.split('@')[1] : ''))}"
                   data-observation="${escapeQuotes(p.specific_observation || '')}">
-                  ${escapeHtml(p.doctor_name || p.clinic_name)} — ${escapeHtml(p.clinic_name)} (${escapeHtml(p.city || 'US')})
+                  [${harveyBadge}] ${escapeHtml(p.doctor_name || p.clinic_name)} — ${escapeHtml(p.clinic_name)} (${escapeHtml(p.city || 'US')})
                 </option>
-              `).join('')}
+              `}).join('')}
             </select>
           </div>
         ` : ''}
@@ -1525,6 +1533,11 @@ function renderScriptStudioHtml({ sample, step = 1, framework = 'pas', signalHoo
                 <span class="relative inline-flex rounded-full h-2 w-2 bg-black"></span>
               </span>
               <span id="btnHarveyText">Start Harvey: Diagnose Website & Generate 1-of-1 Email (Harvey Skill)</span>
+            </button>
+
+            <button type="button" id="btnRegenerate" onclick="startHarveyLiveWebsiteAudit()" class="hidden w-full py-2 bg-[var(--bg-surface)] hover:bg-[var(--bg-hover)] border border-cyan-500/40 text-cyan-400 font-semibold text-xs rounded-xl transition flex items-center justify-center gap-1.5 cursor-pointer">
+              ${getSvgIcon('refresh', 'w-3.5 h-3.5')}
+              <span>Regenerate Harvey Draft (New Variation)</span>
             </button>
 
             <button type="button" id="btnSaveToCrm" onclick="saveStudioLeadToCrm()" class="w-full py-2 bg-[var(--bg-surface)] hover:bg-[var(--bg-hover)] border border-[var(--border-subtle)] text-[var(--text-primary)] font-semibold text-xs rounded-xl transition flex items-center justify-center gap-1.5 cursor-pointer">
@@ -2008,6 +2021,36 @@ ${escapeHtml(seq.text)}
           }
 
           showToast('Harvey Audit Complete', 'Website diagnosed. Anti-AI Score: ' + (audit?.score || 95) + '/100 (< 65 words, 0 em-dashes)', 'success');
+
+          // Show regenerate button
+          const regenBtn = document.getElementById('btnRegenerate');
+          if (regenBtn) regenBtn.classList.remove('hidden');
+
+          // Auto-save Harvey draft to selected CRM prospect
+          const picker = document.getElementById('crmProspectPicker');
+          const selectedProspectId = picker ? picker.value : '';
+          if (selectedProspectId && data.sequence && data.sequence[0]) {
+            try {
+              const patchRes = await fetch(getAuthUrl('/outreach/update-status'), {
+                method: 'POST',
+                credentials: 'include',
+                headers: getAuthHeaders(),
+                body: JSON.stringify({
+                  prospectId: selectedProspectId,
+                  harvey_status: data.audit?.passed ? 'passed' : 'flagged',
+                  harvey_draft: data.sequence[0].text,
+                  harvey_score: data.audit?.score || 0,
+                  harvey_subject: data.sequence[0].subject,
+                  specific_observation: data.dossier?.frictionObservation || '',
+                })
+              });
+              if (patchRes.ok) {
+                showToast('Auto-Saved to CRM', 'Harvey draft saved to prospect record in Supabase.', 'success');
+              }
+            } catch (saveErr) {
+              console.warn('Auto-save to CRM failed:', saveErr);
+            }
+          }
 
         } catch (err) {
           stepTimeouts.forEach(clearTimeout);
@@ -2551,22 +2594,39 @@ outreachRouter.post('/save-prospect', async (req, res) => {
 
 // 3. Update Prospect Status Route (1-Click Action Hub)
 outreachRouter.post('/update-status', async (req, res) => {
-  const { prospectId, status, notes } = req.body || {};
-  if (!prospectId || !status) {
-    return res.status(400).json({ status: 'error', message: 'Fields "prospectId" and "status" are required' });
+  const { prospectId, status, notes, harvey_status, harvey_draft, harvey_score, harvey_subject, specific_observation } = req.body || {};
+  if (!prospectId) {
+    return res.status(400).json({ status: 'error', message: 'Field "prospectId" is required' });
   }
 
-  const valid = ['pending', 'active', 'replied', 'meeting_booked', 'completed', 'unsubscribed'];
-  if (!valid.includes(status)) {
-    return res.status(400).json({ status: 'error', message: `Invalid status: ${status}` });
+  // If updating prospect status, validate it
+  if (status) {
+    const valid = ['pending', 'active', 'replied', 'meeting_booked', 'completed', 'unsubscribed'];
+    if (!valid.includes(status)) {
+      return res.status(400).json({ status: 'error', message: `Invalid status: ${status}` });
+    }
+  }
+
+  // Require at least one field to update
+  if (!status && !harvey_status && !harvey_draft && notes === undefined) {
+    return res.status(400).json({ status: 'error', message: 'At least one field to update is required (status, harvey_status, harvey_draft, notes)' });
   }
 
   try {
-    const updates = { status };
-    if (notes !== undefined) updates.notes = notes;
-    if (status === 'meeting_booked' || status === 'replied' || status === 'unsubscribed') {
-      updates.next_due_at = null; // stop automated cron sequence
+    const updates = {};
+    if (status) {
+      updates.status = status;
+      if (status === 'meeting_booked' || status === 'replied' || status === 'unsubscribed') {
+        updates.next_due_at = null; // stop automated cron sequence
+      }
     }
+    if (notes !== undefined) updates.notes = notes;
+    if (harvey_status) updates.harvey_status = harvey_status;
+    if (harvey_draft) updates.harvey_draft = harvey_draft;
+    if (harvey_score !== undefined) updates.harvey_score = harvey_score;
+    if (harvey_subject) updates.original_subject = harvey_subject;
+    if (specific_observation) updates.specific_observation = specific_observation;
+
     const updated = await updateProspect(prospectId, updates);
     if (!updated) {
       return res.status(404).json({ status: 'error', message: 'Prospect not found or update failed' });
