@@ -99,19 +99,47 @@ export function auditHarveyCopy(text, subject = '') {
   };
 }
 
+/**
+ * Helper to clean legal entities from clinic name to get natural business name
+ */
+export function getShortBusinessName(clinicName) {
+  if (!clinicName) return '';
+  return clinicName
+    .replace(/,\s*(LLC|Inc\.?|Corp\.?|P\.?C\.?|P\.?A\.?|PLLC|Co\.?)$/i, '')
+    .replace(/\s+(LLC|Inc\.?|Corp\.?|P\.?C\.?|P\.?A\.?|PLLC|Co\.?)$/i, '')
+    .trim();
+}
+
+/**
+ * Format Salutation:
+ * - If doctor/owner name is found: use natural human name (e.g. Dr. LastName or FirstName)
+ * - If owner name is not found: fallback cleanly to "team at [Short Business Name]" (e.g. "team at Med Aesthetics Miami")
+ * - If no name or clinic: fallback to "there" ("Hey there,")
+ */
 export function formatSalutation(doctorName, clinicName, niche = 'medspa') {
-  if (!doctorName || !doctorName.trim()) {
-    if (niche === 'hvac') {
-      return clinicName ? `Operations Lead at ${clinicName}` : 'there';
-    }
-    return clinicName ? `Medical Director at ${clinicName}` : 'Doctor';
+  const shortClinic = getShortBusinessName(clinicName);
+
+  // Check if doctorName is missing, empty, or a generic placeholder title
+  const isPlaceholder =
+    !doctorName ||
+    !doctorName.trim() ||
+    /^(doctor|owner|founder|director|medical director|operations lead|operations manager|manager|admin|team|info)\b/i.test(doctorName.trim()) ||
+    doctorName.includes('Medical Director') ||
+    doctorName.includes('Operations Lead') ||
+    doctorName.includes('Operations Manager');
+
+  if (isPlaceholder) {
+    return shortClinic ? `team at ${shortClinic}` : 'there';
   }
+
   let clean = doctorName.trim();
   if (/^dr\.?\s+/i.test(clean)) {
     return clean;
   }
   if (niche === 'hvac') {
-    return clean.split(/\s+/)[0];
+    // For HVAC, take the owner's first name
+    const firstName = clean.split(/\s+/)[0];
+    return firstName;
   }
   const parts = clean.split(/\s+/);
   if (parts.length > 1) {
@@ -136,7 +164,7 @@ export function generateHarveyScript({
   prospectEmail = '',
 }) {
   const salutation = formatSalutation(doctorName, clinicName, niche);
-  const clinic = clinicName ? clinicName.trim() : 'your clinic';
+  const clinic = getShortBusinessName(clinicName) || (clinicName ? clinicName.trim() : 'your clinic');
   const treat = treatment ? treatment.trim() : niche === 'hvac' ? 'emergency HVAC repair' : 'Morpheus8';
   const isHvac = niche === 'hvac';
   const unsubUrl = getUnsubscribeUrl(prospectEmail);

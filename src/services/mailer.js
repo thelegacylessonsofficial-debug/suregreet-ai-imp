@@ -2,6 +2,46 @@ import nodemailer from 'nodemailer';
 import { config } from '../config.js';
 
 let transporter = null;
+let rotationIndex = 0;
+
+/**
+ * Returns list of configured sending inboxes for dual-inbox/multi-inbox rotation
+ */
+export function getSenderInboxes() {
+  const raw = process.env.ROTATION_FROM_EMAILS || process.env.RESEND_FROM || config.resendFrom || 'Archit | SureGreet AI <onboarding@resend.dev>';
+  const parsed = raw
+    .split(/[,;]/)
+    .map((e) => e.trim())
+    .filter(Boolean);
+  return parsed.length > 0 ? parsed : ['Archit | SureGreet AI <onboarding@resend.dev>'];
+}
+
+/**
+ * Round-robin selector across registered sending inboxes
+ */
+export function getNextSenderInbox() {
+  const inboxes = getSenderInboxes();
+  const selected = inboxes[rotationIndex % inboxes.length];
+  rotationIndex++;
+  return {
+    selected,
+    index: (rotationIndex - 1) % inboxes.length,
+    totalInboxes: inboxes.length,
+  };
+}
+
+export function getMailerStatus() {
+  const inboxes = getSenderInboxes();
+  const resendApiKey = process.env.RESEND_API_KEY;
+  return {
+    provider: resendApiKey ? 'Resend HTTP API (Port 443)' : (config.smtp?.user ? 'SMTP (Port 465/587)' : 'Mock / Local Logger'),
+    activeInboxes: inboxes,
+    inboxCount: inboxes.length,
+    rotationActive: inboxes.length > 1,
+    currentSender: inboxes[(rotationIndex) % inboxes.length],
+    totalDispatches: rotationIndex,
+  };
+}
 
 function getTransporter() {
   if (!transporter) {
@@ -25,18 +65,22 @@ function getTransporter() {
   return transporter;
 }
 
-export async function sendEmail({ to, subject, html, text, headers = {}, inReplyTo, references, messageId }) {
+export async function sendEmail({ to, subject, html, text, from, headers = {}, inReplyTo, references, messageId }) {
   // Normalize threading headers
   const customHeaders = { ...headers };
   if (inReplyTo) customHeaders['In-Reply-To'] = inReplyTo;
   if (references) customHeaders['References'] = references;
 
-  // 1. Try Resend HTTP API (Port 443 — bypasses any cloud SMTP port blocking)
+  // Round-robin inbox selection if no explicit from-address is forced
+  const { selected: selectedFrom, index: inboxIdx, totalInboxes } = getNextSenderInbox();
+  const effectiveFrom = from || selectedFrom;
+
+  // 1. Try Resend HTTP API (Port 443 — bypasses cloud SMTP socket blocking)
   const resendApiKey = process.env.RESEND_API_KEY;
   if (resendApiKey) {
     try {
       const resendPayload = {
-        from: config.resendFrom || process.env.RESEND_FROM || 'Archit | SureGreet AI <onboarding@resend.dev>',
+        from: effectiveFrom,
         to: Array.isArray(to) ? to : [to],
         subject,
         html,
@@ -45,6 +89,8 @@ export async function sendEmail({ to, subject, html, text, headers = {}, inReply
       if (Object.keys(customHeaders).length > 0) {
         resendPayload.headers = customHeaders;
       }
+
+      console.log(`[Mailer:Resend] Dispatching email (Inbox ${inboxIdx + 1}/${totalInboxes}: ${effectiveFrom}) to: ${to}...`);
 
       const res = await fetch('https://api.resend.com/emails', {
         method: 'POST',
@@ -56,8 +102,8 @@ export async function sendEmail({ to, subject, html, text, headers = {}, inReply
       });
       const data = await res.json();
       if (res.ok) {
-        console.log(`[Mailer:Resend] Email sent successfully to ${to} (ID: ${data.id})`);
-        return { success: true, messageId: data.id, provider: 'resend' };
+        console.log(`[Mailer:Resend] Email sent successfully to ${to} (ID: ${data.id}, From: ${effectiveFrom})`);
+        return { success: true, messageId: data.id, provider: 'resend', from: effectiveFrom };
       } else {
         console.warn(`[Mailer:Resend] Warning from API:`, data.message || data);
       }
@@ -70,13 +116,13 @@ export async function sendEmail({ to, subject, html, text, headers = {}, inReply
   const mailClient = getTransporter();
 
   if (!mailClient) {
-    console.log(`[Mailer Mock] Email to: ${to} | Subject: "${subject}"`);
-    return { mock: true, success: true, messageId: messageId || `<mock-${Date.now()}@suregreet.ai>` };
+    console.log(`[Mailer Mock] Email to: ${to} | Subject: "${subject}" | From: ${effectiveFrom}`);
+    return { mock: true, success: true, messageId: messageId || `<mock-${Date.now()}@suregreet.ai>`, from: effectiveFrom };
   }
 
   try {
     const mailOptions = {
-      from: config.smtp.from,
+      from: effectiveFrom,
       to,
       subject,
       html,
@@ -88,8 +134,8 @@ export async function sendEmail({ to, subject, html, text, headers = {}, inReply
     if (messageId) mailOptions.messageId = messageId;
 
     const info = await mailClient.sendMail(mailOptions);
-    console.log(`[Mailer:SMTP] Email sent successfully to: ${to} (MessageId: ${info.messageId})`);
-    return { success: true, messageId: info.messageId, provider: 'smtp' };
+    console.log(`[Mailer:SMTP] Email sent successfully to: ${to} (MessageId: ${info.messageId}, From: ${effectiveFrom})`);
+    return { success: true, messageId: info.messageId, provider: 'smtp', from: effectiveFrom };
   } catch (err) {
     console.error(`[Mailer:SMTP] Error sending email to ${to}:`, err.message);
     return { success: false, error: err.message };

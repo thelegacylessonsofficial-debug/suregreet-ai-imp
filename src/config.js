@@ -52,7 +52,10 @@ export const config = {
   googleSheets: {
     sheetId: process.env.GOOGLE_SHEET_ID || '1Ev8UJfc8kvBE2C6o6eJRr2aJfNKflAKWGiRgVg7svXM',
     tabName: process.env.GOOGLE_SHEET_TAB_NAME || '📞 Call Logs',
+    leadsTabName: process.env.GOOGLE_SHEET_LEADS_TAB || '🎯 Verified Leads',
     serviceAccountPath: process.env.GOOGLE_SERVICE_ACCOUNT_PATH || './service-account.json',
+    serviceAccountJson: process.env.GOOGLE_SERVICE_ACCOUNT_JSON || '',
+    webhookUrl: process.env.GOOGLE_SHEETS_WEBHOOK_URL || '',
   },
 
   // Agency Dashboard Security / Admin Credentials

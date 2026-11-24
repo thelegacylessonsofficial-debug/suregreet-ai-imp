@@ -1,9 +1,10 @@
 import { Router } from 'express';
 import { scrapeClinicWebsite, scrapeAndIngestLead, scrapeBulkLeads } from '../services/scraperService.js';
-import { runAutonomousHunt, huntAndEnrichLead, commitLeadToSupabase } from '../services/leadHunterService.js';
+import { runAutonomousHunt, huntAndEnrichLead, commitLeadToSupabase, TERRITORY_CASCADE, ORDERED_CASCADE_CITIES, getNextCascadeCity } from '../services/leadHunterService.js';
 import { runDigitalAudit, auditAndSaveProspect } from '../services/auditorService.js';
 import { getProspects, deleteProspect } from '../services/outreachService.js';
 import { renderSaasShell, getSvgIcon } from '../views/saasLayout.js';
+import { getShortBusinessName, formatSalutation } from '../templates/outreachTemplates.js';
 
 export const scraperRouter = Router();
 
@@ -204,118 +205,223 @@ scraperRouter.get('/dashboard', async (req, res) => {
             <select id="huntLimit" class="flex-1 bg-[var(--bg-surface)] border border-[var(--border-subtle)] rounded-xl px-3.5 py-2.5 text-xs text-cyan-300 focus:outline-none focus:border-cyan-500 font-mono font-bold">
               <option value="5">5 Qualified Leads</option>
               <option value="10">10 Qualified Leads</option>
-              <option value="15">15 Qualified Leads</option>
-              <option value="20" selected>20 Qualified Leads (Max Batch)</option>
+              <option value="20">20 Qualified Leads</option>
+              <option value="30">30 Qualified Leads (Daily Target)</option>
+              <option value="40" selected>40 Qualified Leads (Daily Max)</option>
             </select>
-            <button onclick="runAutonomousHuntClient()" id="btnLaunchHunter" type="button" class="bg-cyan-500 hover:opacity-90 text-black font-bold text-xs px-5 py-2.5 rounded-xl transition flex items-center gap-1.5 shadow-lg shadow-cyan-500/20 active:scale-95 cursor-pointer">
+            <button onclick="runAutonomousHuntClient()" id="btnLaunchHunter" type="button" class="bg-cyan-500 hover:opacity-90 text-black font-bold text-xs px-4 py-2.5 rounded-xl transition flex items-center gap-1.5 shadow-lg shadow-cyan-500/20 active:scale-95 cursor-pointer">
               ${getSvgIcon('bolt', 'w-4 h-4')}
               <span>Launch Hunter</span>
+            </button>
+            <button onclick="stepNextTerritoryCity()" id="btnNextTerritory" type="button" class="bg-[var(--bg-surface)] hover:bg-[var(--bg-hover)] text-cyan-300 border border-cyan-500/30 font-bold text-xs px-3 py-2.5 rounded-xl transition flex items-center gap-1 shadow-sm cursor-pointer" title="Auto-advance to next territory in sequence (Pacific Top 5 -> Eastern Top 5)">
+              <span>Next City ⏭</span>
             </button>
           </div>
         </div>
       </div>
 
-      <!-- Quick Preset City Badges & Regional Directory (20+ Top US Metros) -->
-      <div class="space-y-2.5 pt-1">
-        <div class="flex items-center gap-2 flex-wrap text-xs">
-          <span class="text-[var(--text-muted)] text-[11px] font-semibold">Top US Markets:</span>
-          <button type="button" onclick="setHuntPreset('Miami, FL', this)" class="market-preset-btn px-2.5 py-1.5 rounded-xl bg-cyan-500/15 text-cyan-300 border border-cyan-500/40 font-bold transition flex items-center gap-1 shadow-sm shadow-cyan-500/10 active cursor-pointer">
-            <span>📍 Miami, FL</span>
+      <!-- SYSTEMATIC TERRITORY CASCADE NAVIGATOR -->
+      <div class="bg-[var(--bg-surface)] border border-[var(--border-subtle)] rounded-2xl p-4 space-y-3.5">
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-[var(--border-subtle)]/70 pb-2.5">
+          <div class="flex items-center gap-2">
+            <span class="text-xs font-bold text-cyan-400 font-mono uppercase tracking-wider">🎯 Territory Cascade Navigator</span>
+            <span class="text-[10px] px-2 py-0.5 rounded-full bg-cyan-500/10 text-cyan-300 border border-cyan-500/20 font-mono font-bold">Pacific First → Eastern Second</span>
+          </div>
+          <div class="flex items-center gap-2 text-xs">
+            <span class="text-[11px] text-[var(--text-muted)]">Rule: Top 3–5 Cities per State until Timezone Region Exhausted</span>
+          </div>
+        </div>
+
+        <!-- Timezone Navigation Tabs -->
+        <div class="flex items-center gap-2 overflow-x-auto text-xs pb-1">
+          <button type="button" id="tabPacificTz" onclick="switchTerritoryTab('pacific')" class="tz-tab-btn px-3 py-1.5 rounded-xl bg-cyan-500/15 text-cyan-300 border border-cyan-500/40 font-bold transition flex items-center gap-1.5 cursor-pointer">
+            <span>⚡ Phase 1: Pacific Timezone (PT)</span>
+            <span class="text-[10px] px-1.5 py-0.2 bg-cyan-500/20 rounded font-mono">CA • WA • OR • NV</span>
           </button>
-          <button type="button" onclick="setHuntPreset('Dallas, TX', this)" class="market-preset-btn px-2.5 py-1.5 rounded-xl bg-[var(--bg-surface)] hover:bg-[var(--bg-hover)] text-[var(--text-secondary)] border border-[var(--border-subtle)] font-medium transition flex items-center gap-1 cursor-pointer">
-            <span>📍 Dallas, TX</span>
-          </button>
-          <button type="button" onclick="setHuntPreset('Houston, TX', this)" class="market-preset-btn px-2.5 py-1.5 rounded-xl bg-[var(--bg-surface)] hover:bg-[var(--bg-hover)] text-[var(--text-secondary)] border border-[var(--border-subtle)] font-medium transition flex items-center gap-1 cursor-pointer">
-            <span>📍 Houston, TX</span>
-          </button>
-          <button type="button" onclick="setHuntPreset('Austin, TX', this)" class="market-preset-btn px-2.5 py-1.5 rounded-xl bg-[var(--bg-surface)] hover:bg-[var(--bg-hover)] text-[var(--text-secondary)] border border-[var(--border-subtle)] font-medium transition flex items-center gap-1 cursor-pointer">
-            <span>📍 Austin, TX</span>
-          </button>
-          <button type="button" onclick="setHuntPreset('Phoenix, AZ', this)" class="market-preset-btn px-2.5 py-1.5 rounded-xl bg-[var(--bg-surface)] hover:bg-[var(--bg-hover)] text-[var(--text-secondary)] border border-[var(--border-subtle)] font-medium transition flex items-center gap-1 cursor-pointer">
-            <span>📍 Phoenix, AZ</span>
-          </button>
-          <button type="button" onclick="setHuntPreset('Atlanta, GA', this)" class="market-preset-btn px-2.5 py-1.5 rounded-xl bg-[var(--bg-surface)] hover:bg-[var(--bg-hover)] text-[var(--text-secondary)] border border-[var(--border-subtle)] font-medium transition flex items-center gap-1 cursor-pointer">
-            <span>📍 Atlanta, GA</span>
-          </button>
-          <button type="button" onclick="setHuntPreset('Los Angeles, CA', this)" class="market-preset-btn px-2.5 py-1.5 rounded-xl bg-[var(--bg-surface)] hover:bg-[var(--bg-hover)] text-[var(--text-secondary)] border border-[var(--border-subtle)] font-medium transition flex items-center gap-1 cursor-pointer">
-            <span>📍 Los Angeles, CA</span>
-          </button>
-          <button type="button" onclick="setHuntPreset('San Diego, CA', this)" class="market-preset-btn px-2.5 py-1.5 rounded-xl bg-[var(--bg-surface)] hover:bg-[var(--bg-hover)] text-[var(--text-secondary)] border border-[var(--border-subtle)] font-medium transition flex items-center gap-1 cursor-pointer">
-            <span>📍 San Diego, CA</span>
-          </button>
-          <button type="button" onclick="setHuntPreset('San Francisco, CA', this)" class="market-preset-btn px-2.5 py-1.5 rounded-xl bg-[var(--bg-surface)] hover:bg-[var(--bg-hover)] text-[var(--text-secondary)] border border-[var(--border-subtle)] font-medium transition flex items-center gap-1 cursor-pointer">
-            <span>📍 San Francisco, CA</span>
-          </button>
-          <button type="button" onclick="setHuntPreset('Las Vegas, NV', this)" class="market-preset-btn px-2.5 py-1.5 rounded-xl bg-[var(--bg-surface)] hover:bg-[var(--bg-hover)] text-[var(--text-secondary)] border border-[var(--border-subtle)] font-medium transition flex items-center gap-1 cursor-pointer">
-            <span>📍 Las Vegas, NV</span>
-          </button>
-          <button type="button" onclick="setHuntPreset('Seattle, WA', this)" class="market-preset-btn px-2.5 py-1.5 rounded-xl bg-[var(--bg-surface)] hover:bg-[var(--bg-hover)] text-[var(--text-secondary)] border border-[var(--border-subtle)] font-medium transition flex items-center gap-1 cursor-pointer">
-            <span>📍 Seattle, WA</span>
-          </button>
-          <button type="button" onclick="setHuntPreset('Denver, CO', this)" class="market-preset-btn px-2.5 py-1.5 rounded-xl bg-[var(--bg-surface)] hover:bg-[var(--bg-hover)] text-[var(--text-secondary)] border border-[var(--border-subtle)] font-medium transition flex items-center gap-1 cursor-pointer">
-            <span>📍 Denver, CO</span>
-          </button>
-          <button type="button" onclick="setHuntPreset('Orlando, FL', this)" class="market-preset-btn px-2.5 py-1.5 rounded-xl bg-[var(--bg-surface)] hover:bg-[var(--bg-hover)] text-[var(--text-secondary)] border border-[var(--border-subtle)] font-medium transition flex items-center gap-1 cursor-pointer">
-            <span>📍 Orlando, FL</span>
-          </button>
-          <button type="button" onclick="setHuntPreset('Tampa, FL', this)" class="market-preset-btn px-2.5 py-1.5 rounded-xl bg-[var(--bg-surface)] hover:bg-[var(--bg-hover)] text-[var(--text-secondary)] border border-[var(--border-subtle)] font-medium transition flex items-center gap-1 cursor-pointer">
-            <span>📍 Tampa, FL</span>
-          </button>
-          <button type="button" onclick="setHuntPreset('Nashville, TN', this)" class="market-preset-btn px-2.5 py-1.5 rounded-xl bg-[var(--bg-surface)] hover:bg-[var(--bg-hover)] text-[var(--text-secondary)] border border-[var(--border-subtle)] font-medium transition flex items-center gap-1 cursor-pointer">
-            <span>📍 Nashville, TN</span>
-          </button>
-          <button type="button" onclick="setHuntPreset('Charlotte, NC', this)" class="market-preset-btn px-2.5 py-1.5 rounded-xl bg-[var(--bg-surface)] hover:bg-[var(--bg-hover)] text-[var(--text-secondary)] border border-[var(--border-subtle)] font-medium transition flex items-center gap-1 cursor-pointer">
-            <span>📍 Charlotte, NC</span>
-          </button>
-          <button type="button" onclick="setHuntPreset('Chicago, IL', this)" class="market-preset-btn px-2.5 py-1.5 rounded-xl bg-[var(--bg-surface)] hover:bg-[var(--bg-hover)] text-[var(--text-secondary)] border border-[var(--border-subtle)] font-medium transition flex items-center gap-1 cursor-pointer">
-            <span>📍 Chicago, IL</span>
-          </button>
-          <button type="button" onclick="setHuntPreset('Boston, MA', this)" class="market-preset-btn px-2.5 py-1.5 rounded-xl bg-[var(--bg-surface)] hover:bg-[var(--bg-hover)] text-[var(--text-secondary)] border border-[var(--border-subtle)] font-medium transition flex items-center gap-1 cursor-pointer">
-            <span>📍 Boston, MA</span>
-          </button>
-          <button type="button" onclick="setHuntPreset('Philadelphia, PA', this)" class="market-preset-btn px-2.5 py-1.5 rounded-xl bg-[var(--bg-surface)] hover:bg-[var(--bg-hover)] text-[var(--text-secondary)] border border-[var(--border-subtle)] font-medium transition flex items-center gap-1 cursor-pointer">
-            <span>📍 Philadelphia, PA</span>
-          </button>
-          <button type="button" onclick="setHuntPreset('New York, NY', this)" class="market-preset-btn px-2.5 py-1.5 rounded-xl bg-[var(--bg-surface)] hover:bg-[var(--bg-hover)] text-[var(--text-secondary)] border border-[var(--border-subtle)] font-medium transition flex items-center gap-1 cursor-pointer">
-            <span>📍 New York, NY</span>
-          </button>
-          <button type="button" onclick="setHuntPreset('Washington, DC', this)" class="market-preset-btn px-2.5 py-1.5 rounded-xl bg-[var(--bg-surface)] hover:bg-[var(--bg-hover)] text-[var(--text-secondary)] border border-[var(--border-subtle)] font-medium transition flex items-center gap-1 cursor-pointer">
-            <span>📍 Washington, DC</span>
+          <button type="button" id="tabEasternTz" onclick="switchTerritoryTab('eastern')" class="tz-tab-btn px-3 py-1.5 rounded-xl bg-[var(--bg-card)] text-[var(--text-secondary)] border border-[var(--border-subtle)] font-medium transition flex items-center gap-1.5 cursor-pointer">
+            <span>⚡ Phase 2: Eastern Timezone (ET)</span>
+            <span class="text-[10px] px-1.5 py-0.2 bg-[var(--bg-surface)] rounded font-mono">FL • NY • GA</span>
           </button>
         </div>
 
-        <div class="flex items-center gap-2 pt-0.5">
-          <span class="text-[var(--text-muted)] text-[11px] font-semibold">Regional Directory:</span>
-          <select id="marketQuickPicker" onchange="setHuntPreset(this.value)" class="bg-[var(--bg-surface)] border border-[var(--border-subtle)] text-[11px] font-semibold rounded-xl px-3 py-1.5 text-cyan-300 focus:outline-none focus:border-cyan-500 transition cursor-pointer">
-            <option value="" disabled selected>— Select from 20+ High-Ticket US Metros —</option>
-            <optgroup label="Florida & Southeast (Sunbelt Capital)">
-              <option value="Miami, FL">Miami, FL (Aesthetics & Surgery Capital)</option>
-              <option value="Orlando, FL">Orlando, FL (Central Florida)</option>
-              <option value="Tampa, FL">Tampa, FL (Gulf Coast)</option>
-              <option value="Atlanta, GA">Atlanta, GA (Buckhead / Metro)</option>
-              <option value="Nashville, TN">Nashville, TN (High-Growth Healthcare)</option>
-              <option value="Charlotte, NC">Charlotte, NC (Rapid Expansion)</option>
+        <!-- PACIFIC TIMEZONE CITIES PANEL -->
+        <div id="panelPacificTz" class="space-y-3">
+          <!-- California -->
+          <div class="space-y-1.5">
+            <div class="flex items-center justify-between text-xs">
+              <span class="font-bold text-[var(--text-primary)] flex items-center gap-1.5">
+                <span class="text-amber-400">📍</span> California (CA) — Top 5 Priority:
+              </span>
+              <span class="text-[10px] text-[var(--text-muted)] font-mono">Pop / GDP Ranked</span>
+            </div>
+            <div class="flex items-center gap-1.5 flex-wrap text-xs">
+              <button type="button" onclick="setHuntPreset('Los Angeles, CA', this)" class="market-preset-btn px-2.5 py-1 rounded-lg bg-[var(--bg-card)] hover:bg-[var(--bg-hover)] text-[var(--text-primary)] border border-[var(--border-subtle)] text-[11px] transition">Los Angeles</button>
+              <button type="button" onclick="setHuntPreset('San Diego, CA', this)" class="market-preset-btn px-2.5 py-1 rounded-lg bg-[var(--bg-card)] hover:bg-[var(--bg-hover)] text-[var(--text-primary)] border border-[var(--border-subtle)] text-[11px] transition">San Diego</button>
+              <button type="button" onclick="setHuntPreset('San Jose, CA', this)" class="market-preset-btn px-2.5 py-1 rounded-lg bg-[var(--bg-card)] hover:bg-[var(--bg-hover)] text-[var(--text-primary)] border border-[var(--border-subtle)] text-[11px] transition">San Jose</button>
+              <button type="button" onclick="setHuntPreset('San Francisco, CA', this)" class="market-preset-btn px-2.5 py-1 rounded-lg bg-[var(--bg-card)] hover:bg-[var(--bg-hover)] text-[var(--text-primary)] border border-[var(--border-subtle)] text-[11px] transition">San Francisco</button>
+              <button type="button" onclick="setHuntPreset('Fresno, CA', this)" class="market-preset-btn px-2.5 py-1 rounded-lg bg-[var(--bg-card)] hover:bg-[var(--bg-hover)] text-[var(--text-primary)] border border-[var(--border-subtle)] text-[11px] transition">Fresno</button>
+            </div>
+          </div>
+
+          <!-- Washington -->
+          <div class="space-y-1.5">
+            <div class="flex items-center justify-between text-xs">
+              <span class="font-bold text-[var(--text-primary)] flex items-center gap-1.5">
+                <span class="text-cyan-400">📍</span> Washington (WA) — Top 5 Priority:
+              </span>
+              <span class="text-[10px] text-[var(--text-muted)] font-mono">Pop / GDP Ranked</span>
+            </div>
+            <div class="flex items-center gap-1.5 flex-wrap text-xs">
+              <button type="button" onclick="setHuntPreset('Seattle, WA', this)" class="market-preset-btn px-2.5 py-1 rounded-lg bg-[var(--bg-card)] hover:bg-[var(--bg-hover)] text-[var(--text-primary)] border border-[var(--border-subtle)] text-[11px] transition">Seattle</button>
+              <button type="button" onclick="setHuntPreset('Spokane, WA', this)" class="market-preset-btn px-2.5 py-1 rounded-lg bg-[var(--bg-card)] hover:bg-[var(--bg-hover)] text-[var(--text-primary)] border border-[var(--border-subtle)] text-[11px] transition">Spokane</button>
+              <button type="button" onclick="setHuntPreset('Tacoma, WA', this)" class="market-preset-btn px-2.5 py-1 rounded-lg bg-[var(--bg-card)] hover:bg-[var(--bg-hover)] text-[var(--text-primary)] border border-[var(--border-subtle)] text-[11px] transition">Tacoma</button>
+              <button type="button" onclick="setHuntPreset('Vancouver, WA', this)" class="market-preset-btn px-2.5 py-1 rounded-lg bg-[var(--bg-card)] hover:bg-[var(--bg-hover)] text-[var(--text-primary)] border border-[var(--border-subtle)] text-[11px] transition">Vancouver</button>
+              <button type="button" onclick="setHuntPreset('Bellevue, WA', this)" class="market-preset-btn px-2.5 py-1 rounded-lg bg-[var(--bg-card)] hover:bg-[var(--bg-hover)] text-[var(--text-primary)] border border-[var(--border-subtle)] text-[11px] transition">Bellevue</button>
+            </div>
+          </div>
+
+          <!-- Oregon -->
+          <div class="space-y-1.5">
+            <div class="flex items-center justify-between text-xs">
+              <span class="font-bold text-[var(--text-primary)] flex items-center gap-1.5">
+                <span class="text-emerald-400">📍</span> Oregon (OR) — Top 5 Priority:
+              </span>
+              <span class="text-[10px] text-[var(--text-muted)] font-mono">Pop / GDP Ranked</span>
+            </div>
+            <div class="flex items-center gap-1.5 flex-wrap text-xs">
+              <button type="button" onclick="setHuntPreset('Portland, OR', this)" class="market-preset-btn px-2.5 py-1 rounded-lg bg-[var(--bg-card)] hover:bg-[var(--bg-hover)] text-[var(--text-primary)] border border-[var(--border-subtle)] text-[11px] transition">Portland</button>
+              <button type="button" onclick="setHuntPreset('Eugene, OR', this)" class="market-preset-btn px-2.5 py-1 rounded-lg bg-[var(--bg-card)] hover:bg-[var(--bg-hover)] text-[var(--text-primary)] border border-[var(--border-subtle)] text-[11px] transition">Eugene</button>
+              <button type="button" onclick="setHuntPreset('Salem, OR', this)" class="market-preset-btn px-2.5 py-1 rounded-lg bg-[var(--bg-card)] hover:bg-[var(--bg-hover)] text-[var(--text-primary)] border border-[var(--border-subtle)] text-[11px] transition">Salem</button>
+              <button type="button" onclick="setHuntPreset('Gresham, OR', this)" class="market-preset-btn px-2.5 py-1 rounded-lg bg-[var(--bg-card)] hover:bg-[var(--bg-hover)] text-[var(--text-primary)] border border-[var(--border-subtle)] text-[11px] transition">Gresham</button>
+              <button type="button" onclick="setHuntPreset('Hillsboro, OR', this)" class="market-preset-btn px-2.5 py-1 rounded-lg bg-[var(--bg-card)] hover:bg-[var(--bg-hover)] text-[var(--text-primary)] border border-[var(--border-subtle)] text-[11px] transition">Hillsboro</button>
+            </div>
+          </div>
+
+          <!-- Nevada -->
+          <div class="space-y-1.5">
+            <div class="flex items-center justify-between text-xs">
+              <span class="font-bold text-[var(--text-primary)] flex items-center gap-1.5">
+                <span class="text-purple-400">📍</span> Nevada (NV) — Top 5 Priority:
+              </span>
+              <span class="text-[10px] text-[var(--text-muted)] font-mono">Pop / GDP Ranked</span>
+            </div>
+            <div class="flex items-center gap-1.5 flex-wrap text-xs">
+              <button type="button" onclick="setHuntPreset('Las Vegas, NV', this)" class="market-preset-btn px-2.5 py-1 rounded-lg bg-[var(--bg-card)] hover:bg-[var(--bg-hover)] text-[var(--text-primary)] border border-[var(--border-subtle)] text-[11px] transition">Las Vegas</button>
+              <button type="button" onclick="setHuntPreset('Henderson, NV', this)" class="market-preset-btn px-2.5 py-1 rounded-lg bg-[var(--bg-card)] hover:bg-[var(--bg-hover)] text-[var(--text-primary)] border border-[var(--border-subtle)] text-[11px] transition">Henderson</button>
+              <button type="button" onclick="setHuntPreset('North Las Vegas, NV', this)" class="market-preset-btn px-2.5 py-1 rounded-lg bg-[var(--bg-card)] hover:bg-[var(--bg-hover)] text-[var(--text-primary)] border border-[var(--border-subtle)] text-[11px] transition">North Las Vegas</button>
+              <button type="button" onclick="setHuntPreset('Reno, NV', this)" class="market-preset-btn px-2.5 py-1 rounded-lg bg-[var(--bg-card)] hover:bg-[var(--bg-hover)] text-[var(--text-primary)] border border-[var(--border-subtle)] text-[11px] transition">Reno</button>
+              <button type="button" onclick="setHuntPreset('Sparks, NV', this)" class="market-preset-btn px-2.5 py-1 rounded-lg bg-[var(--bg-card)] hover:bg-[var(--bg-hover)] text-[var(--text-primary)] border border-[var(--border-subtle)] text-[11px] transition">Sparks</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- EASTERN TIMEZONE CITIES PANEL -->
+        <div id="panelEasternTz" class="hidden space-y-3">
+          <!-- Florida -->
+          <div class="space-y-1.5">
+            <div class="flex items-center justify-between text-xs">
+              <span class="font-bold text-[var(--text-primary)] flex items-center gap-1.5">
+                <span class="text-orange-400">📍</span> Florida (FL) — Top 5 Priority:
+              </span>
+              <span class="text-[10px] text-[var(--text-muted)] font-mono">Pop / GDP Ranked</span>
+            </div>
+            <div class="flex items-center gap-1.5 flex-wrap text-xs">
+              <button type="button" onclick="setHuntPreset('Jacksonville, FL', this)" class="market-preset-btn px-2.5 py-1 rounded-lg bg-[var(--bg-card)] hover:bg-[var(--bg-hover)] text-[var(--text-primary)] border border-[var(--border-subtle)] text-[11px] transition">Jacksonville</button>
+              <button type="button" onclick="setHuntPreset('Miami, FL', this)" class="market-preset-btn px-2.5 py-1 rounded-lg bg-[var(--bg-card)] hover:bg-[var(--bg-hover)] text-[var(--text-primary)] border border-[var(--border-subtle)] text-[11px] transition">Miami</button>
+              <button type="button" onclick="setHuntPreset('Tampa, FL', this)" class="market-preset-btn px-2.5 py-1 rounded-lg bg-[var(--bg-card)] hover:bg-[var(--bg-hover)] text-[var(--text-primary)] border border-[var(--border-subtle)] text-[11px] transition">Tampa</button>
+              <button type="button" onclick="setHuntPreset('Orlando, FL', this)" class="market-preset-btn px-2.5 py-1 rounded-lg bg-[var(--bg-card)] hover:bg-[var(--bg-hover)] text-[var(--text-primary)] border border-[var(--border-subtle)] text-[11px] transition">Orlando</button>
+              <button type="button" onclick="setHuntPreset('St. Petersburg, FL', this)" class="market-preset-btn px-2.5 py-1 rounded-lg bg-[var(--bg-card)] hover:bg-[var(--bg-hover)] text-[var(--text-primary)] border border-[var(--border-subtle)] text-[11px] transition">St. Petersburg</button>
+            </div>
+          </div>
+
+          <!-- New York -->
+          <div class="space-y-1.5">
+            <div class="flex items-center justify-between text-xs">
+              <span class="font-bold text-[var(--text-primary)] flex items-center gap-1.5">
+                <span class="text-blue-400">📍</span> New York (NY) — Top 5 Priority:
+              </span>
+              <span class="text-[10px] text-[var(--text-muted)] font-mono">Pop / GDP Ranked</span>
+            </div>
+            <div class="flex items-center gap-1.5 flex-wrap text-xs">
+              <button type="button" onclick="setHuntPreset('New York City, NY', this)" class="market-preset-btn px-2.5 py-1 rounded-lg bg-[var(--bg-card)] hover:bg-[var(--bg-hover)] text-[var(--text-primary)] border border-[var(--border-subtle)] text-[11px] transition">New York City</button>
+              <button type="button" onclick="setHuntPreset('Buffalo, NY', this)" class="market-preset-btn px-2.5 py-1 rounded-lg bg-[var(--bg-card)] hover:bg-[var(--bg-hover)] text-[var(--text-primary)] border border-[var(--border-subtle)] text-[11px] transition">Buffalo</button>
+              <button type="button" onclick="setHuntPreset('Rochester, NY', this)" class="market-preset-btn px-2.5 py-1 rounded-lg bg-[var(--bg-card)] hover:bg-[var(--bg-hover)] text-[var(--text-primary)] border border-[var(--border-subtle)] text-[11px] transition">Rochester</button>
+              <button type="button" onclick="setHuntPreset('Yonkers, NY', this)" class="market-preset-btn px-2.5 py-1 rounded-lg bg-[var(--bg-card)] hover:bg-[var(--bg-hover)] text-[var(--text-primary)] border border-[var(--border-subtle)] text-[11px] transition">Yonkers</button>
+              <button type="button" onclick="setHuntPreset('Syracuse, NY', this)" class="market-preset-btn px-2.5 py-1 rounded-lg bg-[var(--bg-card)] hover:bg-[var(--bg-hover)] text-[var(--text-primary)] border border-[var(--border-subtle)] text-[11px] transition">Syracuse</button>
+            </div>
+          </div>
+
+          <!-- Georgia -->
+          <div class="space-y-1.5">
+            <div class="flex items-center justify-between text-xs">
+              <span class="font-bold text-[var(--text-primary)] flex items-center gap-1.5">
+                <span class="text-rose-400">📍</span> Georgia (GA) — Top 5 Priority:
+              </span>
+              <span class="text-[10px] text-[var(--text-muted)] font-mono">Pop / GDP Ranked</span>
+            </div>
+            <div class="flex items-center gap-1.5 flex-wrap text-xs">
+              <button type="button" onclick="setHuntPreset('Atlanta, GA', this)" class="market-preset-btn px-2.5 py-1 rounded-lg bg-[var(--bg-card)] hover:bg-[var(--bg-hover)] text-[var(--text-primary)] border border-[var(--border-subtle)] text-[11px] transition">Atlanta</button>
+              <button type="button" onclick="setHuntPreset('Augusta, GA', this)" class="market-preset-btn px-2.5 py-1 rounded-lg bg-[var(--bg-card)] hover:bg-[var(--bg-hover)] text-[var(--text-primary)] border border-[var(--border-subtle)] text-[11px] transition">Augusta</button>
+              <button type="button" onclick="setHuntPreset('Columbus, GA', this)" class="market-preset-btn px-2.5 py-1 rounded-lg bg-[var(--bg-card)] hover:bg-[var(--bg-hover)] text-[var(--text-primary)] border border-[var(--border-subtle)] text-[11px] transition">Columbus</button>
+              <button type="button" onclick="setHuntPreset('Macon, GA', this)" class="market-preset-btn px-2.5 py-1 rounded-lg bg-[var(--bg-card)] hover:bg-[var(--bg-hover)] text-[var(--text-primary)] border border-[var(--border-subtle)] text-[11px] transition">Macon</button>
+              <button type="button" onclick="setHuntPreset('Savannah, GA', this)" class="market-preset-btn px-2.5 py-1 rounded-lg bg-[var(--bg-card)] hover:bg-[var(--bg-hover)] text-[var(--text-primary)] border border-[var(--border-subtle)] text-[11px] transition">Savannah</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- All-Markets Cascade Dropdown -->
+        <div class="flex items-center gap-2 pt-1 border-t border-[var(--border-subtle)]/70">
+          <span class="text-[var(--text-muted)] text-[11px] font-semibold whitespace-nowrap">All Cascade Markets:</span>
+          <select id="marketQuickPicker" onchange="setHuntPreset(this.value)" class="flex-1 bg-[var(--bg-card)] border border-[var(--border-subtle)] text-[11px] font-semibold rounded-xl px-3 py-1.5 text-cyan-300 focus:outline-none focus:border-cyan-500 transition cursor-pointer">
+            <option value="" disabled selected>— Select from Systematic Cascade (Pacific & Eastern) —</option>
+            <optgroup label="PACIFIC — CALIFORNIA (CA) TOP 5">
+              <option value="Los Angeles, CA">Los Angeles, CA</option>
+              <option value="San Diego, CA">San Diego, CA</option>
+              <option value="San Jose, CA">San Jose, CA</option>
+              <option value="San Francisco, CA">San Francisco, CA</option>
+              <option value="Fresno, CA">Fresno, CA</option>
             </optgroup>
-            <optgroup label="Texas Corridor (High-Density Private Practices)">
-              <option value="Dallas, TX">Dallas / Fort Worth, TX (High Net-Worth)</option>
-              <option value="Houston, TX">Houston, TX (Galleria / River Oaks)</option>
-              <option value="Austin, TX">Austin, TX (Tech / Rapid Growth)</option>
+            <optgroup label="PACIFIC — WASHINGTON (WA) TOP 5">
+              <option value="Seattle, WA">Seattle, WA</option>
+              <option value="Spokane, WA">Spokane, WA</option>
+              <option value="Tacoma, WA">Tacoma, WA</option>
+              <option value="Vancouver, WA">Vancouver, WA</option>
+              <option value="Bellevue, WA">Bellevue, WA</option>
             </optgroup>
-            <optgroup label="West Coast & Mountain (PST / MST)">
-              <option value="Los Angeles, CA">Los Angeles / Beverly Hills, CA (Premier Aesthetic Capital)</option>
-              <option value="San Diego, CA">San Diego, CA (Coastal Private Practices)</option>
-              <option value="San Francisco, CA">San Francisco / Bay Area, CA (High Ticket)</option>
-              <option value="Las Vegas, NV">Las Vegas, NV (Tourism & Aesthetic Medical)</option>
-              <option value="Phoenix, AZ">Phoenix / Scottsdale, AZ (Year-Round Aesthetic Hub)</option>
-              <option value="Seattle, WA">Seattle, WA (Pacific Northwest Capital)</option>
-              <option value="Denver, CO">Denver, CO (Cherry Creek / Metro)</option>
+            <optgroup label="PACIFIC — OREGON (OR) TOP 5">
+              <option value="Portland, OR">Portland, OR</option>
+              <option value="Eugene, OR">Eugene, OR</option>
+              <option value="Salem, OR">Salem, OR</option>
+              <option value="Gresham, OR">Gresham, OR</option>
+              <option value="Hillsboro, OR">Hillsboro, OR</option>
             </optgroup>
-            <optgroup label="Midwest, Mid-Atlantic & Northeast (EST / CST)">
-              <option value="Chicago, IL">Chicago, IL (Gold Coast / Mag Mile)</option>
-              <option value="New York, NY">New York, NY (Manhattan / TriBeCa)</option>
-              <option value="Boston, MA">Boston, MA (Back Bay / Cambridge)</option>
-              <option value="Philadelphia, PA">Philadelphia, PA (Main Line / Center City)</option>
-              <option value="Washington, DC">Washington, DC (Capitol Region)</option>
+            <optgroup label="PACIFIC — NEVADA (NV) TOP 5">
+              <option value="Las Vegas, NV">Las Vegas, NV</option>
+              <option value="Henderson, NV">Henderson, NV</option>
+              <option value="North Las Vegas, NV">North Las Vegas, NV</option>
+              <option value="Reno, NV">Reno, NV</option>
+              <option value="Sparks, NV">Sparks, NV</option>
+            </optgroup>
+            <optgroup label="EASTERN — FLORIDA (FL) TOP 5">
+              <option value="Jacksonville, FL">Jacksonville, FL</option>
+              <option value="Miami, FL">Miami, FL</option>
+              <option value="Tampa, FL">Tampa, FL</option>
+              <option value="Orlando, FL">Orlando, FL</option>
+              <option value="St. Petersburg, FL">St. Petersburg, FL</option>
+            </optgroup>
+            <optgroup label="EASTERN — NEW YORK (NY) TOP 5">
+              <option value="New York City, NY">New York City, NY</option>
+              <option value="Buffalo, NY">Buffalo, NY</option>
+              <option value="Rochester, NY">Rochester, NY</option>
+              <option value="Yonkers, NY">Yonkers, NY</option>
+              <option value="Syracuse, NY">Syracuse, NY</option>
+            </optgroup>
+            <optgroup label="EASTERN — GEORGIA (GA) TOP 5">
+              <option value="Atlanta, GA">Atlanta, GA</option>
+              <option value="Augusta, GA">Augusta, GA</option>
+              <option value="Columbus, GA">Columbus, GA</option>
+              <option value="Macon, GA">Macon, GA</option>
+              <option value="Savannah, GA">Savannah, GA</option>
             </optgroup>
           </select>
         </div>
@@ -525,6 +631,51 @@ scraperRouter.get('/dashboard', async (req, res) => {
 
   const extraScripts = `
     <script>
+      const CASCADE_LIST = ${JSON.stringify(ORDERED_CASCADE_CITIES)};
+
+      window.switchTerritoryTab = function(tz) {
+        const pacificPanel = document.getElementById('panelPacificTz');
+        const easternPanel = document.getElementById('panelEasternTz');
+        const tabPac = document.getElementById('tabPacificTz');
+        const tabEast = document.getElementById('tabEasternTz');
+
+        if (tz === 'pacific') {
+          if (pacificPanel) pacificPanel.classList.remove('hidden');
+          if (easternPanel) easternPanel.classList.add('hidden');
+          if (tabPac) {
+            tabPac.classList.remove('bg-[var(--bg-card)]', 'text-[var(--text-secondary)]', 'border-[var(--border-subtle)]', 'font-medium');
+            tabPac.classList.add('bg-cyan-500/15', 'text-cyan-300', 'border-cyan-500/40', 'font-bold');
+          }
+          if (tabEast) {
+            tabEast.classList.remove('bg-cyan-500/15', 'text-cyan-300', 'border-cyan-500/40', 'font-bold');
+            tabEast.classList.add('bg-[var(--bg-card)]', 'text-[var(--text-secondary)]', 'border-[var(--border-subtle)]', 'font-medium');
+          }
+        } else {
+          if (pacificPanel) pacificPanel.classList.add('hidden');
+          if (easternPanel) easternPanel.classList.remove('hidden');
+          if (tabEast) {
+            tabEast.classList.remove('bg-[var(--bg-card)]', 'text-[var(--text-secondary)]', 'border-[var(--border-subtle)]', 'font-medium');
+            tabEast.classList.add('bg-cyan-500/15', 'text-cyan-300', 'border-cyan-500/40', 'font-bold');
+          }
+          if (tabPac) {
+            tabPac.classList.remove('bg-cyan-500/15', 'text-cyan-300', 'border-cyan-500/40', 'font-bold');
+            tabPac.classList.add('bg-[var(--bg-card)]', 'text-[var(--text-secondary)]', 'border-[var(--border-subtle)]', 'font-medium');
+          }
+        }
+      };
+
+      window.stepNextTerritoryCity = function() {
+        const input = document.getElementById('huntCity');
+        const cur = (input ? input.value : '').trim().toLowerCase();
+        let nextCity = CASCADE_LIST[0];
+        const idx = CASCADE_LIST.findIndex(c => c.toLowerCase().includes(cur) || cur.includes(c.toLowerCase()));
+        if (idx !== -1 && idx < CASCADE_LIST.length - 1) {
+          nextCity = CASCADE_LIST[idx + 1];
+        }
+        window.setHuntPreset(nextCity);
+        showToast('Territory Advanced', 'Next in cascade: ' + nextCity, 'info');
+      };
+
       function setPreset(url) {
         document.getElementById('singleUrl').value = url;
         scrapeSingle();
@@ -715,13 +866,35 @@ scraperRouter.get('/dashboard', async (req, res) => {
                   '<p class="italic text-[var(--text-secondary)]">\\"' + (lead.specificObservation || '') + '\\"</p></div>';
               }
 
+              const isChain = lead.multiLocation && lead.multiLocation.isMultiLocation;
+              const chainBadge = isChain
+                ? '<span class="text-[10px] font-semibold px-2 py-0.5 rounded bg-amber-500/10 text-amber-400 border border-amber-500/20 font-mono">⚠ Chain</span>'
+                : '<span class="text-[10px] font-semibold px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-mono">✓ Single Practice</span>';
+
+              const gmb = lead.socialSignals && lead.socialSignals.hasGmb;
+              const ig = lead.socialSignals && lead.socialSignals.hasInstagram;
+              const fb = lead.socialSignals && lead.socialSignals.hasFacebook;
+              const socialHtml = '<div class="flex items-center gap-2 text-[10px] font-mono">' +
+                '<span class="' + (gmb ? 'text-emerald-400 font-bold' : 'text-gray-500') + '">' + (gmb ? 'GMB:✓' : 'GMB:○') + '</span>' +
+                '<span class="' + (ig ? 'text-purple-400 font-bold' : 'text-gray-500') + '">' + (ig ? 'IG:✓' : 'IG:○') + '</span>' +
+                '<span class="' + (fb ? 'text-blue-400 font-bold' : 'text-gray-500') + '">' + (fb ? 'FB:✓' : 'FB:○') + '</span>' +
+              '</div>';
+
+              const salutationHtml = lead.salutation
+                ? '<div class="text-[10px] text-gray-400 font-mono pt-1">Salutation: <span class="text-cyan-300">"Hey ' + lead.salutation + ',"</span></div>'
+                : '';
+
               return '<div class="bg-[var(--bg-surface)] border border-[var(--border-subtle)] rounded-xl p-4 space-y-3 hunter-card">' +
-                '<div class="flex items-start justify-between">' +
+                '<div class="flex items-start justify-between gap-2">' +
                   '<div>' +
-                    '<h4 class="font-bold text-[var(--text-primary)] text-sm">' + (lead.clinicName || 'Practice') + '</h4>' +
-                    '<p class="text-[11px] text-[var(--text-muted)]">' + (lead.doctorName || 'Lead') + ' • ' + (lead.city || city) + '</p>' +
+                    '<div class="flex items-center gap-1.5 flex-wrap">' +
+                      '<h4 class="font-bold text-[var(--text-primary)] text-sm">' + (lead.clinicName || 'Practice') + '</h4>' +
+                      chainBadge +
+                    '</div>' +
+                    '<p class="text-[11px] text-[var(--text-muted)] mt-0.5">' + (lead.doctorName || 'Lead') + ' • ' + (lead.city || city) + '</p>' +
+                    salutationHtml +
                   '</div>' +
-                  '<div class="flex items-center gap-1.5">' +
+                  '<div class="flex items-center gap-1.5 shrink-0">' +
                     '<span class="text-[10px] font-semibold px-2 py-0.5 rounded ' + badgeClass + '">' + badgeText + '</span>' +
                     '<button type="button" data-email="' + (lead.email || '') + '" data-clinic="' + (lead.clinicName || 'Lead').replace(/"/g, '&quot;') + '" onclick="removeHuntedLead(this)" class="p-1 rounded-lg bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/30 text-[10px] transition cursor-pointer" title="Remove lead from database">' +
                       '${getSvgIcon('trash', 'w-3 h-3')}' +
@@ -739,7 +912,10 @@ scraperRouter.get('/dashboard', async (req, res) => {
                       (lead.email ? '<a href="mailto:' + lead.email + '" class="hover:underline truncate max-w-[190px]" title="Click to email ' + lead.email + '">' + lead.email + '</a>' : '<span class="text-[var(--text-muted)] italic">No email</span>') +
                     '</div>' +
                   '</div>' +
-                  '<div class="flex items-center justify-between text-[var(--text-muted)] text-[11px]"><span>Procedure:</span><span class="text-purple-300 font-medium">' + (lead.treatment || 'High-Ticket') + '</span></div>' +
+                  '<div class="flex items-center justify-between text-[var(--text-muted)] text-[11px]">' +
+                    '<span>Procedure: <span class="text-purple-300 font-medium">' + (lead.treatment || 'High-Ticket') + '</span></span>' +
+                    socialHtml +
+                  '</div>' +
                 '</div>' +
                 hookHtml +
                 '<div class="pt-2 border-t border-[var(--border-subtle)] flex items-center justify-between text-[11px]">' +

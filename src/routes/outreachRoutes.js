@@ -21,8 +21,10 @@ import {
   BANNED_AI_PHRASES,
   formatSalutation,
   getUnsubscribeUrl,
+  getShortBusinessName,
 } from '../templates/outreachTemplates.js';
-import { sendEmail } from '../services/mailer.js';
+import { sendEmail, getMailerStatus } from '../services/mailer.js';
+import { getSheetsStatus, syncAllProspectsToSheet, appendProspectToSheet } from '../services/googleSheets.js';
 import { runHarveyAutonomousPipeline, diagnoseAndGenerateFullSequence } from '../services/harveyService.js';
 import { config } from '../config.js';
 
@@ -174,6 +176,9 @@ function renderProspectsHtml(list, authKey = '') {
             <button onclick="runBatchHarvey()" id="btnBatchHarvey" class="px-4 py-2 rounded-xl bg-purple-500 hover:bg-purple-400 text-white font-extrabold text-xs transition shadow-md shadow-purple-500/20 flex items-center gap-1.5 cursor-pointer active:scale-95">
               ${getSvgIcon('bolt', 'w-3.5 h-3.5')}
               <span>Run Harvey on All Pending</span>
+            </button>
+            <button onclick="syncToGoogleSheets()" id="btnSyncSheets" class="px-3.5 py-2 rounded-xl bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-300 border border-emerald-500/30 font-bold text-xs transition flex items-center gap-1.5 cursor-pointer active:scale-95" title="Synchronize CRM leads with Google Sheets">
+              <span>📊 Sync to Sheets</span>
             </button>
           </div>
         </div>
@@ -1093,6 +1098,35 @@ function renderProspectsHtml(list, authKey = '') {
           if (btn) {
             btn.disabled = false;
             btn.innerHTML = '${getSvgIcon('bolt', 'w-3.5 h-3.5')}<span>Run Harvey on All Pending</span>';
+          }
+        }
+      }
+
+      async function syncToGoogleSheets() {
+        const btn = document.getElementById('btnSyncSheets');
+        if (btn) {
+          btn.disabled = true;
+          btn.innerHTML = '${getSvgIcon('spinner', 'w-3.5 h-3.5 animate-spin')}<span>Syncing...</span>';
+        }
+        try {
+          const res = await fetch(getAuthUrl('/outreach/sync-sheets'), {
+            method: 'POST',
+            credentials: 'include',
+            headers: getAuthHeaders()
+          });
+          const data = await res.json();
+          if (data.success) {
+            const desc = data.status && data.status.description ? data.status.description : 'Google Sheets';
+            showToast('Sheets Synced!', 'Successfully exported ' + (data.synced || 0) + ' leads to ' + desc, 'success');
+          } else {
+            showToast('Sync Warning', data.message || data.error || 'Google Sheets not configured', 'info');
+          }
+        } catch (e) {
+          showToast('Sync Error', e.message, 'error');
+        } finally {
+          if (btn) {
+            btn.disabled = false;
+            btn.innerHTML = '<span>📊 Sync to Sheets</span>';
           }
         }
       }
@@ -2064,6 +2098,35 @@ ${escapeHtml(seq.text)}
           }
         }
       }
+
+      async function syncToGoogleSheets() {
+        const btn = document.getElementById('btnSyncSheets');
+        if (btn) {
+          btn.disabled = true;
+          btn.innerHTML = '${getSvgIcon('spinner', 'w-3.5 h-3.5 animate-spin')}<span>Syncing...</span>';
+        }
+        try {
+          const res = await fetch(getAuthUrl('/outreach/sync-sheets'), {
+            method: 'POST',
+            credentials: 'include',
+            headers: getAuthHeaders()
+          });
+          const data = await res.json();
+          if (data.success) {
+            const desc = data.status && data.status.description ? data.status.description : 'Google Sheets';
+            showToast('Sheets Synced!', 'Successfully exported ' + (data.synced || 0) + ' leads to ' + desc, 'success');
+          } else {
+            showToast('Sync Warning', data.message || data.error || 'Google Sheets not configured', 'info');
+          }
+        } catch (e) {
+          showToast('Sync Error', e.message, 'error');
+        } finally {
+          if (btn) {
+            btn.disabled = false;
+            btn.innerHTML = '<span>📊 Sync to Sheets</span>';
+          }
+        }
+      }
     </script>
   `;
 
@@ -2366,6 +2429,27 @@ outreachRouter.post('/harvey/batch-activate', async (req, res) => {
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }
+});
+
+// 2.6d Google Sheets Sync Endpoint
+outreachRouter.post('/sync-sheets', async (req, res) => {
+  try {
+    const allProspects = await getProspects({ limit: 500 });
+    const result = await syncAllProspectsToSheet(allProspects);
+    res.json(result);
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// 2.6e Google Sheets Connection Status Endpoint
+outreachRouter.get('/sheets-status', (req, res) => {
+  res.json({ success: true, ...getSheetsStatus() });
+});
+
+// 2.6f Mailer & Inboxes Status Endpoint
+outreachRouter.get('/mailer-status', (req, res) => {
+  res.json({ success: true, ...getMailerStatus() });
 });
 
 // 2.7 Save / Stage Prospect from Studio into CRM

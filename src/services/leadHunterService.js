@@ -24,6 +24,123 @@ const NICHE_QUERIES = {
 };
 
 /**
+ * Archit's Systematic Territory Cascade:
+ * Phase 1: PACIFIC TIMEZONE (CA -> WA -> OR -> NV) - Top 5 Cities Each
+ * Phase 2: EASTERN TIMEZONE (FL -> NY -> GA) - Top 5 Cities Each
+ * Phase 3: Secondary Tier Cities (Exhaust Pacific then Eastern)
+ */
+export const TERRITORY_CASCADE = {
+  pacific: {
+    name: 'Pacific Timezone (PT)',
+    order: 1,
+    states: {
+      CA: {
+        name: 'California',
+        topTier: ['Los Angeles, CA', 'San Diego, CA', 'San Jose, CA', 'San Francisco, CA', 'Fresno, CA'],
+        secondaryTier: [
+          'Sacramento, CA', 'Long Beach, CA', 'Oakland, CA', 'Bakersfield, CA', 'Anaheim, CA',
+          'Stockton, CA', 'Riverside, CA', 'Irvine, CA', 'Chula Vista, CA', 'Santa Clarita, CA',
+          'San Bernardino, CA', 'Modesto, CA', 'Moreno Valley, CA', 'Oxnard, CA', 'Santa Rosa, CA'
+        ]
+      },
+      WA: {
+        name: 'Washington',
+        topTier: ['Seattle, WA', 'Spokane, WA', 'Tacoma, WA', 'Vancouver, WA', 'Bellevue, WA'],
+        secondaryTier: [
+          'Kent, WA', 'Everett, WA', 'Spokane Valley, WA', 'Renton, WA', 'Federal Way, WA',
+          'Yakima, WA', 'Kirkland, WA', 'Bellingham, WA', 'Kennewick, WA', 'Auburn, WA',
+          'Pasco, WA', 'Richland, WA', 'Shoreline, WA', 'Sammamish, WA', 'Lakewood, WA'
+        ]
+      },
+      OR: {
+        name: 'Oregon',
+        topTier: ['Portland, OR', 'Eugene, OR', 'Salem, OR', 'Gresham, OR', 'Hillsboro, OR'],
+        secondaryTier: [
+          'Beaverton, OR', 'Bend, OR', 'Medford, OR', 'Springfield, OR', 'Corvallis, OR',
+          'Albany, OR', 'Tigard, OR', 'Lake Oswego, OR', 'Keizer, OR', 'Oregon City, OR',
+          'Redmond, OR', 'Grants Pass, OR', 'West Linn, OR', 'Sherwood, OR', 'Newberg, OR'
+        ]
+      },
+      NV: {
+        name: 'Nevada',
+        topTier: ['Las Vegas, NV', 'Henderson, NV', 'North Las Vegas, NV', 'Reno, NV', 'Sparks, NV'],
+        secondaryTier: [
+          'Enterprise, NV', 'Spring Valley, NV', 'Sunrise Manor, NV', 'Paradise, NV', 'Carson City, NV',
+          'Whitney, NV', 'Pahrump, NV', 'Winchester, NV', 'Summerlin South, NV', 'Fernley, NV',
+          'Sun Valley, NV', 'Mesquite, NV', 'Elko, NV', 'Spanish Springs, NV', 'Dayton, NV'
+        ]
+      }
+    }
+  },
+  eastern: {
+    name: 'Eastern Timezone (ET)',
+    order: 2,
+    states: {
+      FL: {
+        name: 'Florida',
+        topTier: ['Jacksonville, FL', 'Miami, FL', 'Tampa, FL', 'Orlando, FL', 'St. Petersburg, FL'],
+        secondaryTier: [
+          'Port St. Lucie, FL', 'Cape Coral, FL', 'Hialeah, FL', 'Tallahassee, FL', 'Fort Lauderdale, FL',
+          'Pembroke Pines, FL', 'Hollywood, FL', 'Miramar, FL', 'Gainesville, FL', 'Coral Springs, FL',
+          'Clearwater, FL', 'Palm Bay, FL', 'West Palm Beach, FL'
+        ]
+      },
+      NY: {
+        name: 'New York',
+        topTier: ['New York City, NY', 'Buffalo, NY', 'Rochester, NY', 'Yonkers, NY', 'Syracuse, NY'],
+        secondaryTier: [
+          'Albany, NY', 'New Rochelle, NY', 'Mount Vernon, NY', 'Schenectady, NY', 'Utica, NY',
+          'White Plains, NY', 'Troy, NY', 'Niagara Falls, NY', 'Binghamton, NY', 'Freeport, NY',
+          'Valley Stream, NY', 'Long Beach, NY', 'Poughkeepsie, NY'
+        ]
+      },
+      GA: {
+        name: 'Georgia',
+        topTier: ['Atlanta, GA', 'Augusta, GA', 'Columbus, GA', 'Macon, GA', 'Savannah, GA'],
+        secondaryTier: [
+          'Athens, GA', 'Sandy Springs, GA', 'South Fulton, GA', 'Roswell, GA', 'Warner Robins, GA',
+          'Albany, GA', 'Johns Creek, GA', 'Alpharetta, GA', 'Marietta, GA', 'Stonecrest, GA',
+          'Smyrna, GA', 'Valdosta, GA', 'Dunwoody, GA', 'Brookhaven, GA'
+        ]
+      }
+    }
+  }
+};
+
+/**
+ * Deterministic ordered cascade of top priority cities across Pacific then Eastern
+ */
+export const ORDERED_CASCADE_CITIES = [
+  // 1. Pacific Top 5 Each (Total: 20)
+  ...TERRITORY_CASCADE.pacific.states.CA.topTier,
+  ...TERRITORY_CASCADE.pacific.states.WA.topTier,
+  ...TERRITORY_CASCADE.pacific.states.OR.topTier,
+  ...TERRITORY_CASCADE.pacific.states.NV.topTier,
+  // 2. Eastern Top 5 Each (Total: 15)
+  ...TERRITORY_CASCADE.eastern.states.FL.topTier,
+  ...TERRITORY_CASCADE.eastern.states.NY.topTier,
+  ...TERRITORY_CASCADE.eastern.states.GA.topTier,
+  // 3. Pacific Secondary Tier
+  ...TERRITORY_CASCADE.pacific.states.CA.secondaryTier,
+  ...TERRITORY_CASCADE.pacific.states.WA.secondaryTier,
+  ...TERRITORY_CASCADE.pacific.states.OR.secondaryTier,
+  ...TERRITORY_CASCADE.pacific.states.NV.secondaryTier,
+  // 4. Eastern Secondary Tier
+  ...TERRITORY_CASCADE.eastern.states.FL.secondaryTier,
+  ...TERRITORY_CASCADE.eastern.states.NY.secondaryTier,
+  ...TERRITORY_CASCADE.eastern.states.GA.secondaryTier,
+];
+
+export function getNextCascadeCity(currentCity) {
+  if (!currentCity) return ORDERED_CASCADE_CITIES[0];
+  const idx = ORDERED_CASCADE_CITIES.findIndex(c => c.toLowerCase().includes(currentCity.toLowerCase()) || currentCity.toLowerCase().includes(c.toLowerCase()));
+  if (idx === -1 || idx === ORDERED_CASCADE_CITIES.length - 1) {
+    return ORDERED_CASCADE_CITIES[0];
+  }
+  return ORDERED_CASCADE_CITIES[idx + 1];
+}
+
+/**
  * Fallback Curated High-Ticket Target Domains per Metro (Used if search engine blocks cloud datacenter IP)
  */
 const CURATED_TARGETS = {
@@ -140,6 +257,38 @@ const CURATED_TARGETS = {
     'washington dc': [
       { title: 'Bruno Plastic Surgery & MedSpa Washington DC', url: 'https://brunoplasticsurgery.com', city: 'Washington, DC' },
     ],
+    portland: [
+      { title: 'Portland Face Doctor & MedSpa', url: 'https://portlandfacedoctor.com', city: 'Portland, OR' },
+      { title: 'The Fix Clinic MedSpa Portland', url: 'https://thefixclinic.com', city: 'Portland, OR' },
+      { title: 'Skin by Lovely Portland', url: 'https://skinbylovely.com', city: 'Portland, OR' },
+    ],
+    jacksonville: [
+      { title: 'First Coast Medical MedSpa Jacksonville', url: 'https://firstcoastmed.com', city: 'Jacksonville, FL' },
+      { title: 'Pure Med Spa Jacksonville', url: 'https://puremedspajax.com', city: 'Jacksonville, FL' },
+    ],
+    'san jose': [
+      { title: 'San Jose Medical Spa', url: 'https://sanjosemedspa.com', city: 'San Jose, CA' },
+      { title: 'Silicon Valley Aesthetic Dermatology', url: 'https://siliconvalleyderm.com', city: 'San Jose, CA' },
+    ],
+    fresno: [
+      { title: 'Fresno Medical Aesthetics & Laser', url: 'https://fresnomedaesthetics.com', city: 'Fresno, CA' },
+      { title: 'Valley Skin Care & MedSpa Fresno', url: 'https://valleyskincarefresno.com', city: 'Fresno, CA' },
+    ],
+    spokane: [
+      { title: 'Spokane Plastic Surgery & MedSpa', url: 'https://spokaneplasticsurgery.com', city: 'Spokane, WA' },
+      { title: 'Craft Medical Aesthetics Spokane', url: 'https://craftmedicalaesthetics.com', city: 'Spokane, WA' },
+    ],
+    reno: [
+      { title: 'Reno Tahoe Plastic Surgery & MedSpa', url: 'https://renotahoeplasticsurgery.com', city: 'Reno, NV' },
+      { title: 'Sierra Aesthetics MedSpa Reno', url: 'https://sierraaestheticsreno.com', city: 'Reno, NV' },
+    ],
+    buffalo: [
+      { title: 'Buffalo Aesthetics & Laser Clinic', url: 'https://buffalomedspa.com', city: 'Buffalo, NY' },
+    ],
+    savannah: [
+      { title: 'Savannah Plastic Surgery & MedSpa', url: 'https://savannahplasticsurgery.com', city: 'Savannah, GA' },
+      { title: 'Glow Medical Spa Savannah', url: 'https://glowmedspasavannah.com', city: 'Savannah, GA' },
+    ],
   },
   hvac: {
     phoenix: [
@@ -234,6 +383,29 @@ const CURATED_TARGETS = {
     'washington dc': [
       { title: 'F.H. Furr Plumbing, Heating & Air DC', url: 'https://fhfurr.com', city: 'Washington, DC' },
       { title: 'Magnolia Plumbing, Heating & Cooling DC', url: 'https://magnoliacompanies.com', city: 'Washington, DC' },
+    ],
+    portland: [
+      { title: 'Sky Heating, AC & Plumbing Portland', url: 'https://skyheating.com', city: 'Portland, OR' },
+      { title: 'Pyramid Heating & Cooling Portland', url: 'https://pyramidheating.com', city: 'Portland, OR' },
+    ],
+    jacksonville: [
+      { title: 'Snyder Air Conditioning & Plumbing Jax', url: 'https://snyderac.com', city: 'Jacksonville, FL' },
+      { title: 'Von\'s Heating and Air Jacksonville', url: 'https://vonsheatingandair.com', city: 'Jacksonville, FL' },
+    ],
+    'san jose': [
+      { title: 'Pelle Heating & Air Conditioning San Jose', url: 'https://pellehvac.com', city: 'San Jose, CA' },
+    ],
+    spokane: [
+      { title: 'Holiday Heating & Air Conditioning Spokane', url: 'https://holidayheating.com', city: 'Spokane, WA' },
+    ],
+    reno: [
+      { title: 'Lincoln Heating & Air Conditioning Reno', url: 'https://lincolnheating.com', city: 'Reno, NV' },
+    ],
+    buffalo: [
+      { title: 'Roy\'s Plumbing, Heating & Cooling Buffalo', url: 'https://callroys.com', city: 'Buffalo, NY' },
+    ],
+    savannah: [
+      { title: 'Canady\'s Heating & Air Savannah', url: 'https://canadys.com', city: 'Savannah, GA' },
     ],
   },
 };
@@ -487,6 +659,7 @@ export async function huntAndEnrichLead({ url, city, niche = 'medspa', doctorOve
     url: scraped.url,
     clinicName: scraped.clinicName,
     doctorName: decisionMaker,
+    salutation: scraped.salutation || null,
     email: finalEmail,
     allEmails: scraped.allEmails,
     phone: scraped.phone,
@@ -494,6 +667,8 @@ export async function huntAndEnrichLead({ url, city, niche = 'medspa', doctorOve
     treatment: primaryTreatment,
     niche,
     adSignals: scraped.adSignals,
+    multiLocation: scraped.multiLocation || { isMultiLocation: false, reason: 'Single practice' },
+    socialSignals: scraped.socialSignals || { hasGmb: false, hasInstagram: false, hasFacebook: false, summary: 'Organic Direct' },
     specificObservation: audit.specificObservation,
     recommendedAngle: audit.recommendedAngle,
     hasStaticForm: audit.hasStaticForm,
@@ -537,7 +712,10 @@ export async function commitLeadToSupabase(enrichedLead, existingProspectsMap) {
   }
 
   // Insert into Supabase public.prospects in 1 single round-trip
-  const notes = `Hunter Auto-Ingest: ${enrichedLead.url} | Ad Spend: ${enrichedLead.adSignals?.hasPaidAds ? 'ACTIVE' : 'Organic'} | Phone: ${enrichedLead.phone || 'N/A'}`;
+  const chainTag = enrichedLead.multiLocation?.isMultiLocation ? 'CHAIN' : 'Single-Location';
+  const gmbTag = enrichedLead.socialSignals?.hasGmb ? 'GMB:✓' : 'GMB:○';
+  const igTag = enrichedLead.socialSignals?.hasInstagram ? 'IG:✓' : 'IG:○';
+  const notes = `Hunter: ${chainTag} | ${gmbTag} | ${igTag} | Ads: ${enrichedLead.adSignals?.hasPaidAds ? 'ACTIVE' : 'Organic'} | Phone: ${enrichedLead.phone || 'N/A'}`;
 
   const addResult = await addProspect({
     doctorName: enrichedLead.doctorName,
@@ -571,11 +749,11 @@ export async function commitLeadToSupabase(enrichedLead, existingProspectsMap) {
  * Full Autonomous Lead Hunter Execution: Search -> Enrich -> Audit -> Deduplicate -> Commit
  */
 export async function runAutonomousHunt({ city = 'Miami, FL', niche = 'medspa', query, limit = 5 }) {
-  const targetLimit = Math.min(Math.max(Number(limit) || 5, 1), 25);
+  const targetLimit = Math.min(Math.max(Number(limit) || 5, 1), 40);
   console.log(`[LeadHunter] Starting Autonomous Hunt for ${niche} in ${city} (Target: ${targetLimit})...`);
 
   // Step 1: Search with candidate buffer (targetLimit * 2) so domain timeouts don't starve batch size
-  const candidateTarget = Math.min(Math.max(targetLimit * 2, targetLimit + 4), 30);
+  const candidateTarget = Math.min(Math.max(targetLimit * 2, targetLimit + 4), 60);
   const businesses = await searchLocalBusinesses({ query, city, niche, limit: candidateTarget });
   if (!businesses || businesses.length === 0) {
     return {

@@ -1,5 +1,6 @@
 import * as cheerio from 'cheerio';
 import { addProspect, getProspectById } from './outreachService.js';
+import { getShortBusinessName, formatSalutation } from '../templates/outreachTemplates.js';
 
 const USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36';
 
@@ -161,6 +162,92 @@ function detectAdPixels(html) {
 }
 
 /**
+ * Detect if a business is a multi-location chain/franchise (Target: Single-Location Practices Only)
+ */
+export function detectMultiLocation(html, $) {
+  const lower = (html || '').toLowerCase();
+  
+  const multiLocationPhrases = [
+    'our locations',
+    'all locations',
+    'multiple locations',
+    'find a location',
+    'view locations',
+    'select a location',
+    'choose a location',
+    'see all locations',
+    'franchise opportunities',
+    'franchise information',
+    'corporate headquarters',
+    'find your nearest',
+  ];
+
+  for (const phrase of multiLocationPhrases) {
+    if (lower.includes(phrase)) {
+      return {
+        isMultiLocation: true,
+        reason: `Matched chain indicator: "${phrase}"`,
+      };
+    }
+  }
+
+  if ($) {
+    const locLinks = $('a[href*="/locations"], a[href*="/our-locations"], a[href*="/clinics"], a[href*="/offices"]');
+    if (locLinks.length > 0) {
+      return {
+        isMultiLocation: true,
+        reason: `Found location directory link: "${locLinks.first().attr('href')}"`,
+      };
+    }
+  }
+
+  return {
+    isMultiLocation: false,
+    reason: 'Single-location private practice',
+  };
+}
+
+/**
+ * Detect presence of Google My Business (GMB), Instagram & Facebook organic profiles
+ */
+export function detectSocialAndGmb(html, $) {
+  let hasGmb = false;
+  let hasInstagram = false;
+  let hasFacebook = false;
+  let gmbUrl = null;
+  let igUrl = null;
+  let fbUrl = null;
+
+  if ($) {
+    $('a[href]').each((_, el) => {
+      const href = $(el).attr('href') || '';
+      if (!hasGmb && /(maps\.google\.com|google\.com\/maps|goo\.gl\/maps|g\.page\/|search\.google\.com\/local)/i.test(href)) {
+        hasGmb = true;
+        gmbUrl = href;
+      }
+      if (!hasInstagram && /instagram\.com\/[a-zA-Z0-9._-]+/i.test(href) && !/instagram\.com\/(p\/|explore|share)/i.test(href)) {
+        hasInstagram = true;
+        igUrl = href;
+      }
+      if (!hasFacebook && /facebook\.com\/[a-zA-Z0-9._-]+/i.test(href) && !/(sharer|tr\?|facebook\.com\/share)/i.test(href)) {
+        hasFacebook = true;
+        fbUrl = href;
+      }
+    });
+  }
+
+  return {
+    hasGmb,
+    gmbUrl,
+    hasInstagram,
+    igUrl,
+    hasFacebook,
+    fbUrl,
+    summary: hasGmb ? 'GMB Verified' : (hasInstagram || hasFacebook ? 'Social Active' : 'Organic Direct'),
+  };
+}
+
+/**
  * Scrape a clinic website and extract doctor name, email, phone, treatments, and ad signals
  */
 export async function scrapeClinicWebsite(inputUrl, options = {}) {
@@ -318,15 +405,17 @@ export async function scrapeClinicWebsite(inputUrl, options = {}) {
   const primaryEmail = Array.from(rawEmails)[0] || null;
   const primaryPhone = Array.from(rawPhones)[0] || null;
 
-  const defaultTitle = isHvacSite
-    ? (clinicName ? `Owner / Operations Lead at ${clinicName}` : 'Owner / Operations Lead')
-    : (clinicName ? `Medical Director at ${clinicName}` : 'Doctor');
+  const multiLocation = detectMultiLocation(homepageHtml, $home);
+  const socialSignals = detectSocialAndGmb(homepageHtml, $home);
+  const shortClinic = getShortBusinessName(clinicName);
 
   return {
     success: true,
     url: baseUrl,
     clinicName,
-    doctorName: doctorName || defaultTitle,
+    shortClinicName: shortClinic,
+    doctorName: doctorName || null,
+    salutation: formatSalutation(doctorName, clinicName, isHvacSite ? 'hvac' : 'medspa'),
     email: primaryEmail,
     allEmails: Array.from(rawEmails),
     phone: primaryPhone,
@@ -334,6 +423,8 @@ export async function scrapeClinicWebsite(inputUrl, options = {}) {
     treatment: primaryTreatment,
     allTreatments: detectedTreatments,
     adSignals,
+    multiLocation,
+    socialSignals,
     rawHtml: homepageHtml,
     scrapedAt: new Date().toISOString(),
   };
