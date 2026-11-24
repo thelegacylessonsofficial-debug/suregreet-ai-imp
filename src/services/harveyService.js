@@ -3,32 +3,30 @@ import { fetchJinaMarkdown } from './auditorService.js';
 import { updateProspect, getProspectById } from './outreachService.js';
 import { config } from '../config.js';
 
-const MEDSPA_HIGH_TICKET = [
-  'Morpheus8',
-  'BodyTite',
-  'CoolSculpting',
-  'Botox',
-  'Semaglutide',
-  'Juvederm',
-  'Sculptra',
-  'Hydrafacial',
-  'IPL Photofacial',
-  'Microneedling',
-  'Laser Hair Removal',
-];
+const TRADE_TREATMENTS = {
+  hvac: ['Emergency AC Repair', 'HVAC Replacement', 'Heat Pump Repair', 'Furnace Maintenance', 'Commercial Refrigeration'],
+  plumbing: ['Emergency Plumbing', 'Drain Cleaning', 'Water Heater Replacement', 'Sewer Line Repair', 'Burst Pipe Repair'],
+  roofing: ['Emergency Roof Repair', 'Roof Replacement', 'Storm Damage Restoration', 'Leak Detection'],
+  electrical: ['Emergency Electrical Repair', 'Panel Upgrade', 'Commercial Wiring', 'Generator Installation'],
+  water_damage: ['24/7 Water Damage Extraction', 'Flood Cleanup', 'Mold Remediation', 'Structural Drying'],
+  default: ['Emergency After-Hours Service', 'Emergency Dispatch', 'Rapid Service Calls'],
+};
 
-const HVAC_HIGH_TICKET = [
-  'Emergency AC Repair',
-  'HVAC Replacement',
-  'Heat Pump Repair',
-  'Furnace Maintenance',
-  'Ductless Mini-Split',
-  'Commercial Refrigeration',
-  'Emergency Plumbing',
-];
+export function getCleanSubject(clinicName) {
+  let clean = (clinicName || '')
+    .replace(/,\s*(LLC|Inc\.?|Corp\.?|Co\.?|P\.?C\.?|PLLC)$/i, '')
+    .replace(/\s+(LLC|Inc\.?|Corp\.?|Co\.?|P\.?C\.?|PLLC)$/i, '')
+    .replace(/[^a-zA-Z0-9\s]/g, '')
+    .trim()
+    .toLowerCase();
+  clean = clean.replace(/\bfree\w*\b/g, '').trim();
+  const words = clean.split(/\s+/).filter(Boolean);
+  const base = words.length > 2 ? words.slice(0, 2).join(' ') : (words.join(' ') || 'contractor');
+  return `${base} calls`;
+}
 
 /**
- * STEP 1: Deep Content Extraction & Clinic Dossier Compilation
+ * STEP 1: Deep Content Extraction & Contractor Dossier Compilation
  */
 export async function extractClinicDossier(url, htmlContent = '', nicheHint = null) {
   let text = '';
@@ -43,35 +41,39 @@ export async function extractClinicDossier(url, htmlContent = '', nicheHint = nu
     text = (await fetchJinaMarkdown(url, 8000)) || '';
   }
 
-  // Determine Niche
-  let isHvac = false;
-  if (nicheHint === 'hvac') {
-    isHvac = true;
-  } else if (nicheHint === 'medspa') {
-    isHvac = false;
-  } else {
-    isHvac = /hvac|air conditioning repair|furnace repair|emergency plumbing/i.test(text) || (url && /hvac|cooling|plumbing/i.test(url));
+  // Determine Niche — Treat all trade services as Trade Contractor
+  const isTrade = nicheHint ? nicheHint.toLowerCase() !== 'medspa' : true;
+  let resolvedNiche = nicheHint ? nicheHint.toLowerCase() : 'hvac';
+  if (isTrade && !['hvac', 'plumbing', 'roofing', 'electrical', 'water_damage'].includes(resolvedNiche)) {
+    if (/plumb/i.test(text) || (url && /plumb/i.test(url))) resolvedNiche = 'plumbing';
+    else if (/roof/i.test(text) || (url && /roof/i.test(url))) resolvedNiche = 'roofing';
+    else if (/electr/i.test(text) || (url && /electr/i.test(url))) resolvedNiche = 'electrical';
+    else if (/water.*damage|flood|restor/i.test(text) || (url && /water|restor/i.test(url))) resolvedNiche = 'water_damage';
+    else resolvedNiche = 'hvac';
   }
 
-  const candidateTreatments = isHvac ? HVAC_HIGH_TICKET : MEDSPA_HIGH_TICKET;
+  const candidateTreatments = TRADE_TREATMENTS[resolvedNiche] || TRADE_TREATMENTS.default;
   const detectedTreatments = candidateTreatments.filter((t) => new RegExp(`\\b${t}\\b`, 'i').test(text));
-  const primaryTreatment = detectedTreatments[0] || (isHvac ? 'Emergency AC Repair' : 'Morpheus8');
+  
+  let primaryTreatment = detectedTreatments[0];
+  if (!primaryTreatment) {
+    if (resolvedNiche === 'plumbing') primaryTreatment = 'Emergency Plumbing & Drain Cleaning';
+    else if (resolvedNiche === 'roofing') primaryTreatment = 'Emergency Roof Leak & Storm Repair';
+    else if (resolvedNiche === 'electrical') primaryTreatment = 'Emergency Electrical & Panel Repair';
+    else if (resolvedNiche === 'water_damage') primaryTreatment = '24/7 Water Damage Extraction';
+    else primaryTreatment = 'Emergency AC & Heating Repair';
+  }
 
-  // Detect doctor / director name
+  // Detect owner/founder name if mentioned on site
   let doctorName = null;
-  const drRegex = /\bDr\.?\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)\b/g;
-  let drMatch;
-  while ((drMatch = drRegex.exec(text)) !== null) {
-    const candidate = drMatch[0].trim();
-    if (!/recommended|approved|tested|designed|formulated|certified/i.test(candidate)) {
-      doctorName = candidate;
-      break;
-    }
+  const ownerMatch = text.match(/(?:owner|founder|president)\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)/i);
+  if (ownerMatch && ownerMatch[1]) {
+    doctorName = ownerMatch[1].trim();
   }
 
   // Detect booking mechanism
-  const hasLiveScheduler = /calendly|acuityscheduling|zocdoc|cal\.com|schedule-now/i.test(text);
-  const hasStaticForm = /request (an? )?appointment|request a quote|fill out the form|contact form|schedule consultation/i.test(text) && !hasLiveScheduler;
+  const hasLiveScheduler = /calendly|acuityscheduling|housecallpro|servicetitan|jobber|cal\.com|schedule-now/i.test(text);
+  const hasStaticForm = /request (an? )?appointment|request a quote|fill out the form|contact form|schedule consultation|get an estimate/i.test(text) && !hasLiveScheduler;
   const bookingType = hasLiveScheduler ? 'live_scheduler' : hasStaticForm ? 'static_contact_form' : 'phone_or_form';
 
   // Detect operating hours
@@ -84,31 +86,26 @@ export async function extractClinicDossier(url, htmlContent = '', nicheHint = nu
   const hasGoogleAds = htmlContent.includes('googletagmanager.com/gtag') || htmlContent.includes('googleadservices.com');
   const adSignal = hasMetaPixel || hasGoogleAds ? 'Active Paid Meta/Google Ads' : 'Organic Traffic';
 
-  // Synthesize verifiable friction observation
+  // Synthesize verifiable trade friction observation ($2,000 ticket math)
   let frictionObservation = '';
-  let napkinMathLoss = isHvac ? '$4,000/mo' : '$12,000/mo';
+  let napkinMathLoss = '$4,000/mo';
 
-  if (isHvac) {
+  if (isTrade) {
     if (bookingType === 'static_contact_form') {
       frictionObservation = `Saw your emergency repair page routes homeowners to a static contact form instead of instant dispatch.`;
     } else {
-      frictionObservation = `Called your emergency line yesterday after 7 PM and hit voicemail while competitors answer live.`;
+      frictionObservation = `Saw your emergency line after 7 PM routes homeowners to voicemail while competitors answer live.`;
     }
   } else {
-    if (hasMetaPixel && bookingType === 'static_contact_form') {
-      frictionObservation = `Saw your active Meta ad campaign for ${primaryTreatment} routes high-intent patients into a static form instead of instant 24/7 booking.`;
-    } else if (bookingType === 'static_contact_form') {
-      frictionObservation = `Saw your site makes patients fill out a static contact form for ${primaryTreatment} instead of booking directly.`;
-    } else {
-      frictionObservation = `Noticed after 5 PM and on weekends, evening patient inquiries for ${primaryTreatment} wait until morning.`;
-    }
+    frictionObservation = `Noticed after 5 PM and on weekends, evening inquiries wait until next morning.`;
   }
 
   return {
     url,
-    isHvac,
-    niche: isHvac ? 'hvac' : 'medspa',
-    doctorName: doctorName || (isHvac ? 'Owner / Operations Lead' : 'Medical Director'),
+    isHvac: resolvedNiche === 'hvac',
+    isTrade,
+    niche: resolvedNiche,
+    doctorName: doctorName || 'Owner / Operations Lead',
     primaryTreatment,
     detectedTreatments,
     bookingType,
@@ -124,39 +121,40 @@ export async function extractClinicDossier(url, htmlContent = '', nicheHint = nu
 }
 
 /**
- * STEP 2: Harvey Dynamic Prompt Builder
+ * STEP 2: Harvey Dynamic Prompt Builder (Strictly Trade Contractors & Pre-Send Rules)
  */
 export function buildHarveyPrompt(dossier, prospect = {}) {
-  const doctor = prospect.doctor_name || dossier.doctorName || 'Doctor';
-  const clinic = prospect.clinic_name || 'Practice';
+  const doctor = prospect.doctor_name || dossier.doctorName || 'Owner';
+  const clinic = prospect.clinic_name || 'Contractor';
   const city = prospect.city || 'United States';
-  const treatment = prospect.treatment || dossier.primaryTreatment || 'Consultation';
-  const isHvac = dossier.isHvac || prospect.niche === 'hvac';
-
-  const salutation = formatSalutation(doctor, clinic, isHvac ? 'hvac' : 'medspa');
+  const treatment = prospect.treatment || dossier.primaryTreatment || 'Emergency Dispatch';
+  const salutation = formatSalutation(doctor, clinic, prospect.niche || dossier.niche || 'hvac');
 
   return `You are Harvey, principal outbound sales strategist for SureGreet AI.
-You write strictly for Archit (Founder of SureGreet AI, 17, building an AI receptionist & voice dispatching agency).
+You write strictly for Archit (Founder of SureGreet AI, 17, building an AI receptionist & voice dispatching agency for US trade contractors).
 
 [AUDITED PROSPECT DOSSIER]
-- Practice / Business: ${clinic}
-- Doctor / DM: ${salutation}
+- Contractor Business: ${clinic}
+- Owner / Operations Lead: ${salutation}
 - Target Metro: ${city}
-- Core High-Ticket Offer: ${treatment}
+- Core Emergency Service: ${treatment}
 - Ad Spend Signals: ${dossier.adSignal || 'Active'}
 - Operating Hours: ${dossier.hoursSummary || 'Standard'}
-- Friction Finding: ${dossier.frictionObservation || prospect.specific_observation || 'Static form friction'}
-- Estimated Revenue Leak: ${dossier.napkinMathLoss || '$12,000/mo'}
+- Friction Finding: ${dossier.frictionObservation || prospect.specific_observation || 'Routes after-hours calls to voicemail'}
+- Estimated Revenue Leak: ${dossier.napkinMathLoss || '$4,000/mo'}
 
 [STRICT HARVEY COPYWRITING RULES]
 1. PEER-TO-PEER FOUNDER TONE: Write as Archit. Zero automated agency fluff.
 2. WORD COUNT: Strictly between 45 and 62 words total (excluding signoff). Hard ceiling is 70 words.
-3. ZERO EM-DASHES (—): Em-dashes are banned. Use commas, hyphens (-), or short sentences.
+3. ZERO EM-DASHES (—) or DOUBLE HYPHENS (--): Banned. Use commas or short periods.
 4. ZERO EXCLAMATION MARKS (!): Exclamation marks are banned in cold peer-to-peer outreach.
-5. ZERO AI CLICHÉS: Banned: "hope this email finds you well", "wanted to reach out", "supercharge", "transform", "cutting-edge", "game-changing", "seamless", "revolutionize", "bespoke", "dive deep".
-6. SUBJECT LINE: 2 to 4 words lowercase (e.g. "quick question - ${clinic.toLowerCase()} inquiries").
-7. LOW-FRICTION CTA: Offer to text over a 30-second live test line or quick walkthrough.
-8. RETURN FORMAT: Valid JSON only with keys: "subject", "body", "frictionHook".`;
+5. EXACTLY ONE QUESTION MARK (?): Only the final CTA is a question ("Worth a quick look?").
+6. ZERO AI CLICHÉS: Banned: "hope this email finds you well", "wanted to reach out", "supercharge", "transform", "cutting-edge", "game-changing", "seamless", "revolutionize", "bespoke", "dive deep".
+7. ZERO MEDICAL/PATIENT WORDS: Never use "patient", "consultation", "Morpheus8", "practice", "clinic", "EHR". This is a trade contractor (HVAC, plumbing, roofing, electrical).
+8. ECONOMIC TICKET MATH: Mention that the average emergency ticket is $2,000+ and missing 2 after-hours calls a month leaks $4,000+ in revenue.
+9. SUBJECT LINE: 2 to 4 words lowercase (e.g. "${getCleanSubject(clinic)}").
+10. LOW-FRICTION CTA: Soft interest ask ("Worth a quick look?").
+11. RETURN FORMAT: Valid JSON only with keys: "subject", "body", "frictionHook".`;
 }
 
 /**
@@ -164,11 +162,12 @@ You write strictly for Archit (Founder of SureGreet AI, 17, building an AI recep
  */
 export async function generateHarveyDraft(prompt, dossier, prospect = {}) {
   const apiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY || config.geminiApiKey || '';
-  const doctor = prospect.doctor_name || dossier.doctorName || 'Doctor';
-  const clinic = prospect.clinic_name || 'Practice';
-  const salutation = formatSalutation(doctor, clinic, dossier.isHvac ? 'hvac' : 'medspa');
-  const treatment = prospect.treatment || dossier.primaryTreatment || (dossier.isHvac ? 'emergency HVAC repair' : 'Morpheus8');
-  const hook = dossier.frictionObservation || prospect.specific_observation || `Saw your site makes visitors fill out a static form for ${treatment} instead of booking directly.`;
+  const doctor = prospect.doctor_name || dossier.doctorName || 'Owner';
+  const clinic = prospect.clinic_name || 'Contractor';
+  const currentNiche = prospect.niche || dossier.niche || 'hvac';
+  const salutation = formatSalutation(doctor, clinic, currentNiche);
+  const hook = dossier.frictionObservation || prospect.specific_observation || `Saw your emergency line after 7 PM routes homeowners to voicemail while competitors answer live.`;
+  const subject = getCleanSubject(clinic);
 
   // Attempt live Gemini API generation if key is present
   if (apiKey) {
@@ -219,24 +218,18 @@ export async function generateHarveyDraft(prompt, dossier, prospect = {}) {
     }
   }
 
-  // High-performance deterministic synthesis engine (Guarantees 100% score & zero downtime)
-  const isHvac = dossier.isHvac;
-  const cleanClinic = (clinic.split("'")[0].split("-")[0] || clinic).trim().toLowerCase();
-  const subject = isHvac ? `quick question - ${cleanClinic} calls` : `quick question - ${cleanClinic} inquiries`;
-  const pivot = isHvac
-    ? `Quick question - when an emergency AC call comes in after 7 PM, does someone answer live or do they hit voicemail?`
-    : `Quick question - when an inquiry comes in after 6 PM, does someone call in 2 minutes, or wait until morning?`;
-  const solution = isHvac
-    ? `Put together a 60-second demo of our AI voice dispatcher answering in 2 rings and booking service calls.`
-    : `Put together a 60-second demo showing our AI receptionist booking consults 24/7.`;
+  // High-performance deterministic synthesis engine (Guarantees 100% pre-send gate score & zero downtime)
+  const math = `Average emergency ticket is $2,000+. Missing just 2 after-hours calls a month leaks $4,000+ in revenue.`;
+  const solution = `Put together a 60-second walkthrough showing our AI voice line answering in 2 rings and booking jobs 24/7.`;
+  const cta = `Worth a quick look?`;
 
-  const body = `Hey ${salutation},\n\n${hook}\n\n${pivot}\n\n${solution}\n\nWorth a quick look?\n\nBest,\nArchit`;
+  const body = `Hey ${salutation},\n\n${hook}\n\n${math}\n\n${solution}\n\n${cta}\n\nBest,\nArchit`;
 
   return {
     subject,
     body,
     frictionHook: hook,
-    engine: 'harvey-deterministic-v2',
+    engine: 'harvey-deterministic-trade-v2',
   };
 }
 
@@ -245,10 +238,11 @@ export async function generateHarveyDraft(prompt, dossier, prospect = {}) {
  */
 export async function runQualityGateAndHeal(draftData, prompt, dossier, prospect = {}, maxRetries = 2) {
   let currentDraft = { ...draftData };
+  const currentNiche = prospect.niche || dossier.niche || 'hvac';
 
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     // Audit current draft
-    const audit = auditHarveyCopy(currentDraft.body, currentDraft.subject);
+    const audit = auditHarveyCopy(currentDraft.body, currentDraft.subject, currentNiche);
 
     if (audit.passed) {
       return {
@@ -265,8 +259,8 @@ export async function runQualityGateAndHeal(draftData, prompt, dossier, prospect
     let cleanedBody = currentDraft.body;
     let cleanedSubject = currentDraft.subject;
 
-    // 1. Strip em-dashes
-    cleanedBody = cleanedBody.replace(/—/g, ' - ');
+    // 1. Strip em-dashes and double hyphens
+    cleanedBody = cleanedBody.replace(/—/g, ' - ').replace(/--/g, ' - ');
 
     // 2. Strip exclamation marks
     cleanedBody = cleanedBody.replace(/!+/g, '.');
@@ -277,28 +271,36 @@ export async function runQualityGateAndHeal(draftData, prompt, dossier, prospect
       cleanedBody = cleanedBody.replace(reg, '');
     }
 
-    // 4. Clean subject line to 2-4 words lowercase
-    cleanedSubject = cleanedSubject.replace(/!/g, '').replace(/—/g, '').toLowerCase().trim();
-    const subWords = cleanedSubject.split(/\s+/);
-    if (subWords.length > 5) {
-      cleanedSubject = subWords.slice(0, 4).join(' ');
+    // 4. Remove forbidden trade words if found
+    for (const tw of ['patient', 'patients', 'morpheus8', 'botox', 'juvederm', 'bodytite', 'consultation', 'medical director']) {
+      const reg = new RegExp(`\\b${tw}\\b`, 'gi');
+      cleanedBody = cleanedBody.replace(reg, '');
     }
 
-    // 5. Trim excess words if over 65
-    const paragraphs = cleanedBody.split(/\n+/).filter(Boolean);
+    // 5. Clean subject line to 2-4 words lowercase
+    cleanedSubject = getCleanSubject(cleanedSubject.replace(/calls$/i, '').trim() || prospect.clinic_name);
+
+    // 6. Ensure question mark limit (max 1 for final CTA)
+    const qParts = cleanedBody.split('?');
+    if (qParts.length > 2) {
+      // Keep only the final question mark
+      cleanedBody = qParts.slice(0, -1).join('.') + '?' + qParts[qParts.length - 1];
+    }
+
+    // 7. Trim excess words if over 70
     const words = cleanedBody.split(/\s+/).filter(Boolean);
-    if (words.length > 65) {
-      // Shorten body gracefully
-      const doctor = prospect.doctor_name || dossier.doctorName || 'Doctor';
-      const salutation = formatSalutation(doctor, prospect.clinic_name, dossier.isHvac ? 'hvac' : 'medspa');
-      cleanedBody = `Hey ${salutation},\n\n${dossier.frictionObservation}\n\nWe put together a 60-second demo of our 24/7 AI voice line booking appointments directly.\n\nWorth a quick look?\n\nBest,\nArchit`;
+    if (words.length > 70) {
+      const doctor = prospect.doctor_name || dossier.doctorName || 'Owner';
+      const salutation = formatSalutation(doctor, prospect.clinic_name, currentNiche);
+      const hook = dossier.frictionObservation || `Saw your emergency line after 7 PM routes homeowners to voicemail while competitors answer live.`;
+      cleanedBody = `Hey ${salutation},\n\n${hook}\n\nAverage emergency ticket is $2,000+. Missing just 2 after-hours calls a month leaks $4,000+ in revenue.\n\nPut together a 60-second walkthrough showing our AI voice line answering in 2 rings and booking jobs 24/7.\n\nWorth a quick look?\n\nBest,\nArchit`;
     }
 
     currentDraft.body = cleanedBody;
     currentDraft.subject = cleanedSubject;
 
     // Re-verify after self-healing
-    const reAudit = auditHarveyCopy(currentDraft.body, currentDraft.subject);
+    const reAudit = auditHarveyCopy(currentDraft.body, currentDraft.subject, currentNiche);
     if (reAudit.passed) {
       return {
         passed: true,
@@ -311,7 +313,7 @@ export async function runQualityGateAndHeal(draftData, prompt, dossier, prospect
   }
 
   // Return last state with audit breakdown
-  const finalAudit = auditHarveyCopy(currentDraft.body, currentDraft.subject);
+  const finalAudit = auditHarveyCopy(currentDraft.body, currentDraft.subject, currentNiche);
   return {
     passed: finalAudit.score >= 80,
     attempts: maxRetries + 1,
@@ -396,73 +398,50 @@ export async function diagnoseAndGenerateFullSequence({
   const dossier = await extractClinicDossier(url, '', niche);
 
   // 2. Resolve Overrides
-  const isHvac = (niche === 'hvac') || dossier.isHvac;
-  const doc = doctorName || dossier.doctorName || (isHvac ? 'Owner' : 'Doctor');
-  const clinic = clinicName || (url ? url.replace(/^https?:\/\//, '').split('/')[0] : 'Practice');
+  const isTrade = niche ? niche.toLowerCase() !== 'medspa' : true;
+  const doc = doctorName || dossier.doctorName || 'Owner';
+  const clinic = clinicName || (url ? url.replace(/^https?:\/\//, '').split('/')[0] : 'Contractor');
   const cleanClinic = (clinic.split("'")[0].split("-")[0] || clinic).trim();
   const cCity = city || 'US';
-  const treat = treatment || dossier.primaryTreatment || (isHvac ? 'emergency HVAC repair' : 'Morpheus8');
-  const salutation = formatSalutation(doc, cleanClinic, isHvac ? 'hvac' : 'medspa');
+  const treat = treatment || dossier.primaryTreatment || 'emergency service calls';
+  const salutation = formatSalutation(doc, cleanClinic, niche || 'hvac');
   const calUrl = 'https://cal.com/archit-suregreet/15min';
 
   // 3. Verifiable Hook from /harvey-sales skill
   let hook = (customObservation || '').trim() || dossier.frictionObservation;
   if (!hook) {
-    if (isHvac) {
-      hook = `Saw your emergency repair page in ${cCity} routes calls to a static contact form instead of live dispatch.`;
-    } else {
-      hook = `Saw your site makes patients fill out a static contact form for ${treat} instead of booking directly.`;
-    }
+    hook = `Saw your emergency repair line in ${cCity} routes after-hours calls to voicemail while competitors answer live.`;
   }
 
   // 4. Generate Step 1 based on selected framework (PAS vs QVC)
-  let step1Subject = isHvac ? `quick question - ${cleanClinic.toLowerCase()} calls` : `quick question - ${cleanClinic.toLowerCase()} inquiries`;
+  let step1Subject = getCleanSubject(cleanClinic);
   let step1Body = '';
 
   if (framework === 'qvc') {
     // Framework B: QVC from /harvey-sales
-    step1Subject = isHvac ? `after-hours calls at ${cleanClinic.toLowerCase()}` : `after-hours inquiries at ${cleanClinic.toLowerCase()}`;
-    const question = isHvac
-      ? `How does ${cleanClinic} handle emergency service calls between 5 PM and 8 AM?`
-      : `How does ${cleanClinic} handle patient inquiries that come in between 5 PM and 8 AM?`;
-    const value = isHvac
-      ? `Most contractors lose 3 to 5 emergency jobs every weekend because callers dislike voicemails. SureGreet AI acts as your 24/7 voice dispatcher, booking calls directly into your calendar in 2 rings.`
-      : `Most clinics lose 3 to 5 consultation bookings every weekend because patients dislike voicemails. SureGreet AI acts as your 24/7 receptionist, answering procedure pricing and booking consults automatically.`;
-
+    const question = `How does ${cleanClinic} handle emergency service calls between 5 PM and 8 AM?`;
+    const value = `Most contractors lose 3 to 5 emergency jobs every weekend because callers dislike voicemails. SureGreet AI acts as your 24/7 voice dispatcher, booking calls directly into your calendar in 2 rings.`;
     step1Body = `Hey ${salutation},\n\n${question}\n\n${value}\n\nWorth a 3-minute walkthrough to see if it makes sense for your lines?\n\nBest,\nArchit`;
   } else {
-    // Framework A: PAS from /harvey-sales
-    const pivot = isHvac
-      ? `Quick question - when an emergency AC call comes in after 7 PM, does someone answer live or do they hit voicemail? 78% of homeowners call the next contractor if nobody picks up.`
-      : `Quick question - when an inquiry comes in after 6 PM, does someone call in 2 minutes, or wait until morning? 78% of high-intent patients book with whoever responds first.`;
-    const solution = isHvac
-      ? `Put together a 60-second demo of our AI voice dispatcher answering in 2 rings and booking service calls 24/7.`
-      : `Put together a 60-second demo showing our AI receptionist answering procedure pricing and booking consults 24/7.`;
-
-    step1Body = `Hey ${salutation},\n\n${hook}\n\n${pivot}\n\n${solution}\n\nWorth a quick look?\n\nBest,\nArchit`;
+    // Framework A: PAS from /harvey-sales with $2,000 ticket math
+    const math = `Average emergency ticket is $2,000+. Missing just 2 after-hours calls a month leaks $4,000+ in revenue.`;
+    const solution = `Put together a 60-second walkthrough showing our AI voice line answering in 2 rings and booking jobs 24/7.`;
+    step1Body = `Hey ${salutation},\n\n${hook}\n\n${math}\n\n${solution}\n\nWorth a quick look?\n\nBest,\nArchit`;
   }
 
   // 5. Generate Step 2: Proof & Audio Demo (Threaded Re: from /harvey-sales)
   const step2Subject = `Re: ${step1Subject}`;
-  const step2Body = isHvac
-    ? `hey ${salutation},\n\nfloating this back up - happy to text over a test line so you can hear how our AI voice dispatcher handles emergency callers after 7 PM.\n\nBest,\nArchit`
-    : `hey ${salutation},\n\njust floating this back up - still happy to send over that test line if you want to hear how it handles after-hours callers.\n\nBest,\nArchit`;
+  const step2Body = `hey ${salutation},\n\nfloating this back up - happy to text over a test line so you can hear how our AI voice dispatcher handles emergency callers after 7 PM.\n\nBest,\nArchit`;
 
   // 6. Generate Step 3: Economic Napkin Math & 14-Day Trial with Cal.com link (from /harvey-sales)
   const step3Subject = `Re: ${step1Subject}`;
-  const math = isHvac
-    ? `Quick napkin math - average emergency ticket is $2,000+. Missing just 2 after-hours calls a month to voicemail is $4,000+ in leaked revenue.`
-    : `Quick napkin math - average ${treat} ticket is $1,500+. Missing just 2 evening leads a week to voicemail is $12,000/mo in lost bookings.`;
+  const math = `Quick napkin math - average emergency ticket is $2,000+. Missing just 2 after-hours calls a month to voicemail is $4,000+ in leaked revenue.`;
 
-  const step3Body = isHvac
-    ? `Hey ${salutation},\n\n${math}\n\nWe can plug our 24/7 AI voice dispatcher into your lines for 14 days to capture those emergency jobs at zero risk, or grab 10 minutes on my direct calendar (${calUrl}).\n\nFair enough?\n\nBest,\nArchit`
-    : `Hey ${salutation},\n\n${math}\n\nWe can plug our 24/7 AI voice receptionist into your lines for 14 days to capture those consults at zero risk, or grab 10 minutes on my direct calendar (${calUrl}).\n\nWorth a 5-minute look?\n\nBest,\nArchit`;
+  const step3Body = `Hey ${salutation},\n\n${math}\n\nWe can plug our 24/7 AI voice dispatcher into your lines for 14 days to capture those emergency jobs at zero risk, or grab 10 minutes on my direct calendar (${calUrl}).\n\nFair enough?\n\nBest,\nArchit`;
 
   // 7. Generate Step 4: Clean Breakup (Threaded Re: from /harvey-sales)
   const step4Subject = `Re: ${step1Subject}`;
-  const step4Body = isHvac
-    ? `hey ${salutation},\n\nassuming you're all set on after-hours dispatch coverage for now - i'll get out of your hair. if missed evening calls ever become a headache, just reply here.\n\nBest,\nArchit`
-    : `hey ${salutation},\n\nassuming you're all set on front desk coverage for now - i'll get out of your hair. if missed after-hours calls ever become a headache, just reply here.\n\nBest,\nArchit`;
+  const step4Body = `hey ${salutation},\n\nassuming you're all set on after-hours dispatch coverage for now - i'll get out of your hair. if missed evening calls ever become a headache, just reply here.\n\nBest,\nArchit`;
 
   // 8. Quality Gate Audit for each step
   const unsubUrl = getUnsubscribeUrl(email || 'doctor@clinic.com');

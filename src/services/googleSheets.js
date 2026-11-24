@@ -2,6 +2,7 @@ import { google } from 'googleapis';
 import fs from 'fs';
 import path from 'path';
 import { config } from '../config.js';
+import { formatSalutation } from '../templates/outreachTemplates.js';
 
 let sheetsClient = null;
 
@@ -73,23 +74,32 @@ async function getSheetsClient() {
 
 /**
  * Append a verified lead to Google Sheets
- * Supports both Google Apps Script Webhook (fastest, $0 setup) and Google Sheets API v4
+ * Exact Row Format: [Company | Owner | Phone | City | Full Harvey Email]
+ * Supports both Google Apps Script Webhook and Google Sheets API v4
  */
 export async function appendProspectToSheet(prospect) {
   if (!prospect) return { success: false, error: 'No prospect data provided' };
 
+  const company = prospect.clinic_name || prospect.clinicName || 'Trade Business';
+  const owner = formatSalutation(prospect.doctor_name || prospect.doctorName, company, prospect.niche || 'hvac');
+  const phone = prospect.phone || 'N/A';
+  const city = prospect.city || '';
+  const fullHarveyEmail = prospect.harvey_draft || prospect.email_body || '';
+  const email = prospect.email || '';
+  const website = prospect.website_url || prospect.url || '';
+  const dateAdded = new Date().toLocaleDateString('en-US');
+
+  // Exact 5 columns requested by Archit: [Company | Owner | Phone | City | Full Harvey Email]
+  // followed by contact email, website, and date added
   const row = [
-    new Date().toLocaleDateString('en-US'),
-    prospect.clinic_name || prospect.clinicName || 'Unknown Practice',
-    prospect.doctor_name || prospect.doctorName || 'Owner / DM',
-    prospect.email || '',
-    prospect.phone || 'N/A',
-    prospect.city || '',
-    (prospect.niche || 'medspa').toUpperCase(),
-    prospect.treatment || 'High-Ticket Service',
-    prospect.status || 'pending',
-    prospect.specific_observation || prospect.specificObservation || '',
-    prospect.website_url || prospect.url || '',
+    company,
+    owner,
+    phone,
+    city,
+    fullHarveyEmail,
+    email,
+    website,
+    dateAdded,
   ];
 
   // 1. Try Google Apps Script Webhook
@@ -107,7 +117,7 @@ export async function appendProspectToSheet(prospect) {
         }),
       });
       if (res.ok) {
-        console.log(`[Google Sheets:Webhook] Synced prospect ${prospect.email} to sheet successfully.`);
+        console.log(`[Google Sheets:Webhook] Synced prospect ${prospect.email || company} to sheet successfully.`);
         return { success: true, provider: 'webhook' };
       }
     } catch (webhookErr) {
@@ -119,7 +129,7 @@ export async function appendProspectToSheet(prospect) {
   const client = await getSheetsClient();
   if (client) {
     try {
-      const range = `${config.googleSheets.leadsTabName}!A:K`;
+      const range = `${config.googleSheets.leadsTabName}!A:H`;
       const response = await client.spreadsheets.values.append({
         spreadsheetId: config.googleSheets.sheetId,
         range,
@@ -127,7 +137,7 @@ export async function appendProspectToSheet(prospect) {
         insertDataOption: 'INSERT_ROWS',
         requestBody: { values: [row] },
       });
-      console.log(`[Google Sheets:API] Appended lead to "${config.googleSheets.leadsTabName}" successfully.`);
+      console.log(`[Google Sheets:API] Appended lead "${company}" to "${config.googleSheets.leadsTabName}" successfully.`);
       return { success: true, updatedRange: response.data.updates?.updatedRange, provider: 'api' };
     } catch (err) {
       console.error('[Google Sheets:API] Append error:', err.message);
@@ -141,6 +151,43 @@ export async function appendProspectToSheet(prospect) {
 }
 
 /**
+ * Format prospects for direct 1-click clipboard paste into Google Sheets (TSV format)
+ * Columns: [Company | Owner | Phone | City | Full Harvey Email]
+ */
+export function formatProspectsTsv(prospects = []) {
+  const header = ['Company', 'Owner', 'Phone', 'City', 'Full Harvey Email'].join('\t');
+  const rows = prospects.map((p) => {
+    const company = (p.clinic_name || p.clinicName || '').replace(/[\t\n\r]/g, ' ');
+    const owner = formatSalutation(p.doctor_name || p.doctorName, company, p.niche || 'hvac').replace(/[\t\n\r]/g, ' ');
+    const phone = (p.phone || 'N/A').replace(/[\t\n\r]/g, ' ');
+    const city = (p.city || '').replace(/[\t\n\r]/g, ' ');
+    const emailDraft = (p.harvey_draft || p.email_body || '').replace(/[\t\r]/g, ' ').replace(/\n/g, ' ');
+    return [company, owner, phone, city, `"${emailDraft.replace(/"/g, '""')}"`].join('\t');
+  });
+  return [header, ...rows].join('\n');
+}
+
+/**
+ * Format prospects as CSV for direct download
+ */
+export function formatProspectsCsv(prospects = []) {
+  const escapeCsv = (val) => `"${String(val || '').replace(/"/g, '""')}"`;
+  const header = ['Company', 'Owner', 'Phone', 'City', 'Full Harvey Email', 'Email', 'Website', 'Date Added'].map(escapeCsv).join(',');
+  const rows = prospects.map((p) => {
+    const company = p.clinic_name || p.clinicName || '';
+    const owner = formatSalutation(p.doctor_name || p.doctorName, company, p.niche || 'hvac');
+    const phone = p.phone || 'N/A';
+    const city = p.city || '';
+    const emailDraft = p.harvey_draft || p.email_body || '';
+    const email = p.email || '';
+    const website = p.website_url || p.url || '';
+    const dateAdded = new Date().toLocaleDateString('en-US');
+    return [company, owner, phone, city, emailDraft, email, website, dateAdded].map(escapeCsv).join(',');
+  });
+  return [header, ...rows].join('\n');
+}
+
+/**
  * Batch synchronize an array of prospects to Google Sheets
  */
 export async function syncAllProspectsToSheet(prospects = []) {
@@ -148,11 +195,15 @@ export async function syncAllProspectsToSheet(prospects = []) {
     return { success: false, message: 'No prospects to synchronize' };
   }
 
-  console.log(`[Google Sheets] Synchronizing ${prospects.length} prospects to Google Sheets...`);
+  // Filter to trade contractor prospects
+  const tradeProspects = prospects.filter((p) => p.niche !== 'medspa');
+  const targetList = tradeProspects.length > 0 ? tradeProspects : prospects;
+
+  console.log(`[Google Sheets] Synchronizing ${targetList.length} prospects to Google Sheets...`);
   let synced = 0;
   let errors = 0;
 
-  for (const p of prospects) {
+  for (const p of targetList) {
     const res = await appendProspectToSheet(p);
     if (res.success) synced++;
     else errors++;
@@ -160,7 +211,7 @@ export async function syncAllProspectsToSheet(prospects = []) {
 
   return {
     success: true,
-    total: prospects.length,
+    total: targetList.length,
     synced,
     errors,
     status: getSheetsStatus(),

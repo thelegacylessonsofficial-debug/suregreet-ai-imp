@@ -24,7 +24,7 @@ import {
   getShortBusinessName,
 } from '../templates/outreachTemplates.js';
 import { sendEmail, getMailerStatus } from '../services/mailer.js';
-import { getSheetsStatus, syncAllProspectsToSheet, appendProspectToSheet } from '../services/googleSheets.js';
+import { getSheetsStatus, syncAllProspectsToSheet, appendProspectToSheet, formatProspectsTsv, formatProspectsCsv } from '../services/googleSheets.js';
 import { runHarveyAutonomousPipeline, diagnoseAndGenerateFullSequence } from '../services/harveyService.js';
 import { config } from '../config.js';
 
@@ -169,12 +169,20 @@ function renderProspectsHtml(list, authKey = '') {
         </div>
 
         <div class="flex items-center gap-2 shrink-0 flex-wrap">
-          <button onclick="syncToGoogleSheets()" id="btnSyncSheets" class="px-3.5 py-2 rounded-xl bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-300 border border-emerald-500/30 font-bold text-xs transition flex items-center gap-1.5 cursor-pointer active:scale-95" title="Synchronize CRM leads with Google Sheets">
-            <span>📊 Sync to Sheets</span>
+          <button onclick="runHarveyBatchToSheets()" id="btnRunHarveyBatch" class="px-3.5 py-2 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-black font-extrabold text-xs transition shadow-md shadow-cyan-500/20 flex items-center gap-1.5 cursor-pointer active:scale-95" title="Run Harvey Sales Engine on Trade Leads & Sync to Google Sheets">
+            ${getSvgIcon('bolt', 'w-3.5 h-3.5')}
+            <span>⚡ Run Harvey Engine</span>
           </button>
-          <button onclick="triggerOutreachWorker(true)" id="btnTriggerWorker" class="px-4 py-2 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-black font-extrabold text-xs transition shadow-md shadow-cyan-500/20 flex items-center gap-1.5 cursor-pointer active:scale-95">
-            ${getSvgIcon('play', 'w-3.5 h-3.5')}
-            <span>Run Follow-Up Queue</span>
+          <button onclick="copySheetsTsv()" id="btnCopySheets" class="px-3 py-2 rounded-xl bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-300 border border-emerald-500/30 font-bold text-xs transition flex items-center gap-1.5 cursor-pointer active:scale-95" title="Copy raw tab-separated table to clipboard (paste straight into Google Sheet)">
+            <span>📋 Copy for Google Sheet</span>
+          </button>
+          <a href="/outreach/harvey/export-csv" class="px-3 py-2 rounded-xl bg-[var(--bg-surface)] hover:bg-[var(--bg-hover)] border border-[var(--border-subtle)] text-xs font-semibold text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition flex items-center gap-1.5" title="Download CSV for Google Sheets">
+            ${getSvgIcon('download', 'w-3.5 h-3.5 text-emerald-400')}
+            <span>CSV ⤓</span>
+          </a>
+          <button onclick="triggerOutreachWorker(true)" id="btnTriggerWorker" class="px-3 py-2 rounded-xl bg-[var(--bg-surface)] hover:bg-[var(--bg-hover)] border border-[var(--border-subtle)] text-xs font-semibold text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition flex items-center gap-1.5 cursor-pointer active:scale-95">
+            ${getSvgIcon('play', 'w-3.5 h-3.5 text-cyan-400')}
+            <span>Run Cadence</span>
           </button>
           <a href="/outreach/preview" class="px-3 py-2 rounded-xl bg-[var(--bg-surface)] hover:bg-[var(--bg-hover)] border border-[var(--border-subtle)] text-xs font-semibold text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition flex items-center gap-1.5" title="View email scripts">
             ${getSvgIcon('mail', 'w-3.5 h-3.5 text-cyan-400')}
@@ -1062,6 +1070,58 @@ function renderProspectsHtml(list, authKey = '') {
           if (btn) {
             btn.disabled = false;
             btn.innerHTML = '${getSvgIcon('bolt', 'w-3.5 h-3.5')}<span>Run Harvey on All Pending</span>';
+          }
+        }
+      }
+
+      async function runHarveyBatchToSheets() {
+        const btn = document.getElementById('btnRunHarveyBatch');
+        if (btn) {
+          btn.disabled = true;
+          btn.innerHTML = '${getSvgIcon('spinner', 'w-3.5 h-3.5 animate-spin')}<span>Processing Trade Leads...</span>';
+        }
+        try {
+          const res = await fetch(getAuthUrl('/outreach/harvey/batch-to-sheet'), {
+            method: 'POST',
+            credentials: 'include',
+            headers: getAuthHeaders()
+          });
+          const data = await res.json();
+          if (data.success) {
+            showToast('Harvey Engine Complete!', 'Processed ' + (data.processed || 0) + ' trade leads (Passed Gate: ' + (data.passed || 0) + ', Synced to Sheets: ' + (data.syncedToSheets || 0) + ')', 'success');
+            setTimeout(() => window.location.reload(), 1500);
+          } else {
+            showToast('Batch Notice', data.message || data.error || 'Failed batch', 'error');
+          }
+        } catch (e) {
+          showToast('Batch Error', e.message, 'error');
+        } finally {
+          if (btn) {
+            btn.disabled = false;
+            btn.innerHTML = '${getSvgIcon('bolt', 'w-3.5 h-3.5')}<span>⚡ Run Harvey Engine</span>';
+          }
+        }
+      }
+
+      async function copySheetsTsv() {
+        const btn = document.getElementById('btnCopySheets');
+        if (btn) {
+          btn.disabled = true;
+          btn.innerHTML = '<span>⏳ Copying...</span>';
+        }
+        try {
+          const res = await fetch(getAuthUrl('/outreach/harvey/export-tsv'), {
+            headers: getAuthHeaders()
+          });
+          const text = await res.text();
+          await navigator.clipboard.writeText(text);
+          showToast('Copied to Clipboard!', 'Raw table copied! Paste directly into Google Sheet with Ctrl+V', 'success');
+        } catch (e) {
+          showToast('Copy Error', e.message, 'error');
+        } finally {
+          if (btn) {
+            btn.disabled = false;
+            btn.innerHTML = '<span>📋 Copy for Google Sheet</span>';
           }
         }
       }
@@ -2063,6 +2123,58 @@ ${escapeHtml(seq.text)}
         }
       }
 
+      async function runHarveyBatchToSheets() {
+        const btn = document.getElementById('btnRunHarveyBatch');
+        if (btn) {
+          btn.disabled = true;
+          btn.innerHTML = '${getSvgIcon('spinner', 'w-3.5 h-3.5 animate-spin')}<span>Processing Trade Leads...</span>';
+        }
+        try {
+          const res = await fetch(getAuthUrl('/outreach/harvey/batch-to-sheet'), {
+            method: 'POST',
+            credentials: 'include',
+            headers: getAuthHeaders()
+          });
+          const data = await res.json();
+          if (data.success) {
+            showToast('Harvey Engine Complete!', 'Processed ' + (data.processed || 0) + ' trade leads (Passed Gate: ' + (data.passed || 0) + ', Synced to Sheets: ' + (data.syncedToSheets || 0) + ')', 'success');
+            setTimeout(() => window.location.reload(), 1500);
+          } else {
+            showToast('Batch Notice', data.message || data.error || 'Failed batch', 'error');
+          }
+        } catch (e) {
+          showToast('Batch Error', e.message, 'error');
+        } finally {
+          if (btn) {
+            btn.disabled = false;
+            btn.innerHTML = '${getSvgIcon('bolt', 'w-3.5 h-3.5')}<span>⚡ Run Harvey Engine</span>';
+          }
+        }
+      }
+
+      async function copySheetsTsv() {
+        const btn = document.getElementById('btnCopySheets');
+        if (btn) {
+          btn.disabled = true;
+          btn.innerHTML = '<span>⏳ Copying...</span>';
+        }
+        try {
+          const res = await fetch(getAuthUrl('/outreach/harvey/export-tsv'), {
+            headers: getAuthHeaders()
+          });
+          const text = await res.text();
+          await navigator.clipboard.writeText(text);
+          showToast('Copied to Clipboard!', 'Raw table copied! Paste directly into Google Sheet with Ctrl+V', 'success');
+        } catch (e) {
+          showToast('Copy Error', e.message, 'error');
+        } finally {
+          if (btn) {
+            btn.disabled = false;
+            btn.innerHTML = '<span>📋 Copy for Google Sheet</span>';
+          }
+        }
+      }
+
       async function syncToGoogleSheets() {
         const btn = document.getElementById('btnSyncSheets');
         if (btn) {
@@ -2403,6 +2515,95 @@ outreachRouter.post('/sync-sheets', async (req, res) => {
     res.json(result);
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// 2.6d2 Automated Harvey Engine to Google Sheets (Sub-75 Words . 0 Cliches . $2,000 Ticket Math)
+outreachRouter.post('/harvey/batch-to-sheet', async (req, res) => {
+  try {
+    const allProspects = await getProspects({ limit: 500 });
+    // Filter strictly to trade contractors (hvac, plumbing, roofing, electrical, water_damage)
+    const tradeProspects = allProspects.filter((p) => p.niche !== 'medspa');
+
+    if (tradeProspects.length === 0) {
+      return res.json({ success: true, message: 'No trade prospects found in CRM', processed: 0 });
+    }
+
+    console.log(`[Harvey Engine] Processing ${tradeProspects.length} trade leads 1 by 1 into Google Sheets...`);
+    const results = [];
+    let passedCount = 0;
+    let syncedCount = 0;
+
+    for (const prospect of tradeProspects) {
+      try {
+        // Run Harvey pipeline (Sub-75 words, $2,000 ticket math, Pre-Send Gate)
+        const harveyRes = await runHarveyAutonomousPipeline({ prospectId: prospect.id });
+        const passed = harveyRes.passed;
+        if (passed) passedCount++;
+
+        // Get latest prospect with updated draft
+        const updated = harveyRes.prospect || prospect;
+
+        // Append to Google Sheets [Company | Owner | Phone | City | Full Harvey Email]
+        const sheetRes = await appendProspectToSheet(updated);
+        if (sheetRes.success) syncedCount++;
+
+        results.push({
+          id: prospect.id,
+          company: prospect.clinic_name,
+          city: prospect.city,
+          passed,
+          score: harveyRes.audit?.score,
+          syncedToSheets: sheetRes.success,
+        });
+      } catch (err) {
+        console.error(`[Harvey Engine] Failed processing ${prospect.clinic_name}:`, err.message);
+        results.push({
+          id: prospect.id,
+          company: prospect.clinic_name,
+          error: err.message,
+        });
+      }
+    }
+
+    res.json({
+      success: true,
+      total: tradeProspects.length,
+      processed: results.length,
+      passed: passedCount,
+      syncedToSheets: syncedCount,
+      results,
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// 2.6d3 Export Raw TSV for 1-Click Clipboard Paste into Google Sheets
+outreachRouter.get('/harvey/export-tsv', async (req, res) => {
+  try {
+    const allProspects = await getProspects({ limit: 500 });
+    const tradeProspects = allProspects.filter((p) => p.niche !== 'medspa');
+    const tsv = formatProspectsTsv(tradeProspects);
+    res.setHeader('Content-Type', 'text/tab-separated-values; charset=utf-8');
+    res.setHeader('Content-Disposition', 'inline; filename="suregreet_harvey_leads.tsv"');
+    res.send(tsv);
+  } catch (err) {
+    res.status(500).send(`Error generating TSV: ${err.message}`);
+  }
+});
+
+// 2.6d4 Export Raw CSV for Direct Download
+outreachRouter.get('/harvey/export-csv', async (req, res) => {
+  try {
+    const allProspects = await getProspects({ limit: 500 });
+    const tradeProspects = allProspects.filter((p) => p.niche !== 'medspa');
+    const csv = formatProspectsCsv(tradeProspects);
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', 'attachment; filename="suregreet_harvey_leads.csv"');
+    res.send(csv);
+  } catch (err) {
+    res.status(500).send(`Error generating CSV: ${err.message}`);
   }
 });
 

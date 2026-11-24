@@ -9,6 +9,7 @@ export const BANNED_AI_PHRASES = [
   'hope this email finds you well',
   'wanted to reach out',
   'reach out to you',
+  'reaching out',
   'circling back',
   'touching base',
   "in today's fast-paced world",
@@ -25,15 +26,32 @@ export const BANNED_AI_PHRASES = [
   "i know you're busy",
   'dive deep',
   'game changer',
+  'synergy',
+];
+
+export const BANNED_TRADE_WORDS = [
+  'patient',
+  'patients',
+  'morpheus8',
+  'botox',
+  'juvederm',
+  'bodytite',
+  'consultation',
+  'medical director',
+  'medspa',
 ];
 
 /**
  * Deterministic Harvey Anti-AI & Deliverability Gate
  */
-export function auditHarveyCopy(text, subject = '') {
+export function auditHarveyCopy(text, subject = '', niche = 'hvac') {
   if (!text) return { score: 0, wordCount: 0, passed: false, issues: ['Empty email text'] };
   const cleanBody = text.split('--')[0].trim();
-  const words = cleanBody.split(/\s+/).filter(Boolean);
+  const lines = cleanBody.split(/\n+/).map(l => l.trim()).filter(Boolean);
+  
+  // Filter out standard signoffs when counting body words
+  const contentLines = lines.filter(l => !/^(best|best regards|thanks|sincerely|cheers|archit|suregreet ai)\b/i.test(l));
+  const words = contentLines.join(' ').split(/\s+/).filter(Boolean);
   const wordCount = words.length;
 
   const foundBanned = [];
@@ -44,8 +62,20 @@ export function auditHarveyCopy(text, subject = '') {
     }
   }
 
-  const emDashes = (cleanBody.match(/—/g) || []).length;
+  const isTrade = niche !== 'medspa';
+  const foundTradeBanned = [];
+  if (isTrade) {
+    for (const tw of BANNED_TRADE_WORDS) {
+      const reg = new RegExp(`\\b${tw}\\b`, 'i');
+      if (reg.test(lower)) {
+        foundTradeBanned.push(tw);
+      }
+    }
+  }
+
+  const emDashes = (cleanBody.match(/—/g) || []).length + (cleanBody.match(/--/g) || []).length;
   const exclamations = (cleanBody.match(/!/g) || []).length;
+  const questionMarks = (cleanBody.match(/\?/g) || []).length;
   const cleanSubject = subject.replace(/^re:\s*/i, '').trim();
   const subjectWords = cleanSubject.split(/\s+/).filter(Boolean).length;
 
@@ -68,18 +98,28 @@ export function auditHarveyCopy(text, subject = '') {
     score -= foundBanned.length * 25;
   }
 
+  if (foundTradeBanned.length > 0) {
+    issues.push(`Contains forbidden medical terms for trade niche: "${foundTradeBanned.join('", "')}"`);
+    score -= foundTradeBanned.length * 30;
+  }
+
   if (emDashes > 0) {
-    issues.push(`Contains ${emDashes} em-dashes (—); use hyphens (-) or commas`);
-    score -= emDashes * 10;
+    issues.push(`Contains ${emDashes} em-dashes/double-hyphens; use hyphens (-) or commas`);
+    score -= emDashes * 15;
   }
 
   if (exclamations > 0) {
     issues.push(`Contains ${exclamations} exclamation marks; cold outreach must use zero`);
-    score -= exclamations * 15;
+    score -= exclamations * 20;
   }
 
-  if (subjectWords < 2 || subjectWords > 6) {
-    issues.push(`Subject line is ${subjectWords} words (ideal is 2–5 words)`);
+  if (questionMarks > 1) {
+    issues.push(`Contains ${questionMarks} question marks; max 1 allowed (the final CTA)`);
+    score -= (questionMarks - 1) * 15;
+  }
+
+  if (subjectWords < 2 || subjectWords > 5) {
+    issues.push(`Subject line is ${subjectWords} words (ideal is 2–4 words)`);
     score -= 10;
   }
 
@@ -91,10 +131,12 @@ export function auditHarveyCopy(text, subject = '') {
     isOptimalWordCount: wordCount >= 45 && wordCount <= 65,
     isUnderHardCeiling: wordCount <= 75,
     foundBanned,
+    foundTradeBanned,
     emDashes,
     exclamations,
+    questionMarks,
     subjectWords,
-    passed: score >= 85 && foundBanned.length === 0 && wordCount <= 75,
+    passed: score >= 85 && foundBanned.length === 0 && foundTradeBanned.length === 0 && wordCount <= 75 && exclamations === 0 && questionMarks <= 1,
     issues,
   };
 }
@@ -116,8 +158,9 @@ export function getShortBusinessName(clinicName) {
  * - If owner name is not found: fallback cleanly to "team at [Short Business Name]" (e.g. "team at Med Aesthetics Miami")
  * - If no name or clinic: fallback to "there" ("Hey there,")
  */
-export function formatSalutation(doctorName, clinicName, niche = 'medspa') {
+export function formatSalutation(doctorName, clinicName, niche = 'hvac') {
   const shortClinic = getShortBusinessName(clinicName);
+  const isTrade = niche !== 'medspa';
 
   // Check if doctorName is missing, empty, or a generic placeholder title
   const isPlaceholder =
@@ -126,20 +169,24 @@ export function formatSalutation(doctorName, clinicName, niche = 'medspa') {
     /^(doctor|owner|founder|director|medical director|operations lead|operations manager|manager|admin|team|info)\b/i.test(doctorName.trim()) ||
     doctorName.includes('Medical Director') ||
     doctorName.includes('Operations Lead') ||
-    doctorName.includes('Operations Manager');
+    doctorName.includes('Operations Manager') ||
+    doctorName.toLowerCase().startsWith('owner');
 
   if (isPlaceholder) {
     return shortClinic ? `team at ${shortClinic}` : 'there';
   }
 
   let clean = doctorName.trim();
-  if (/^dr\.?\s+/i.test(clean)) {
-    return clean;
-  }
-  if (niche === 'hvac') {
-    // For HVAC, take the owner's first name
+  if (isTrade) {
+    // For trade niches, strip any "Dr." prefixes and extract clean first name
+    clean = clean.replace(/^dr\.?\s+/i, '');
     const firstName = clean.split(/\s+/)[0];
     return firstName;
+  }
+
+  // MedSpa legacy fallback
+  if (/^dr\.?\s+/i.test(clean)) {
+    return clean;
   }
   const parts = clean.split(/\s+/);
   if (parts.length > 1) {
