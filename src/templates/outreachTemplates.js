@@ -154,19 +154,19 @@ export function formatSalutation(doctorName, clinicName, niche = 'medspa') {
  */
 export function generateHarveyScript({
   framework = 'pas',
-  signalHook = 'form_friction',
-  doctorName = 'Dr. Carlos Riveros',
-  clinicName = 'Med Aesthetics Miami',
-  city = 'Miami, FL',
-  treatment = 'Morpheus8',
-  niche = 'medspa',
+  signalHook = 'after_hours',
+  doctorName = 'Owner',
+  clinicName = 'Lex Air Conditioning & Heating',
+  city = 'Phoenix, AZ',
+  treatment = 'Emergency AC & Heating Repair',
+  niche = 'hvac',
   specificObservation = '',
   prospectEmail = '',
 }) {
-  const salutation = formatSalutation(doctorName, clinicName, niche);
-  const clinic = getShortBusinessName(clinicName) || (clinicName ? clinicName.trim() : 'your clinic');
-  const treat = treatment ? treatment.trim() : niche === 'hvac' ? 'emergency HVAC repair' : 'Morpheus8';
-  const isHvac = niche === 'hvac';
+  const isTrade = niche !== 'medspa';
+  const salutation = formatSalutation(doctorName, clinicName, isTrade ? 'hvac' : 'medspa');
+  const clinic = getShortBusinessName(clinicName) || (clinicName ? clinicName.trim() : 'your business');
+  const treat = treatment ? treatment.trim() : (isTrade ? 'emergency service calls' : 'Morpheus8');
   const unsubUrl = getUnsubscribeUrl(prospectEmail);
 
   // 1. Determine Signal Hook Text
@@ -174,20 +174,20 @@ export function generateHarveyScript({
   if (specificObservation && specificObservation.trim()) {
     hookText = specificObservation.trim();
   } else if (signalHook === 'meta_ads') {
-    hookText = isHvac
+    hookText = isTrade
       ? `Saw your emergency repair ads running across ${city} yesterday.`
       : `Saw your ${treat} campaign running in ${city} yesterday evening.`;
   } else if (signalHook === 'after_hours') {
-    hookText = isHvac
+    hookText = isTrade
       ? `Called your emergency line yesterday after 7 PM and hit voicemail.`
       : `Called your office yesterday around 7:15 PM and hit the after-hours voicemail.`;
   } else if (signalHook === 'hiring') {
-    hookText = isHvac
+    hookText = isTrade
       ? `Saw you are hiring customer service reps for ${clinic}. While onboarding staff, after-hours emergency calls still leak.`
       : `Saw you are hiring a receptionist for ${clinic}. While onboarding staff, after-hours calls still leak.`;
   } else {
     // Default: static form friction
-    hookText = isHvac
+    hookText = isTrade
       ? `Saw your repair page routes emergency calls to a static form instead of live dispatch.`
       : `Saw your site makes patients fill out a static form for ${treat} instead of booking directly.`;
   }
@@ -198,11 +198,11 @@ export function generateHarveyScript({
 
   if (framework === 'pas') {
     // Framework A: PAS (Problem - Agitation - Solution / Micro-Audit)
-    subject = isHvac ? `quick question - ${clinic} calls` : `quick question - ${clinic} inquiries`;
-    const pivot = isHvac
-      ? `Quick question - when an emergency AC call comes in after 7 PM, does someone answer live or do they hit voicemail?`
+    subject = isTrade ? `quick question - ${clinic} calls` : `quick question - ${clinic} inquiries`;
+    const pivot = isTrade
+      ? `Quick question - when an emergency call comes in after 7 PM, does someone answer live or do they hit voicemail?`
       : `Quick question - when an inquiry comes in after 6 PM, does someone call in 2 minutes, or wait until morning?`;
-    const solution = isHvac
+    const solution = isTrade
       ? `Put together a 60-second demo of our AI voice dispatcher answering in 2 rings and booking service calls.`
       : `Put together a 60-second demo showing our AI receptionist booking consults 24/7.`;
 
@@ -216,12 +216,12 @@ export function generateHarveyScript({
     ];
   } else if (framework === 'qvc') {
     // Framework B: QVC (Question - Value - CTA / Speed & Volume Bottleneck)
-    subject = isHvac ? `after-hours calls at ${clinic}` : `after-hours inquiries at ${clinic}`;
-    const question = isHvac
+    subject = isTrade ? `after-hours calls at ${clinic}` : `after-hours inquiries at ${clinic}`;
+    const question = isTrade
       ? `How does ${clinic} handle service calls between 5 PM and 8 AM?`
       : `How does ${clinic} handle patient inquiries between 5 PM and 8 AM?`;
-    const value = isHvac
-      ? `Most HVAC shops lose 3 to 5 emergency replacements every weekend to voicemail. SureGreet AI acts as your 24/7 voice dispatcher, booking calls directly on your calendar.`
+    const value = isTrade
+      ? `Most shops lose 3 to 5 emergency replacements every weekend to voicemail. SureGreet AI acts as your 24/7 voice dispatcher, booking calls directly on your schedule.`
       : `Most clinics lose 3 to 5 consults every weekend because callers dislike voicemails. SureGreet AI acts as your 24/7 receptionist, answering procedure pricing and booking consults automatically.`;
 
     bodyParagraphs = [
@@ -233,22 +233,22 @@ export function generateHarveyScript({
     ];
   } else if (framework === 'bab') {
     // Framework C: BAB (Before - After - Bridge / Economic Napkin Math)
-    subject = isHvac ? `missed calls - ${clinic}` : `missed inquiries - ${clinic}`;
-    const math = isHvac
-      ? `Quick napkin math - average emergency ticket is $2,000+. Missing just 2 after-hours callers a month to voicemail is $4,000+ in leaked revenue.`
+    subject = isTrade ? `missed calls - ${clinic}` : `missed inquiries - ${clinic}`;
+    const math = isTrade
+      ? `Quick napkin math - average emergency ticket is $2,000+. Missing just 2 after-hours calls a month to voicemail is $4,000+ in leaked revenue.`
       : `Quick napkin math - average ${treat} is $1,500+. Missing just 2 evening leads a week to voicemail is $12,000/mo in lost bookings.`;
 
     bodyParagraphs = [
       `Hey ${salutation},`,
       hookText,
       math,
-      `We can plug our 24/7 AI voice receptionist into your lines for 14 days to capture those bookings at zero risk.`,
+      `We can plug our 24/7 AI voice dispatcher into your lines for 14 days to capture those calls at zero risk.`,
       `Worth a 5-minute look?`,
       `Best,\nArchit`,
     ];
   } else if (framework === 'bump') {
     // Threaded Bump (Step 2)
-    subject = `Re: quick question - ${clinic} inquiries`;
+    subject = isTrade ? `Re: quick question - ${clinic} calls` : `Re: quick question - ${clinic} inquiries`;
     bodyParagraphs = [
       `hey ${salutation},`,
       `just floating this back up - still happy to send over that test line if you want to hear how it handles after-hours callers.`,
@@ -256,7 +256,7 @@ export function generateHarveyScript({
     ];
   } else if (framework === 'breakup') {
     // Threaded Breakup (Step 4)
-    subject = `Re: quick question - ${clinic} inquiries`;
+    subject = isTrade ? `Re: quick question - ${clinic} calls` : `Re: quick question - ${clinic} inquiries`;
     bodyParagraphs = [
       `hey ${salutation},`,
       `assuming you're all set on front desk coverage for now - i'll get out of your hair. if missed after-hours calls ever become a headache, just reply here.`,

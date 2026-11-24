@@ -6,20 +6,41 @@ import { scrapeClinicWebsite, normalizeUrl } from './scraperService.js';
 const USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36';
 
 /**
- * High-Ticket Search Queries per Niche
+ * High-Ticket Search Queries per Trade Niche (Emergency Services & High Replacement Tickets)
  */
 const NICHE_QUERIES = {
-  medspa: [
-    'MedSpa Morpheus8',
-    'BodyTite Plastic Surgery',
-    'Medical Aesthetics Botox',
-    'CoolSculpting Med Spa',
-  ],
   hvac: [
     'Emergency HVAC Repair',
     '24/7 AC Repair Commercial Heating',
-    'Emergency Plumbing and HVAC',
-    'Air Conditioning Repair Replacement',
+    'Air Conditioning Replacement Installation',
+    'Emergency Furnace and Heat Pump Repair',
+  ],
+  plumbing: [
+    '24/7 Emergency Plumbing Repair',
+    'Emergency Drain Cleaning and Sewer Line',
+    'Commercial Water Heater Replacement',
+    'Emergency Burst Pipe Plumber',
+  ],
+  roofing: [
+    'Emergency Roof Repair Tarping',
+    'Commercial and Residential Roof Replacement',
+    'Storm Damage Roof Restoration',
+    'Emergency Roofing Contractor 24/7',
+  ],
+  electrical: [
+    '24/7 Emergency Electrician Repair',
+    'Commercial Electrical Service Panel Upgrade',
+    'Whole Home Generator Installation',
+    'Emergency Electrical Contractor',
+  ],
+  water_damage: [
+    '24/7 Emergency Water Damage Restoration',
+    'Flood Extraction and Structural Drying',
+    'Emergency Fire and Water Damage Cleanup',
+  ],
+  medspa: [
+    'MedSpa Morpheus8',
+    'Medical Aesthetics Botox',
   ],
 };
 
@@ -413,8 +434,9 @@ const CURATED_TARGETS = {
 /**
  * Query search engines (DuckDuckGo HTML -> DuckDuckGo Lite -> Curated Fallbacks)
  */
-export async function searchLocalBusinesses({ query, city = 'Miami, FL', niche = 'medspa', limit = 5 }) {
-  const fullQuery = `${query || NICHE_QUERIES[niche]?.[0] || 'MedSpa'} ${city}`.trim();
+export async function searchLocalBusinesses({ query, city = 'Los Angeles, CA', niche = 'hvac', limit = 5 }) {
+  const defaultQuery = NICHE_QUERIES[niche]?.[0] || 'Emergency HVAC Repair';
+  const fullQuery = `${query || defaultQuery} ${city}`.trim();
   console.log(`[LeadHunter] Searching local businesses: "${fullQuery}" (Limit: ${limit})...`);
 
   const rawResults = [];
@@ -531,16 +553,17 @@ export async function searchLocalBusinesses({ query, city = 'Miami, FL', niche =
     if (cityKey === 'dc' || cityKey === 'washington') cityKey = 'washington dc';
     if (cityKey === 'vegas') cityKey = 'las vegas';
 
-    const primaryList = CURATED_TARGETS[niche]?.[cityKey] || [];
+    const targetsDict = CURATED_TARGETS[niche] || CURATED_TARGETS['hvac'] || {};
+    const primaryList = targetsDict[cityKey] || CURATED_TARGETS['hvac']?.[cityKey] || [];
     const pool = [...primaryList];
 
     // If limit exceeds the targets of the primary city, pool sister cities from the same niche
     if (pool.length < limit) {
-      const allKeys = Object.keys(CURATED_TARGETS[niche] || {});
+      const allKeys = Object.keys(targetsDict);
       for (const k of allKeys) {
         if (pool.length >= limit) break;
         if (k === cityKey) continue;
-        const extra = CURATED_TARGETS[niche][k] || [];
+        const extra = targetsDict[k] || [];
         for (const item of extra) {
           if (!pool.some((p) => p.url === item.url)) {
             pool.push(item);
@@ -572,7 +595,7 @@ export async function searchLocalBusinesses({ query, city = 'Miami, FL', niche =
 /**
  * Enrich a raw scraped lead with decision-maker name, direct email, phone, and run digital audit
  */
-export async function huntAndEnrichLead({ url, city, niche = 'medspa', doctorOverride, treatmentOverride, businessNameOverride, fast = false }) {
+export async function huntAndEnrichLead({ url, city, niche = 'hvac', doctorOverride, treatmentOverride, businessNameOverride, fast = false }) {
   console.log(`[LeadHunter] Enriching & Auditing: ${url} (${niche})...`);
 
   // 1. Scrape domain for decision maker, emails, phones, and ad tracking pixels
@@ -592,9 +615,9 @@ export async function huntAndEnrichLead({ url, city, niche = 'medspa', doctorOve
     // Clean up title noise
     fallbackName = fallbackName.split(/[-|•–]/)[0].trim();
 
-    const isHvacSite = niche === 'hvac';
-    const fallbackTitle = isHvacSite ? `Owner / Operations Lead at ${fallbackName}` : `Medical Director at ${fallbackName}`;
-    const fallbackTreatment = isHvacSite ? 'Emergency AC & Heating Repair' : 'Morpheus8 & Injectables';
+    const isTradeSite = niche !== 'medspa';
+    const fallbackTitle = isTradeSite ? `Owner / Operations Lead at ${fallbackName}` : `Medical Director at ${fallbackName}`;
+    const fallbackTreatment = isTradeSite ? 'Emergency AC & Heating Repair' : 'Morpheus8 & Injectables';
     let fallbackEmail = '';
     try {
       const hostname = new URL(url).hostname.replace(/^www\./, '');
@@ -619,8 +642,9 @@ export async function huntAndEnrichLead({ url, city, niche = 'medspa', doctorOve
 
   // 2. Decision Maker fallback extraction
   let decisionMaker = doctorOverride || scraped.doctorName;
-  if (!decisionMaker || decisionMaker === 'Doctor' || (niche === 'hvac' && (decisionMaker.includes('Medical Director') || decisionMaker.includes('Doctor')))) {
-    if (niche === 'hvac') {
+  const isTradeSite = niche !== 'medspa';
+  if (!decisionMaker || decisionMaker === 'Doctor' || (isTradeSite && (decisionMaker.includes('Medical Director') || decisionMaker.includes('Doctor')))) {
+    if (isTradeSite) {
       decisionMaker = `Owner / Operations Lead at ${scraped.clinicName || 'Company'}`;
     } else {
       decisionMaker = `Medical Director at ${scraped.clinicName || 'Clinic'}`;
@@ -637,11 +661,24 @@ export async function huntAndEnrichLead({ url, city, niche = 'medspa', doctorOve
   });
 
   let primaryTreatment = treatmentOverride || audit.primaryService || scraped.treatment;
-  const HVAC_VALID_TREATMENTS = ['Emergency AC Repair', 'HVAC Replacement', 'Heat Pump Repair', 'Furnace Maintenance', 'Ductless Mini-Split', 'Commercial Refrigeration', 'Emergency Plumbing', 'Emergency AC & Heating Repair', 'Air Conditioning Repair Replacement'];
-  if (niche === 'hvac') {
-    const isValidHvac = HVAC_VALID_TREATMENTS.some(t => primaryTreatment && primaryTreatment.toLowerCase().includes(t.toLowerCase()));
-    if (!primaryTreatment || !isValidHvac) {
-      primaryTreatment = 'Emergency AC & Heating Repair';
+  const TRADE_VALID_SERVICES = [
+    'Emergency AC Repair', 'HVAC Replacement', 'Heat Pump Repair', 'Furnace Maintenance',
+    'Ductless Mini-Split', 'Commercial Refrigeration', 'Emergency Plumbing', 'Emergency AC & Heating Repair',
+    'Air Conditioning Repair Replacement', 'Water Heater Replacement', 'Drain Cleaning', 'Emergency Roof Repair',
+    'Roof Replacement', 'Emergency Electrician', 'Panel Upgrade', 'Water Damage Restoration', 'Emergency Service Calls'
+  ];
+  if (isTradeSite) {
+    const isValid = TRADE_VALID_SERVICES.some(t => primaryTreatment && primaryTreatment.toLowerCase().includes(t.toLowerCase()));
+    if (!primaryTreatment || !isValid) {
+      primaryTreatment = niche === 'plumbing'
+        ? 'Emergency Plumbing & Water Heater Repair'
+        : niche === 'roofing'
+        ? 'Emergency Roof Repair & Replacement'
+        : niche === 'electrical'
+        ? '24/7 Emergency Electrical Service'
+        : niche === 'water_damage'
+        ? 'Emergency Water Damage Restoration'
+        : 'Emergency AC & Heating Repair';
     }
   }
 
@@ -748,7 +785,7 @@ export async function commitLeadToSupabase(enrichedLead, existingProspectsMap) {
 /**
  * Full Autonomous Lead Hunter Execution: Search -> Enrich -> Audit -> Deduplicate -> Commit
  */
-export async function runAutonomousHunt({ city = 'Miami, FL', niche = 'medspa', query, limit = 5 }) {
+export async function runAutonomousHunt({ city = 'Los Angeles, CA', niche = 'hvac', query, limit = 5 }) {
   const targetLimit = Math.min(Math.max(Number(limit) || 5, 1), 40);
   console.log(`[LeadHunter] Starting Autonomous Hunt for ${niche} in ${city} (Target: ${targetLimit})...`);
 

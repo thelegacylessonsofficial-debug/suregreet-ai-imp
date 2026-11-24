@@ -24,7 +24,7 @@ const AESTHETIC_TREATMENTS = [
   'IPL Photofacial',
 ];
 
-const HVAC_SERVICES = [
+const TRADE_SERVICES = [
   'Emergency AC Repair',
   '24/7 HVAC Service',
   'AC Replacement & Installation',
@@ -34,7 +34,17 @@ const HVAC_SERVICES = [
   'Commercial Refrigeration',
   'Air Duct Cleaning',
   'Emergency Heating Repair',
-  'Plumbing & Drain Service',
+  'Emergency Plumbing Repair',
+  'Drain Cleaning & Sewer Line',
+  'Water Heater Replacement',
+  'Roof Repair & Replacement',
+  'Storm Damage Restoration',
+  'Emergency Roof Tarping',
+  '24/7 Emergency Electrician',
+  'Electrical Panel Upgrade',
+  'Backup Generator Installation',
+  'Emergency Water Damage Restoration',
+  'Flood Extraction & Drying',
 ];
 
 const JUNK_EMAIL_DOMAINS = [
@@ -276,13 +286,13 @@ export async function scrapeClinicWebsite(inputUrl, options = {}) {
   // 2. Extract Ad Tracking Pixels (Evidence of active paid ad spend)
   const adSignals = detectAdPixels(homepageHtml);
 
-  const niche = options.niche || 'medspa';
-  const isHvacSite = niche === 'hvac' || /hvac|air conditioning|heating|plumbing|furnace|duct|refrigeration|contractor/i.test(homepageHtml + ' ' + clinicName);
+  const niche = options.niche || 'hvac';
+  const isTradeSite = niche !== 'medspa' || /hvac|air conditioning|heating|plumbing|furnace|duct|refrigeration|roofing|electrician|electrical|contractor|restoration/i.test(homepageHtml + ' ' + clinicName);
 
   // 3. Extract Treatments / Services based on niche
   const detectedTreatments = [];
-  if (isHvacSite) {
-    for (const s of HVAC_SERVICES) {
+  if (isTradeSite) {
+    for (const s of TRADE_SERVICES) {
       if (new RegExp(`\\b${s}\\b`, 'i').test(homepageHtml)) {
         detectedTreatments.push(s);
       }
@@ -294,7 +304,7 @@ export async function scrapeClinicWebsite(inputUrl, options = {}) {
       }
     }
   }
-  const primaryTreatment = detectedTreatments[0] || (isHvacSite ? 'Emergency AC & Heating Repair' : 'Morpheus8 & Injectables');
+  const primaryTreatment = detectedTreatments[0] || (isTradeSite ? 'Emergency AC & Heating Repair' : 'Morpheus8 & Injectables');
 
   // 4. Extract Phone & Emails from Homepage
   const rawEmails = new Set();

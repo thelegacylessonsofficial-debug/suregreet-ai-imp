@@ -68,6 +68,8 @@ function formatUsPhone(raw) {
 
 function renderProspectsHtml(list, authKey = '') {
   const total = list.length;
+  const hvacTradeCount = list.filter((p) => p.niche !== 'medspa').length;
+  const medspaCount = total - hvacTradeCount;
   const pendingCount = list.filter((p) => p.status === 'pending').length;
   const activeCount = list.filter((p) => p.status === 'active').length;
   const repliedCount = list.filter((p) => p.status === 'replied').length;
@@ -204,34 +206,47 @@ function renderProspectsHtml(list, authKey = '') {
         </div>
       </div>
 
-      <!-- Search & Status Filter Controls -->
-      <div class="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 bg-[var(--bg-card)] p-3.5 rounded-2xl border border-[var(--border-subtle)]">
-        <div class="flex items-center gap-1.5 overflow-x-auto text-xs">
-          <button onclick="filterStatus('all')" id="tab-all" class="filter-tab px-3.5 py-1.5 rounded-xl bg-[var(--accent-emerald)] text-black font-bold transition">
-            All (${total})
-          </button>
-          <button onclick="filterStatus('pending')" id="tab-pending" class="filter-tab px-3.5 py-1.5 rounded-xl bg-[var(--bg-surface)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] border border-[var(--border-subtle)] font-medium transition">
-            Pending (${pendingCount})
-          </button>
-          <button onclick="filterStatus('active')" id="tab-active" class="filter-tab px-3.5 py-1.5 rounded-xl bg-[var(--bg-surface)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] border border-[var(--border-subtle)] font-medium transition">
-            Active (${activeCount})
-          </button>
-          <button onclick="filterStatus('replied')" id="tab-replied" class="filter-tab px-3.5 py-1.5 rounded-xl bg-[var(--bg-surface)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] border border-[var(--border-subtle)] font-medium transition">
-            Replied (${repliedCount})
-          </button>
-          <button onclick="filterStatus('meeting_booked')" id="tab-meeting_booked" class="filter-tab px-3.5 py-1.5 rounded-xl bg-[var(--bg-surface)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] border border-[var(--border-subtle)] font-medium transition">
-            Meeting Booked (${bookedCount})
-          </button>
+      <!-- Search & Status & Trade Focus Filter Controls -->
+      <div class="flex flex-col gap-3 bg-[var(--bg-card)] p-3.5 rounded-2xl border border-[var(--border-subtle)]">
+        <div class="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3">
+          <div class="flex items-center gap-1.5 overflow-x-auto text-xs">
+            <span class="text-[11px] font-bold text-[var(--text-muted)] uppercase tracking-wider mr-1">Focus:</span>
+            <button onclick="filterNiche('trades')" id="tab-niche-trades" class="niche-filter-tab px-3 py-1.5 rounded-xl bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 font-bold transition flex items-center gap-1.5 cursor-pointer">
+              <span>⚡ HVAC & Trade Contractors (${hvacTradeCount})</span>
+            </button>
+            <button onclick="filterNiche('all')" id="tab-niche-all" class="niche-filter-tab px-3 py-1.5 rounded-xl bg-[var(--bg-surface)] text-[var(--text-secondary)] border border-[var(--border-subtle)] font-medium transition flex items-center gap-1.5 cursor-pointer">
+              <span>All Leads (${total})</span>
+            </button>
+          </div>
+
+          <div class="relative">
+            <input 
+              id="searchInput"
+              type="text" 
+              placeholder="Search by company, owner, city, phone..."
+              oninput="applyCombinedFilter()"
+              class="w-full md:w-80 bg-[var(--bg-surface)] border border-[var(--border-subtle)] rounded-xl px-3.5 py-2 text-xs text-[var(--text-primary)] placeholder-[var(--text-muted)] focus:outline-none focus:border-cyan-500 transition"
+            />
+          </div>
         </div>
 
-        <div class="relative">
-          <input 
-            id="searchInput"
-            type="text" 
-            placeholder="Search by doctor, clinic, city, or phone..."
-            oninput="applySearch()"
-            class="w-full sm:w-80 bg-[var(--bg-surface)] border border-[var(--border-subtle)] rounded-xl px-3.5 py-2 text-xs text-[var(--text-primary)] placeholder-[var(--text-muted)] focus:outline-none focus:border-[var(--accent-emerald)] transition"
-          />
+        <div class="flex items-center gap-1.5 overflow-x-auto text-xs border-t border-[var(--border-subtle)]/60 pt-2.5">
+          <span class="text-[11px] font-bold text-[var(--text-muted)] uppercase tracking-wider mr-1">Status:</span>
+          <button onclick="filterStatus('all')" id="tab-all" class="filter-tab px-3 py-1.5 rounded-xl bg-[var(--accent-emerald)] text-black font-bold transition">
+            All Statuses
+          </button>
+          <button onclick="filterStatus('pending')" id="tab-pending" class="filter-tab px-3 py-1.5 rounded-xl bg-[var(--bg-surface)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] border border-[var(--border-subtle)] font-medium transition">
+            Pending (${pendingCount})
+          </button>
+          <button onclick="filterStatus('active')" id="tab-active" class="filter-tab px-3 py-1.5 rounded-xl bg-[var(--bg-surface)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] border border-[var(--border-subtle)] font-medium transition">
+            Active (${activeCount})
+          </button>
+          <button onclick="filterStatus('replied')" id="tab-replied" class="filter-tab px-3 py-1.5 rounded-xl bg-[var(--bg-surface)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] border border-[var(--border-subtle)] font-medium transition">
+            Replied (${repliedCount})
+          </button>
+          <button onclick="filterStatus('meeting_booked')" id="tab-meeting_booked" class="filter-tab px-3 py-1.5 rounded-xl bg-[var(--bg-surface)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] border border-[var(--border-subtle)] font-medium transition">
+            Meeting Booked (${bookedCount})
+          </button>
         </div>
       </div>
 
@@ -270,12 +285,12 @@ function renderProspectsHtml(list, authKey = '') {
           <table class="w-full text-xs text-left">
             <thead class="text-[11px] uppercase tracking-wider text-[var(--text-muted)] bg-[var(--bg-surface)]/80 border-b border-[var(--border-subtle)]">
               <tr>
-                <th class="py-3.5 px-4 font-semibold">Doctor / DM</th>
-                <th class="py-3.5 px-4 font-semibold">Clinic & Location</th>
+                <th class="py-3.5 px-4 font-semibold">Owner / Decision Maker</th>
+                <th class="py-3.5 px-4 font-semibold">Trade Company & Location</th>
                 <th class="py-3.5 px-4 font-semibold text-[var(--accent-emerald)]">1-Click Phone Dial & Direct Email</th>
-                <th class="py-3.5 px-4 font-semibold text-cyan-400">Harvey Bespoke Hook</th>
+                <th class="py-3.5 px-4 font-semibold text-cyan-400">Harvey 24/7 Call Hook</th>
                 <th class="py-3.5 px-4 font-semibold">Sequence Pipeline</th>
-                <th class="py-3.5 px-4 font-semibold">Offer / Service</th>
+                <th class="py-3.5 px-4 font-semibold">Trade Service</th>
                 <th class="py-3.5 px-4 font-semibold text-center">Live Status</th>
                 <th class="py-3.5 px-4 font-semibold text-right">Action Hub</th>
               </tr>
@@ -283,7 +298,7 @@ function renderProspectsHtml(list, authKey = '') {
             <tbody id="prospectsTableBody" class="divide-y divide-[var(--border-subtle)]/60 text-[var(--text-secondary)]">
               ${list
                 .map((p) => {
-                  const initials = (p.doctor_name || p.clinic_name || 'Dr')
+                  const initials = (p.doctor_name || p.clinic_name || 'DM')
                     .replace(/Dr\.?\s*/i, '')
                     .split(' ')
                     .map((n) => n[0])
@@ -291,10 +306,18 @@ function renderProspectsHtml(list, authKey = '') {
                     .join('')
                     .toUpperCase();
 
-                  const isHvac = p.niche === 'hvac';
-                  const nicheBadge = isHvac
-                    ? `<span class="px-2 py-0.5 rounded text-[10px] font-semibold bg-amber-500/10 text-amber-300 border border-amber-500/20">HVAC</span>`
-                    : `<span class="px-2 py-0.5 rounded text-[10px] font-semibold bg-cyan-500/10 text-cyan-300 border border-cyan-500/20">MedSpa</span>`;
+                  const nicheMap = {
+                    hvac: { label: 'HVAC', color: 'bg-amber-500/10 text-amber-300 border-amber-500/20' },
+                    plumbing: { label: 'Plumbing', color: 'bg-blue-500/10 text-blue-300 border-blue-500/20' },
+                    roofing: { label: 'Roofing', color: 'bg-orange-500/10 text-orange-300 border-orange-500/20' },
+                    electrical: { label: 'Electric', color: 'bg-yellow-500/10 text-yellow-300 border-yellow-500/20' },
+                    water_damage: { label: 'Restoration', color: 'bg-cyan-500/10 text-cyan-300 border-cyan-500/20' },
+                  };
+                  const isTrade = p.niche !== 'medspa';
+                  const nicheInfo = nicheMap[p.niche] || (isTrade 
+                    ? { label: (p.niche || 'Trade').toUpperCase(), color: 'bg-emerald-500/10 text-emerald-300 border-emerald-500/20' }
+                    : { label: 'MedSpa (Archived)', color: 'bg-purple-500/10 text-purple-300 border-purple-500/20' });
+                  const nicheBadge = `<span class="px-2 py-0.5 rounded text-[10px] font-semibold ${nicheInfo.color} border">${nicheInfo.label}</span>`;
 
                   const currentStep = p.current_step || 0;
                   let stepBadge = '';
@@ -320,16 +343,16 @@ function renderProspectsHtml(list, authKey = '') {
                   }
 
                   return `
-                  <tr class="hover:bg-[var(--bg-hover)] transition prospect-row" data-id="${p.id}" data-status="${p.status}" data-search="${(p.clinic_name + ' ' + p.doctor_name + ' ' + p.city + ' ' + p.treatment + ' ' + p.email + ' ' + (p.phone || '') + ' ' + (p.niche || '')).toLowerCase()}">
+                  <tr class="hover:bg-[var(--bg-hover)] transition prospect-row" data-id="${p.id}" data-status="${p.status}" data-istrade="${isTrade ? 'true' : 'false'}" data-search="${(p.clinic_name + ' ' + (p.doctor_name || '') + ' ' + (p.city || '') + ' ' + (p.treatment || '') + ' ' + p.email + ' ' + (p.phone || '') + ' ' + (p.niche || '')).toLowerCase()}">
                     
-                    <!-- Doctor / DM -->
+                    <!-- Owner / Decision Maker -->
                     <td class="py-3.5 px-4">
                       <div class="flex items-center gap-2.5">
                         <div class="w-8 h-8 rounded-xl bg-[var(--bg-surface)] border border-[var(--border-subtle)] flex items-center justify-center text-xs font-bold text-[var(--accent-emerald)] shadow-sm shrink-0">
                           ${initials}
                         </div>
                         <div>
-                          <div class="font-bold text-[var(--text-primary)] text-xs">${escapeHtml(p.doctor_name || 'Operations Lead')}</div>
+                          <div class="font-bold text-[var(--text-primary)] text-xs">${escapeHtml(p.doctor_name || 'Owner / Lead')}</div>
                           <div class="text-[10px] text-[var(--text-muted)] font-mono">${escapeHtml(p.email)}</div>
                         </div>
                       </div>
@@ -1001,7 +1024,25 @@ function renderProspectsHtml(list, authKey = '') {
         }
       }
 
+      let currentStatusFilter = 'all';
+      let currentNicheFilter = 'trades'; // Default to HVAC & trade contractors (MedSpa leads hidden by default)
+
+      function filterNiche(niche) {
+        currentNicheFilter = niche;
+        document.querySelectorAll('.niche-filter-tab').forEach(tab => {
+          tab.classList.remove('bg-cyan-500/20', 'text-cyan-300', 'border-cyan-500/40', 'font-bold');
+          tab.classList.add('bg-[var(--bg-surface)]', 'text-[var(--text-secondary)]', 'border-[var(--border-subtle)]', 'font-medium');
+        });
+        const activeTab = document.getElementById('tab-niche-' + niche);
+        if (activeTab) {
+          activeTab.classList.remove('bg-[var(--bg-surface)]', 'text-[var(--text-secondary)]', 'border-[var(--border-subtle)]', 'font-medium');
+          activeTab.classList.add('bg-cyan-500/20', 'text-cyan-300', 'border-cyan-500/40', 'font-bold');
+        }
+        applyCombinedFilter();
+      }
+
       function filterStatus(status) {
+        currentStatusFilter = status;
         document.querySelectorAll('.filter-tab').forEach(tab => {
           tab.classList.remove('bg-[var(--accent-emerald)]', 'text-black', 'font-bold');
           tab.classList.add('bg-[var(--bg-surface)]', 'text-[var(--text-secondary)]', 'font-medium');
@@ -1011,29 +1052,42 @@ function renderProspectsHtml(list, authKey = '') {
           activeTab.classList.remove('bg-[var(--bg-surface)]', 'text-[var(--text-secondary)]', 'font-medium');
           activeTab.classList.add('bg-[var(--accent-emerald)]', 'text-black', 'font-bold');
         }
-
-        const rows = document.querySelectorAll('.prospect-row');
-        rows.forEach(row => {
-          if (status === 'all' || row.getAttribute('data-status') === status) {
-            row.style.display = '';
-          } else {
-            row.style.display = 'none';
-          }
-        });
+        applyCombinedFilter();
       }
 
       function applySearch() {
-        const query = document.getElementById('searchInput').value.toLowerCase().trim();
+        applyCombinedFilter();
+      }
+
+      function applyCombinedFilter() {
+        const query = (document.getElementById('searchInput')?.value || '').toLowerCase().trim();
         const rows = document.querySelectorAll('.prospect-row');
+        let visibleCount = 0;
         rows.forEach(row => {
-          const text = row.getAttribute('data-search') || '';
-          if (!query || text.includes(query)) {
+          const rowStatus = row.getAttribute('data-status') || '';
+          const isTrade = row.getAttribute('data-istrade') === 'true';
+          const searchText = row.getAttribute('data-search') || '';
+
+          const matchesStatus = currentStatusFilter === 'all' || rowStatus === currentStatusFilter;
+          const matchesNiche = currentNicheFilter === 'all' || (currentNicheFilter === 'trades' && isTrade);
+          const matchesSearch = !query || searchText.includes(query);
+
+          if (matchesStatus && matchesNiche && matchesSearch) {
             row.style.display = '';
+            visibleCount++;
           } else {
             row.style.display = 'none';
           }
         });
       }
+
+      // Initialize filter on page load so trades are selected by default
+      if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', applyCombinedFilter);
+      } else {
+        applyCombinedFilter();
+      }
+      setTimeout(applyCombinedFilter, 50);
 
       // ===== BATCH HARVEY PIPELINE =====
       async function runBatchHarvey() {
@@ -1152,7 +1206,7 @@ function renderScriptStudioHtml({ sample, step = 1, framework = 'pas', signalHoo
     clinicName: sample.clinic_name,
     city: sample.city,
     treatment: sample.treatment,
-    niche: sample.niche || 'medspa',
+    niche: sample.niche || 'hvac',
     specificObservation: sample.specific_observation,
     prospectEmail: sample.email,
     framework,
@@ -2187,13 +2241,13 @@ outreachRouter.get('/preview', async (req, res) => {
   const signalHook = req.query.signalHook || 'form_friction';
 
   const sample = {
-    doctor_name: req.query.doctorName || 'Dr. Carlos Riveros',
-    clinic_name: req.query.clinicName || 'Med Aesthetics Miami',
-    city: req.query.city || 'Miami, FL',
-    treatment: req.query.treatment || 'Morpheus8',
-    email: req.query.email || 'coralgables@medaestheticsmiami.com',
-    niche: req.query.niche || 'medspa',
-    specific_observation: req.query.specificObservation || 'Saw your site makes patients fill out a static contact form on the Morpheus8 page instead of booking directly.',
+    doctor_name: req.query.doctorName || 'Owner',
+    clinic_name: req.query.clinicName || 'Lex Air Conditioning & Heating',
+    city: req.query.city || 'Phoenix, AZ',
+    treatment: req.query.treatment || 'Emergency AC & Heating Repair',
+    email: req.query.email || 'service@lexairconditioning.com',
+    niche: req.query.niche || 'hvac',
+    specific_observation: req.query.specificObservation || 'Saw your emergency repair page routes after-hours calls to a static contact form instead of live 24/7 dispatch.',
   };
 
   // Fetch all live prospects for instant pre-population dropdown

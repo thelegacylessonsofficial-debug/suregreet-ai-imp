@@ -153,7 +153,7 @@ scraperRouter.get('/dashboard', async (req, res) => {
       </div>
 
       <div class="flex items-center space-x-3">
-        <a href="https://www.facebook.com/ads/library/?active_status=active&ad_type=all&country=US&media_type=all&q=MedSpa%20Miami" id="topMetaAdsBtn" target="_blank" rel="noopener noreferrer" class="text-xs bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 px-3.5 py-2 rounded-xl transition flex items-center gap-1.5 font-semibold cursor-pointer" title="Direct Redirection to Live Active Meta Advertisers">
+        <a href="https://www.facebook.com/ads/library/?active_status=active&ad_type=all&country=US&media_type=all&q=HVAC%20Los%20Angeles" id="topMetaAdsBtn" target="_blank" rel="noopener noreferrer" class="text-xs bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 px-3.5 py-2 rounded-xl transition flex items-center gap-1.5 font-semibold cursor-pointer" title="Direct Redirection to Live Active Meta Advertisers">
           <span>Meta Ads Library</span>
           ${getSvgIcon('external', 'w-3 h-3 text-cyan-400')}
         </a>
@@ -172,10 +172,10 @@ scraperRouter.get('/dashboard', async (req, res) => {
           <h3 class="text-base sm:text-lg font-bold text-[var(--text-primary)] flex items-center gap-2 mt-0.5">
             <span>The Autonomous Lead Hunter & Diagnostic Auditor</span>
           </h3>
-          <p class="text-xs text-[var(--text-secondary)] mt-0.5">Zero-cost search engine extraction + Jina AI Reader analysis for speed-to-lead and booking friction gaps.</p>
+          <p class="text-xs text-[var(--text-secondary)] mt-0.5">Zero-cost search engine extraction + Jina AI Reader analysis for speed-to-lead and after-hours call leak gaps.</p>
         </div>
         <div class="flex items-center gap-2.5 text-xs flex-wrap">
-          <a href="https://www.facebook.com/ads/library/?active_status=active&ad_type=all&country=US&media_type=all&q=MedSpa%20Miami" id="cardMetaAdsBtn" target="_blank" rel="noopener noreferrer" class="px-3 py-1.5 rounded-xl bg-cyan-500/15 hover:bg-cyan-500/25 text-cyan-300 border border-cyan-500/40 text-xs font-bold transition flex items-center gap-1.5 shadow-sm shadow-cyan-500/10 cursor-pointer" title="Search Active Paid Advertisers in Meta Ads Library">
+          <a href="https://www.facebook.com/ads/library/?active_status=active&ad_type=all&country=US&media_type=all&q=HVAC%20Los%20Angeles" id="cardMetaAdsBtn" target="_blank" rel="noopener noreferrer" class="px-3 py-1.5 rounded-xl bg-cyan-500/15 hover:bg-cyan-500/25 text-cyan-300 border border-cyan-500/40 text-xs font-bold transition flex items-center gap-1.5 shadow-sm shadow-cyan-500/10 cursor-pointer" title="Search Active Paid Advertisers in Meta Ads Library">
             <span>Meta Ads Library ↗</span>
           </a>
           <span class="px-2.5 py-1 rounded-lg bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-medium">
@@ -187,16 +187,19 @@ scraperRouter.get('/dashboard', async (req, res) => {
       <!-- Controls: Niche, City, Search Query -->
       <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <div>
-          <label class="block text-[11px] font-semibold uppercase tracking-wider text-[var(--text-muted)] mb-1.5">Target Niche</label>
+          <label class="block text-[11px] font-semibold uppercase tracking-wider text-[var(--text-muted)] mb-1.5">Target Trade Niche</label>
           <select id="huntNiche" onchange="updateNicheDefaults()" class="w-full bg-[var(--bg-surface)] border border-[var(--border-subtle)] rounded-xl px-3.5 py-2.5 text-xs text-[var(--text-primary)] focus:outline-none focus:border-cyan-500 font-medium">
-            <option value="medspa">High-Ticket MedSpas & Aesthetic Clinics</option>
-            <option value="hvac">Emergency HVAC & Plumbing Contractors</option>
+            <option value="hvac" selected>⚡ Emergency HVAC & AC Repair Contractors (Primary)</option>
+            <option value="plumbing">⚡ 24/7 Emergency Plumbing & Drain Cleaning</option>
+            <option value="roofing">⚡ Roofing & Emergency Storm Damage Contractors</option>
+            <option value="electrical">⚡ 24/7 Emergency Electrician & Generators</option>
+            <option value="water_damage">⚡ Water Damage Restoration & Drying</option>
           </select>
         </div>
 
         <div>
           <label class="block text-[11px] font-semibold uppercase tracking-wider text-[var(--text-muted)] mb-1.5">Target US Metro / City</label>
-          <input id="huntCity" type="text" value="Miami, FL" onkeydown="if(event.key==='Enter') runAutonomousHuntClient()" class="w-full bg-[var(--bg-surface)] border border-[var(--border-subtle)] rounded-xl px-3.5 py-2.5 text-xs text-[var(--text-primary)] focus:outline-none focus:border-cyan-500 font-medium" placeholder="e.g. Austin, TX or Phoenix, AZ">
+          <input id="huntCity" type="text" value="Los Angeles, CA" onkeydown="if(event.key==='Enter') runAutonomousHuntClient()" class="w-full bg-[var(--bg-surface)] border border-[var(--border-subtle)] rounded-xl px-3.5 py-2.5 text-xs text-[var(--text-primary)] focus:outline-none focus:border-cyan-500 font-medium" placeholder="e.g. Los Angeles, CA or Phoenix, AZ">
         </div>
 
         <div>
@@ -728,10 +731,18 @@ scraperRouter.get('/dashboard', async (req, res) => {
       window.updateMetaAdsRedirection = function() {
         const nicheEl = document.getElementById('huntNiche');
         const cityEl = document.getElementById('huntCity');
-        const niche = nicheEl ? nicheEl.value : 'medspa';
-        const rawCity = (cityEl && cityEl.value ? cityEl.value : 'Miami, FL').trim();
-        const cleanCity = rawCity.split(',')[0].trim() || 'Miami';
-        const searchTerm = (niche === 'hvac' ? 'HVAC ' : 'MedSpa ') + cleanCity;
+        const niche = nicheEl ? nicheEl.value : 'hvac';
+        const rawCity = (cityEl && cityEl.value ? cityEl.value : 'Los Angeles, CA').trim();
+        const cleanCity = rawCity.split(',')[0].trim() || 'Los Angeles';
+        const keywords = {
+          hvac: 'HVAC AC Repair',
+          plumbing: 'Emergency Plumber',
+          roofing: 'Roofing Contractor',
+          electrical: 'Emergency Electrician',
+          water_damage: 'Water Damage Restoration',
+          medspa: 'MedSpa',
+        };
+        const searchTerm = (keywords[niche] || 'HVAC Repair') + ' ' + cleanCity;
         const metaUrl = 'https://www.facebook.com/ads/library/?active_status=active&ad_type=all&country=US&media_type=all&q=' + encodeURIComponent(searchTerm);
 
         const topBtn = document.getElementById('topMetaAdsBtn');
@@ -747,18 +758,18 @@ scraperRouter.get('/dashboard', async (req, res) => {
         const input = document.getElementById('huntCity');
         const currentVal = input ? input.value.trim() : '';
 
-        let targetCity = currentVal || (niche === 'hvac' ? 'Phoenix, AZ' : 'Miami, FL');
-        if (niche === 'hvac' && (!currentVal || currentVal.toLowerCase().includes('miami'))) {
-          targetCity = 'Phoenix, AZ';
-        } else if (niche === 'medspa' && (!currentVal || currentVal.toLowerCase().includes('phoenix'))) {
-          targetCity = 'Miami, FL';
+        const placeholders = {
+          hvac: 'e.g. Los Angeles, CA or Phoenix, AZ',
+          plumbing: 'e.g. San Diego, CA or Dallas, TX',
+          roofing: 'e.g. Tampa, FL or Atlanta, GA',
+          electrical: 'e.g. Seattle, WA or Houston, TX',
+          water_damage: 'e.g. Miami, FL or Orlando, FL',
+        };
+
+        if (input && placeholders[niche]) {
+          input.placeholder = placeholders[niche];
         }
 
-        if (input) {
-          input.placeholder = niche === 'hvac' ? 'e.g. Phoenix, AZ or Dallas, TX' : 'e.g. Miami, FL or Austin, TX';
-        }
-
-        window.setHuntPreset(targetCity);
         window.updateMetaAdsRedirection();
       };
 
