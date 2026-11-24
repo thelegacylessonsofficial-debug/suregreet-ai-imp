@@ -12,7 +12,6 @@ import { telegramRouter } from './routes/telegramWebhook.js';
 import { outreachRouter } from './routes/outreachRoutes.js';
 import { scraperRouter } from './routes/scraperRoutes.js';
 import { inboxRouter } from './routes/inboxWebhook.js';
-import { callsRouter } from './routes/callsDashboard.js';
 import { initReminderCron, runDailyReminders, runHourlyOneHourReminders } from './cron/reminderCron.js';
 import { initAccountabilityCron } from './cron/accountabilityCron.js';
 import { initOutreachCron, runOutreachQueueWorker } from './cron/outreachCron.js';
@@ -143,11 +142,9 @@ app.use('/webhook/inbox-reply', inboxRouter);
 // Secured Agency Dashboards & Management Endpoints (HTTP Basic Auth / Admin Key Required)
 app.use('/outreach', requireAdminAuth, outreachRouter);
 app.use('/scraper', requireAdminAuth, scraperRouter);
-app.use('/inbox', requireAdminAuth, inboxRouter);
-app.use(['/calls', '/dashboard/calls'], requireAdminAuth, callsRouter);
-app.get(['/bots', '/dashboard/bots'], requireAdminAuth, (req, res) => {
+app.get(['/inbox', '/inbox/dashboard', '/calls', '/dashboard/calls', '/bots', '/dashboard/bots'], requireAdminAuth, (req, res) => {
   const key = req.query.key ? `?key=${encodeURIComponent(req.query.key)}` : '';
-  res.redirect(`/outreach/prospects${key}#bots`);
+  res.redirect(`/outreach/prospects${key}`);
 });
 
 // Manual trigger for testing 24h reminders immediately

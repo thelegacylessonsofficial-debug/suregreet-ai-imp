@@ -14,7 +14,6 @@ import {
 } from '../services/outreachService.js';
 import { runOutreachQueueWorker, isWithinSendingWindow } from '../cron/outreachCron.js';
 import { renderSaasShell, getSvgIcon } from '../views/saasLayout.js';
-import { renderLeadBotsHubHtml } from '../views/leadBotsHub.js';
 import {
   generateHarveyScript,
   generateFullSequence,
@@ -107,31 +106,8 @@ function renderProspectsHtml(list, authKey = '') {
   const prospectsJson = JSON.stringify(listWithPreview).replace(/</g, '\\u003c');
 
   const bodyContent = `
-    <!-- Top View Switcher Tabs -->
-    <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-[var(--border-subtle)] pb-4">
-      <div>
-        <div class="flex items-center gap-2">
-          <span class="text-xs font-bold uppercase tracking-wider text-[var(--accent-emerald)] font-mono">Workspace View</span>
-        </div>
-        <p class="text-xs text-[var(--text-secondary)] mt-0.5">Switch between active Outbound Pipeline CRM and the 4 Autonomous Lead Bots.</p>
-      </div>
-
-      <div class="flex items-center gap-2 p-1.5 rounded-2xl bg-[var(--bg-surface)] border border-[var(--border-subtle)] text-xs font-semibold">
-        <button onclick="switchView('pipeline')" id="tabViewPipeline" class="px-4 py-2 rounded-xl bg-[var(--accent-emerald-subtle)] text-[var(--accent-emerald)] border border-[var(--accent-emerald)]/30 transition flex items-center gap-2">
-          ${getSvgIcon('pipeline', 'w-4 h-4')}
-          <span>Pipeline CRM (${total})</span>
-        </button>
-        <button onclick="switchView('bots')" id="tabViewBots" class="px-4 py-2 rounded-xl text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)] transition flex items-center gap-2">
-          ${getSvgIcon('bots', 'w-4 h-4 text-cyan-400')}
-          <span>Lead Bots Hub (4)</span>
-        </button>
-      </div>
-    </div>
-
-    <!-- VIEW 1: PIPELINE CRM VIEW -->
-    <div id="pipelineViewContainer" class="space-y-6">
-
-      <!-- Executive KPI Cards -->
+    <!-- Executive KPI Cards -->
+    <div class="space-y-6">
       <div class="grid grid-cols-2 lg:grid-cols-5 gap-3.5">
         <div class="bg-[var(--bg-card)] border border-[var(--border-subtle)] rounded-2xl p-4 space-y-1 shadow-md">
           <div class="text-[11px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">Total Scouted</div>
@@ -467,15 +443,6 @@ function renderProspectsHtml(list, authKey = '') {
 
                     <!-- Action Hub -->
                     <td class="py-3.5 px-4 text-right space-x-1.5 whitespace-nowrap">
-                      <!-- 1-Click Dial Logger -->
-                      <button 
-                        onclick="openDialLogger('${p.id}', '${escapeQuotes(p.doctor_name || 'Doctor')}', '${escapeQuotes(p.clinic_name || 'Clinic')}', '${escapeQuotes(p.phone || '')}')"
-                        class="px-2.5 py-1.5 rounded-xl bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-400 border border-cyan-500/30 text-xs font-semibold transition"
-                        title="Log an outbound call dial for Archit's 10 daily RGAs"
-                      >
-                        Log Dial
-                      </button>
-
                       <!-- Preview Step 1 Audit -->
                       <button 
                         onclick="openPreview('${p.id}')"
@@ -536,11 +503,6 @@ function renderProspectsHtml(list, authKey = '') {
       </div>
 
     </div>
-
-    <!-- VIEW 2: LEAD BOTS CONTROL HUB (TOGGLED) -->
-    <div id="botsViewContainer" class="hidden space-y-6">
-      ${renderLeadBotsHubHtml(authKey ? '?key=' + encodeURIComponent(authKey) : '')}
-    </div>
   `;
 
   const extraScripts = `
@@ -576,65 +538,6 @@ function renderProspectsHtml(list, authKey = '') {
           </a>
           <button onclick="closeModal()" class="px-4 py-1.5 rounded-xl bg-[var(--bg-surface)] hover:bg-[var(--bg-hover)] text-[var(--text-secondary)] text-xs font-medium transition">
             Close
-          </button>
-        </div>
-      </div>
-    </div>
-
-    <!-- Outbound Dial Logger Modal -->
-    <div id="dialLoggerModal" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
-      <div class="bg-[var(--bg-card)] border border-[var(--border-strong)] rounded-2xl max-w-lg w-full p-6 space-y-4 shadow-2xl">
-        <div class="flex items-start justify-between border-b border-[var(--border-subtle)] pb-3">
-          <div>
-            <h3 class="text-sm font-bold text-[var(--text-primary)] flex items-center gap-2">
-              <span>Log Outbound Cold Dial</span>
-              <span class="text-[10px] px-2 py-0.5 rounded-full bg-cyan-500/10 text-cyan-400 border border-cyan-500/20 font-mono">10 Daily RGAs</span>
-            </h3>
-            <p class="text-xs text-[var(--text-muted)] mt-0.5">Records call in Supabase and syncs with Archit's Telegram Bot</p>
-          </div>
-          <button onclick="closeDialModal()" class="text-[var(--text-muted)] hover:text-[var(--text-primary)] text-lg font-bold">✕</button>
-        </div>
-
-        <div class="space-y-3 text-xs">
-          <div class="grid grid-cols-2 gap-3">
-            <div>
-              <label class="block text-[11px] text-[var(--text-muted)] mb-1">Contact Name</label>
-              <input type="text" id="dialContactName" class="w-full bg-[var(--bg-surface)] border border-[var(--border-subtle)] rounded-xl px-3 py-2 text-[var(--text-primary)]" />
-            </div>
-            <div>
-              <label class="block text-[11px] text-[var(--text-muted)] mb-1">Clinic Name</label>
-              <input type="text" id="dialClinicName" class="w-full bg-[var(--bg-surface)] border border-[var(--border-subtle)] rounded-xl px-3 py-2 text-[var(--text-primary)]" />
-            </div>
-          </div>
-
-          <div>
-            <label class="block text-[11px] text-[var(--text-muted)] mb-1">Phone Number</label>
-            <input type="text" id="dialPhone" class="w-full bg-[var(--bg-surface)] border border-[var(--border-subtle)] rounded-xl px-3 py-2 text-[var(--text-primary)] font-mono" />
-          </div>
-
-          <div>
-            <label class="block text-[11px] text-[var(--text-muted)] mb-1">Call Outcome</label>
-            <select id="dialOutcome" class="w-full bg-[var(--bg-surface)] border border-[var(--border-subtle)] rounded-xl px-3 py-2 text-[var(--text-primary)] font-medium">
-              <option value="Decision Maker Connected">🗣️ Decision Maker Connected</option>
-              <option value="Demo / Meeting Booked">🎯 Demo / Meeting Booked (HOT)</option>
-              <option value="Gatekeeper Rejection / Follow Up">🛡️ Gatekeeper Rejection / Follow Up</option>
-              <option value="Voicemail Left">📼 Voicemail Left</option>
-              <option value="No Answer / Busy">📵 No Answer / Busy</option>
-            </select>
-          </div>
-
-          <div>
-            <label class="block text-[11px] text-[var(--text-muted)] mb-1">Call Notes / Pain Points Noted</label>
-            <textarea id="dialNotes" rows="3" placeholder="Doctor mentioned after-hours inquiry leaks; interested in 30s Morpheus8 audio demo..." class="w-full bg-[var(--bg-surface)] border border-[var(--border-subtle)] rounded-xl p-2.5 text-[var(--text-primary)]"></textarea>
-          </div>
-        </div>
-
-        <div class="flex items-center justify-end gap-2 pt-2 border-t border-[var(--border-subtle)]">
-          <button onclick="closeDialModal()" class="px-4 py-2 rounded-xl bg-[var(--bg-surface)] hover:bg-[var(--bg-hover)] text-[var(--text-secondary)] text-xs font-medium transition">
-            Cancel
-          </button>
-          <button onclick="submitDialLog()" class="px-5 py-2 rounded-xl bg-cyan-500 hover:opacity-90 text-black font-bold text-xs transition shadow-md shadow-cyan-500/15">
-            Save Call & Log 1 RGA
           </button>
         </div>
       </div>
@@ -738,33 +641,6 @@ function renderProspectsHtml(list, authKey = '') {
 
     <script>
       const prospects = ${prospectsJson};
-
-      // Switch between Pipeline CRM and Lead Bots Control Hub
-      function switchView(view) {
-        const pipeCont = document.getElementById('pipelineViewContainer');
-        const botsCont = document.getElementById('botsViewContainer');
-        const tabPipe = document.getElementById('tabViewPipeline');
-        const tabBots = document.getElementById('tabViewBots');
-
-        if (view === 'bots') {
-          pipeCont.classList.add('hidden');
-          botsCont.classList.remove('hidden');
-          tabBots.className = "px-4 py-2 rounded-xl bg-[var(--accent-emerald-subtle)] text-[var(--accent-emerald)] border border-[var(--accent-emerald)]/30 transition flex items-center gap-2";
-          tabPipe.className = "px-4 py-2 rounded-xl text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)] transition flex items-center gap-2";
-          window.location.hash = 'bots';
-        } else {
-          botsCont.classList.add('hidden');
-          pipeCont.classList.remove('hidden');
-          tabPipe.className = "px-4 py-2 rounded-xl bg-[var(--accent-emerald-subtle)] text-[var(--accent-emerald)] border border-[var(--accent-emerald)]/30 transition flex items-center gap-2";
-          tabBots.className = "px-4 py-2 rounded-xl text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)] transition flex items-center gap-2";
-          window.location.hash = '';
-        }
-      }
-
-      // Check hash on page load
-      if (window.location.hash === '#bots') {
-        switchView('bots');
-      }
 
       // 1-Click Clipboard Copy
       function copyToClipboard(text, successMsg = 'Copied to clipboard!') {
@@ -954,57 +830,6 @@ function renderProspectsHtml(list, authKey = '') {
             if (row) row.setAttribute('data-status', newStatus);
           } else {
             showToast('Update Failed', data.message || 'Error updating status', 'error');
-          }
-        } catch (e) {
-          showToast('Error', e.message, 'error');
-        }
-      }
-
-      // Outbound Dial Logger Modal Helpers
-      let activeDialProspectId = null;
-
-      function openDialLogger(id, drName, clinicName, phone) {
-        activeDialProspectId = id;
-        document.getElementById('dialContactName').value = drName;
-        document.getElementById('dialClinicName').value = clinicName;
-        document.getElementById('dialPhone').value = phone;
-        document.getElementById('dialNotes').value = '';
-        document.getElementById('dialLoggerModal').classList.remove('hidden');
-      }
-
-      function closeDialModal() {
-        document.getElementById('dialLoggerModal').classList.add('hidden');
-      }
-
-      async function submitDialLog() {
-        const contactName = document.getElementById('dialContactName').value.trim();
-        const clinicName = document.getElementById('dialClinicName').value.trim();
-        const phone = document.getElementById('dialPhone').value.trim();
-        const outcome = document.getElementById('dialOutcome').value;
-        const notes = document.getElementById('dialNotes').value.trim();
-
-        try {
-          const res = await fetch(getAuthUrl('/calls/log-outbound'), {
-            method: 'POST',
-            credentials: 'include',
-            headers: getAuthHeaders(),
-            body: JSON.stringify({
-              contactName,
-              clinicName,
-              phone,
-              outcome,
-              notes
-            })
-          });
-          const data = await res.json();
-          if (res.ok) {
-            closeDialModal();
-            showToast('Dial Logged!', 'Progress: ' + data.todayCount + ' / 10 calls logged today.', 'success');
-            if (outcome.includes('Booked')) {
-              updateProspectStatus(activeDialProspectId, 'meeting_booked');
-            }
-          } else {
-            showToast('Log Failed', data.message || 'Error logging call', 'error');
           }
         } catch (e) {
           showToast('Error', e.message, 'error');
