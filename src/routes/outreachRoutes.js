@@ -151,58 +151,35 @@ function renderProspectsHtml(list, authKey = '') {
       </div>
 
 
-      <!-- Harvey Pipeline Command Bar -->
-      <div class="bg-[var(--bg-card)] border border-[var(--border-subtle)] border-l-4 border-l-purple-500 rounded-2xl p-4 space-y-3 shadow-xl">
-        <div class="flex flex-col md:flex-row md:items-center justify-between gap-4">
-          <div class="flex items-center gap-3">
-            <div class="w-10 h-10 rounded-xl bg-purple-500/10 border border-purple-500/20 flex items-center justify-center text-purple-400 shrink-0">
-              ${getSvgIcon('studio', 'w-5 h-5')}
-            </div>
-            <div>
-              <div class="flex items-center gap-2">
-                <h3 class="text-xs font-bold text-[var(--text-primary)] uppercase tracking-wider">Harvey Autonomous Email Engine</h3>
-                <span class="text-[10px] px-2 py-0.5 rounded font-mono font-bold ${harveyPassedCount > 0 ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' : 'bg-amber-500/10 text-amber-400 border border-amber-500/20'}">${harveyPassedCount}/${total} Drafted</span>
-              </div>
-              <p class="text-[11px] text-[var(--text-secondary)] mt-0.5">
-                Website Diagnostic → Harvey Prompt → Gemini Draft → Quality Gate → CRM Stage. ${harveyPendingCount > 0 ? harveyPendingCount + ' prospects need Harvey audit.' : 'All prospects audited.'}
-              </p>
-            </div>
+      <!-- Agency Outreach & Pipeline Engine Control Bar (Unified, Minimal) -->
+      <div class="bg-[var(--bg-card)] border border-[var(--border-subtle)] border-l-4 border-l-cyan-500 rounded-2xl p-4 flex flex-col md:flex-row md:items-center justify-between gap-4 shadow-xl">
+        <div class="flex items-center gap-3">
+          <div class="w-10 h-10 rounded-xl bg-cyan-500/10 border border-cyan-500/20 flex items-center justify-center text-cyan-400 shrink-0">
+            ${getSvgIcon('bolt', 'w-5 h-5')}
           </div>
-
-          <div class="flex items-center gap-2 shrink-0 flex-wrap">
-            <div class="flex items-center gap-1.5 text-[11px]">
-              <span class="px-2 py-1 rounded-lg bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-mono font-bold">${harveyPassedCount} Passed</span>
-              <span class="px-2 py-1 rounded-lg bg-amber-500/10 text-amber-400 border border-amber-500/20 font-mono font-bold">${harveyPendingCount} Pending</span>
-              ${harveyFlaggedCount > 0 ? '<span class="px-2 py-1 rounded-lg bg-rose-500/10 text-rose-400 border border-rose-500/20 font-mono font-bold">' + harveyFlaggedCount + ' Flagged</span>' : ''}
+          <div>
+            <div class="flex items-center gap-2">
+              <h3 class="text-xs font-bold text-[var(--text-primary)] uppercase tracking-wider">Outreach & Follow-Up Engine</h3>
+              <span class="text-[10px] px-2 py-0.5 rounded font-mono font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">Active Cadence</span>
             </div>
-            <button onclick="runBatchHarvey()" id="btnBatchHarvey" class="px-4 py-2 rounded-xl bg-purple-500 hover:bg-purple-400 text-white font-extrabold text-xs transition shadow-md shadow-purple-500/20 flex items-center gap-1.5 cursor-pointer active:scale-95">
-              ${getSvgIcon('bolt', 'w-3.5 h-3.5')}
-              <span>Run Harvey on All Pending</span>
-            </button>
-            <button onclick="syncToGoogleSheets()" id="btnSyncSheets" class="px-3.5 py-2 rounded-xl bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-300 border border-emerald-500/30 font-bold text-xs transition flex items-center gap-1.5 cursor-pointer active:scale-95" title="Synchronize CRM leads with Google Sheets">
-              <span>📊 Sync to Sheets</span>
-            </button>
+            <p class="text-[11px] text-[var(--text-secondary)] mt-0.5">
+              4-Step Threading • Dual-Inbox Rotation • 24/7 Call Leak Hooks. Auto-freezes on reply.
+            </p>
           </div>
         </div>
 
-        <!-- Harvey Batch Progress Console (hidden by default) -->
-        <div id="harveyBatchConsole" class="hidden bg-[var(--bg-surface)] rounded-xl p-4 border border-purple-500/30 space-y-2.5 shadow-inner">
-          <div class="flex items-center justify-between text-xs">
-            <span class="text-purple-400 font-mono font-medium flex items-center gap-2">
-              <span class="relative flex h-2 w-2">
-                <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-purple-400 opacity-75"></span>
-                <span class="relative inline-flex rounded-full h-2 w-2 bg-purple-500"></span>
-              </span>
-              <span id="harveyBatchStatus">Initializing Harvey pipeline...</span>
-            </span>
-            <div class="flex items-center gap-2">
-              <span id="harveyBatchCount" class="text-[var(--text-muted)] font-mono text-[11px]">0/${harveyPendingCount}</span>
-              <span id="harveyBatchPercent" class="text-purple-400 font-mono font-bold text-xs">0%</span>
-            </div>
-          </div>
-          <div class="w-full bg-[var(--bg-card)] rounded-full h-2 overflow-hidden border border-[var(--border-subtle)]">
-            <div id="harveyBatchBar" class="bg-gradient-to-r from-purple-500 to-cyan-400 h-2 transition-all duration-500 rounded-full" style="width: 0%"></div>
-          </div>
+        <div class="flex items-center gap-2 shrink-0 flex-wrap">
+          <button onclick="syncToGoogleSheets()" id="btnSyncSheets" class="px-3.5 py-2 rounded-xl bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-300 border border-emerald-500/30 font-bold text-xs transition flex items-center gap-1.5 cursor-pointer active:scale-95" title="Synchronize CRM leads with Google Sheets">
+            <span>📊 Sync to Sheets</span>
+          </button>
+          <button onclick="triggerOutreachWorker(true)" id="btnTriggerWorker" class="px-4 py-2 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-black font-extrabold text-xs transition shadow-md shadow-cyan-500/20 flex items-center gap-1.5 cursor-pointer active:scale-95">
+            ${getSvgIcon('play', 'w-3.5 h-3.5')}
+            <span>Run Follow-Up Queue</span>
+          </button>
+          <a href="/outreach/preview" class="px-3 py-2 rounded-xl bg-[var(--bg-surface)] hover:bg-[var(--bg-hover)] border border-[var(--border-subtle)] text-xs font-semibold text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition flex items-center gap-1.5" title="View email scripts">
+            ${getSvgIcon('mail', 'w-3.5 h-3.5 text-cyan-400')}
+            <span>Scripts ↗</span>
+          </a>
         </div>
       </div>
 
@@ -246,35 +223,6 @@ function renderProspectsHtml(list, authKey = '') {
           </button>
           <button onclick="filterStatus('meeting_booked')" id="tab-meeting_booked" class="filter-tab px-3 py-1.5 rounded-xl bg-[var(--bg-surface)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] border border-[var(--border-subtle)] font-medium transition">
             Meeting Booked (${bookedCount})
-          </button>
-        </div>
-      </div>
-
-      <!-- Automated Follow-Up & Leak Prevention Control Bar -->
-      <div class="bg-[var(--bg-card)] border border-[var(--border-subtle)] border-l-4 border-l-cyan-500 rounded-2xl p-4 flex flex-col md:flex-row md:items-center justify-between gap-4 shadow-xl">
-        <div class="flex items-center gap-3">
-          <div class="w-10 h-10 rounded-xl bg-cyan-500/10 border border-cyan-500/20 flex items-center justify-center text-cyan-400 shrink-0">
-            ${getSvgIcon('bolt', 'w-5 h-5')}
-          </div>
-          <div>
-            <div class="flex items-center gap-2">
-              <h3 class="text-xs font-bold text-[var(--text-primary)] uppercase tracking-wider">Automated Follow-Up & Leak Prevention System</h3>
-              <span class="text-[10px] px-2 py-0.5 rounded font-mono font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">Active Engine</span>
-            </div>
-            <p class="text-[11px] text-[var(--text-secondary)] mt-0.5">
-              4-Step RFC Threading: Step 1 Cold Hook → Step 2 Voice Demo (+2d) → Step 3 Revenue Leak (+3d) → Step 4 Breakup (+3d). Auto-freezes on reply.
-            </p>
-          </div>
-        </div>
-
-        <div class="flex items-center gap-2 shrink-0">
-          <a href="/outreach/preview" class="px-3.5 py-2 rounded-xl bg-[var(--bg-surface)] hover:bg-[var(--bg-hover)] border border-[var(--border-subtle)] text-xs font-semibold text-[var(--text-primary)] transition flex items-center gap-1.5">
-            ${getSvgIcon('mail', 'w-3.5 h-3.5 text-cyan-400')}
-            <span>Script Studio (4 Steps)</span>
-          </a>
-          <button onclick="triggerOutreachWorker(true)" id="btnTriggerWorker" class="px-4 py-2 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-black font-extrabold text-xs transition shadow-md shadow-cyan-500/20 flex items-center gap-1.5">
-            ${getSvgIcon('play', 'w-3.5 h-3.5')}
-            <span>Run Follow-Up Queue Now</span>
           </button>
         </div>
       </div>
@@ -374,73 +322,44 @@ function renderProspectsHtml(list, authKey = '') {
                       <div class="flex items-center gap-2">
                         ${
                           p.phone
-                            ? `<div class="flex items-center gap-1">
-                                <a href="tel:${String(p.phone).replace(/[^0-9+]/g, '')}" class="inline-flex items-center gap-1.5 px-2.5 py-1.5 bg-[var(--accent-emerald-subtle)] hover:bg-[var(--accent-emerald)]/20 text-[var(--accent-emerald)] border border-[var(--accent-emerald)]/30 rounded-xl font-mono font-bold text-xs transition shadow-sm group" title="Click to dial immediately">
-                                  <span class="group-hover:scale-110 transition">${getSvgIcon('phone', 'w-3 h-3')}</span>
-                                  <span>${formatUsPhone(p.phone)}</span>
-                                </a>
-                                <button onclick="copyToClipboard('${String(p.phone).replace(/[^0-9+]/g, '')}', 'Phone number copied!')" class="p-1.5 text-[var(--text-muted)] hover:text-[var(--text-primary)] bg-[var(--bg-surface)] hover:bg-[var(--bg-hover)] border border-[var(--border-subtle)] rounded-lg transition text-[11px]" title="Copy phone number">
-                                  ${getSvgIcon('copy', 'w-3 h-3')}
-                                </button>
-                              </div>`
+                            ? `<a href="tel:${String(p.phone).replace(/[^0-9+]/g, '')}" class="inline-flex items-center gap-1.5 px-2.5 py-1.5 bg-[var(--accent-emerald-subtle)] hover:bg-[var(--accent-emerald)]/20 text-[var(--accent-emerald)] border border-[var(--accent-emerald)]/30 rounded-xl font-mono font-bold text-xs transition shadow-sm" title="Click to dial immediately">
+                                ${getSvgIcon('phone', 'w-3 h-3')}
+                                <span>${formatUsPhone(p.phone)}</span>
+                              </a>`
                             : `<span class="text-[var(--text-muted)] text-xs italic">No phone</span>`
                         }
                         ${
                           p.email
-                            ? `<div class="flex items-center gap-1">
-                                <a href="mailto:${escapeHtml(p.email)}" class="inline-flex items-center gap-1 px-2.5 py-1.5 bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 rounded-xl font-mono text-xs transition shadow-sm group" title="Direct Email: ${escapeHtml(p.email)}">
-                                  <span>✉️</span>
-                                  <span class="max-w-[170px] truncate">${escapeHtml(p.email)}</span>
-                                </a>
-                                <button onclick="copyToClipboard('${escapeHtml(p.email)}', 'Email address copied!')" class="p-1.5 text-[var(--text-muted)] hover:text-[var(--text-primary)] bg-[var(--bg-surface)] hover:bg-[var(--bg-hover)] border border-[var(--border-subtle)] rounded-lg transition text-[11px]" title="Copy email address">
-                                  ${getSvgIcon('copy', 'w-3 h-3')}
-                                </button>
-                              </div>`
+                            ? `<a href="mailto:${escapeHtml(p.email)}" class="inline-flex items-center gap-1 px-2.5 py-1.5 bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 rounded-xl font-mono text-xs transition shadow-sm" title="Direct Email: ${escapeHtml(p.email)}">
+                                <span>✉️</span>
+                                <span class="max-w-[170px] truncate">${escapeHtml(p.email)}</span>
+                              </a>`
                             : `<span class="text-[var(--text-muted)] text-xs italic">No email</span>`
                         }
                       </div>
                     </td>
 
-                    <!-- Harvey Bespoke Hook & Quality Gate (Dedicated Column) -->
+                    <!-- Harvey 24/7 Call Hook (Dedicated Column) -->
                     <td class="py-3.5 px-4 max-w-xs" id="harvey-cell-${p.id}">
-                      <div class="space-y-1.5">
-                        <div class="flex items-center gap-1.5 flex-wrap">
+                      <div class="space-y-1">
+                        <div class="flex items-center gap-1.5">
                           ${
                             p.harvey_status === 'passed'
-                              ? `<span class="px-2 py-0.5 rounded text-[10px] font-bold font-mono bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">✓ Passed (${p.harvey_score || 95}/100)</span>`
-                              : p.harvey_status === 'flagged'
-                              ? `<span class="px-2 py-0.5 rounded text-[10px] font-bold font-mono bg-rose-500/20 text-rose-400 border border-rose-500/30">⚠ Flagged (${p.harvey_score || 60}/100)</span>`
-                              : `<span class="px-2 py-0.5 rounded text-[10px] font-mono text-cyan-400 bg-cyan-500/10 border border-cyan-500/20">○ Pending Harvey</span>`
+                              ? `<span class="px-2 py-0.5 rounded text-[10px] font-bold font-mono bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">✓ Ready</span>`
+                              : `<span class="px-2 py-0.5 rounded text-[10px] font-mono text-cyan-400 bg-cyan-500/10 border border-cyan-500/20">○ Pending</span>`
                           }
-                          ${
-                            p.harvey_draft
-                              ? `<span class="px-1.5 py-0.5 rounded text-[9px] font-bold font-mono bg-purple-500/20 text-purple-300 border border-purple-500/30">1-of-1 Draft</span>`
-                              : `<span class="text-[10px] text-[var(--text-muted)] font-mono">0 Clichés</span>`
-                          }
-                        </div>
-                        <p class="text-[11px] text-[var(--text-primary)] font-medium leading-tight line-clamp-2" title="${escapeHtml(p.specific_observation || p.harvey_draft || 'Click Audit to inspect site & compile bespoke hook')}">
-                          ${escapeHtml(p.specific_observation || (p.harvey_draft ? p.harvey_draft.slice(0, 100) : 'Static form friction detected'))}
-                        </p>
-                        <div class="flex items-center gap-1.5 pt-0.5">
                           <button 
                             type="button"
                             onclick="inspectHarveyHook('${p.id}')"
-                            class="px-2 py-1 rounded-lg bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 text-[10px] font-bold transition flex items-center gap-1 cursor-pointer"
-                            title="Inspect bespoke prompt, draft, and test-send to phone"
+                            class="text-[10px] text-cyan-400 hover:text-cyan-300 underline font-semibold transition cursor-pointer"
+                            title="Inspect bespoke prompt and draft"
                           >
-                            <span>Inspect & Test</span>
-                          </button>
-                          <button 
-                            type="button"
-                            id="btnRunHarvey-${p.id}"
-                            onclick="runHarveyForProspect('${p.id}', this)"
-                            class="px-2 py-1 rounded-lg bg-[var(--bg-surface)] hover:bg-[var(--bg-hover)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] border border-[var(--border-subtle)] text-[10px] font-medium transition flex items-center gap-1 cursor-pointer"
-                            title="Crawl site and regenerate bespoke 1-of-1 hook"
-                          >
-                            ${getSvgIcon('bolt', 'w-3 h-3 text-amber-400')}
-                            <span>Audit</span>
+                            Inspect Hook ↗
                           </button>
                         </div>
+                        <p class="text-[11px] text-[var(--text-primary)] font-medium leading-tight line-clamp-2" title="${escapeHtml(p.specific_observation || p.harvey_draft || '')}">
+                          ${escapeHtml(p.specific_observation || (p.harvey_draft ? p.harvey_draft.slice(0, 100) : 'Emergency call friction detected'))}
+                        </p>
                       </div>
                     </td>
 
@@ -453,15 +372,15 @@ function renderProspectsHtml(list, authKey = '') {
                     <!-- Offer / Service -->
                     <td class="py-3.5 px-4">
                       <span class="inline-flex items-center px-2 py-0.5 rounded-lg text-[11px] font-semibold bg-[var(--bg-surface)] text-[var(--text-secondary)] border border-[var(--border-subtle)]">
-                        ${escapeHtml(p.treatment || 'Consultation')}
+                        ${escapeHtml(p.treatment || 'Emergency Service')}
                       </span>
                     </td>
 
                     <!-- Live Status Dropdown -->
                     <td class="py-3.5 px-4 text-center whitespace-nowrap">
                       <select onchange="updateProspectStatus('${p.id}', this.value)" class="bg-[var(--bg-surface)] border border-[var(--border-subtle)] text-[11px] font-semibold rounded-xl px-2.5 py-1 text-[var(--text-primary)] focus:outline-none focus:border-[var(--accent-emerald)] transition">
-                        <option value="pending" ${p.status === 'pending' ? 'selected' : ''}>Pending (On Hold)</option>
-                        <option value="active" ${p.status === 'active' ? 'selected' : ''}>Active (In Queue)</option>
+                        <option value="pending" ${p.status === 'pending' ? 'selected' : ''}>Pending</option>
+                        <option value="active" ${p.status === 'active' ? 'selected' : ''}>Active</option>
                         <option value="replied" ${p.status === 'replied' ? 'selected' : ''}>Replied</option>
                         <option value="meeting_booked" ${p.status === 'meeting_booked' ? 'selected' : ''}>Meeting Booked</option>
                         <option value="completed" ${p.status === 'completed' ? 'selected' : ''}>Completed</option>
@@ -471,21 +390,12 @@ function renderProspectsHtml(list, authKey = '') {
 
                     <!-- Action Hub -->
                     <td class="py-3.5 px-4 text-right space-x-1.5 whitespace-nowrap">
-                      <!-- Preview Step 1 Audit -->
-                      <button 
-                        onclick="openPreview('${p.id}')"
-                        class="px-2.5 py-1.5 rounded-xl bg-[var(--bg-surface)] hover:bg-[var(--bg-hover)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] border border-[var(--border-subtle)] text-xs font-medium transition"
-                        title="Preview personalized Harvey cold email"
-                      >
-                        Preview
-                      </button>
-
                       <!-- Send Step Follow-Up Button -->
                       ${
                         p.status === 'active' && currentStep > 0 && currentStep < 4
                           ? `<button 
-                              onclick="confirmSendStep('${p.id}', ${currentStep + 1}, '${escapeQuotes(p.doctor_name || 'Doctor')}', '${escapeQuotes(p.clinic_name || 'Clinic')}')"
-                              class="px-2.5 py-1.5 rounded-xl bg-purple-500/10 hover:bg-purple-500/20 text-purple-300 border border-purple-500/30 text-xs font-semibold transition"
+                              onclick="confirmSendStep('${p.id}', ${currentStep + 1}, '${escapeQuotes(p.doctor_name || 'Owner')}', '${escapeQuotes(p.clinic_name || 'Trade')}')"
+                              class="px-3 py-1.5 rounded-xl bg-purple-500/20 hover:bg-purple-500/30 text-purple-300 border border-purple-500/40 text-xs font-bold transition"
                               title="Send Follow-Up Step ${currentStep + 1} immediately"
                             >
                               Send Step ${currentStep + 1}
@@ -497,8 +407,8 @@ function renderProspectsHtml(list, authKey = '') {
                       ${
                         p.status === 'pending'
                           ? `<button 
-                              onclick="confirmActivate('${p.id}', '${escapeQuotes(p.doctor_name)}', '${escapeQuotes(p.clinic_name)}')"
-                              class="px-2.5 py-1.5 rounded-xl bg-[var(--accent-emerald)] hover:opacity-90 text-black text-xs font-bold transition shadow-sm"
+                              onclick="confirmActivate('${p.id}', '${escapeQuotes(p.doctor_name || 'Owner')}', '${escapeQuotes(p.clinic_name || 'Trade')}')"
+                              class="px-3 py-1.5 rounded-xl bg-[var(--accent-emerald)] hover:opacity-90 text-black text-xs font-bold transition shadow-sm"
                             >
                               Activate
                             </button>`
@@ -507,9 +417,9 @@ function renderProspectsHtml(list, authKey = '') {
 
                       <!-- Remove Lead Button -->
                       <button 
-                        onclick="confirmDeleteProspect('${p.id}', '${escapeQuotes(p.doctor_name || 'Doctor')}', '${escapeQuotes(p.clinic_name || 'Clinic')}')"
-                        class="p-1.5 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/30 transition text-xs inline-flex items-center justify-center align-middle"
-                        title="Permanently remove this lead from CRM database"
+                        onclick="confirmDeleteProspect('${p.id}', '${escapeQuotes(p.doctor_name || 'Owner')}', '${escapeQuotes(p.clinic_name || 'Trade')}')"
+                        class="p-1.5 text-[var(--text-muted)] hover:text-rose-400 transition inline-flex items-center justify-center align-middle"
+                        title="Delete prospect"
                       >
                         ${getSvgIcon('trash', 'w-3.5 h-3.5')}
                       </button>

@@ -43,7 +43,7 @@ export function renderSaasShell({
   title = 'SureGreet AI — Operating System',
   activeNav = 'pipeline',
   pageHeading = 'Pipeline CRM',
-  badgeText = 'US MedSpa & HVAC',
+  badgeText = 'US Trade Contractors',
   bodyContent = '',
   extraScripts = '',
   authKeyParam = '',
