@@ -272,6 +272,21 @@ scraperRouter.get('/dashboard', async (req, res) => {
               <option value="Macon, GA">Macon, GA</option>
               <option value="Savannah, GA">Savannah, GA</option>
             </optgroup>
+            <optgroup label="🏆 HIGH-INCOME SUBURBS — INDIANA (IN)">
+              <option value="Carmel, IN">Carmel, IN</option>
+              <option value="Zionsville, IN">Zionsville, IN</option>
+            </optgroup>
+            <optgroup label="🏆 HIGH-INCOME SUBURBS — OHIO (OH)">
+              <option value="Dublin, OH">Dublin, OH</option>
+            </optgroup>
+            <optgroup label="🏆 HIGH-INCOME SUBURBS — TEXAS (TX)">
+              <option value="Prosper, TX">Prosper, TX</option>
+              <option value="Celina, TX">Celina, TX</option>
+              <option value="Fulshear, TX">Fulshear, TX</option>
+            </optgroup>
+            <optgroup label="🏆 HIGH-INCOME SUBURBS — TENNESSEE (TN)">
+              <option value="Brentwood, TN">Brentwood, TN</option>
+            </optgroup>
           </select>
         </div>
 
