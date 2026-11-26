@@ -123,6 +123,26 @@ export const TERRITORY_CASCADE = {
           'Albany, GA', 'Johns Creek, GA', 'Alpharetta, GA', 'Marietta, GA', 'Stonecrest, GA',
           'Smyrna, GA', 'Valdosta, GA', 'Dunwoody, GA', 'Brookhaven, GA'
         ]
+      },
+      IN: {
+        name: 'Indiana',
+        topTier: ['Carmel, IN', 'Zionsville, IN'],
+        secondaryTier: ['Indianapolis, IN', 'Fishers, IN', 'Westfield, IN', 'Noblesville, IN']
+      },
+      OH: {
+        name: 'Ohio',
+        topTier: ['Dublin, OH'],
+        secondaryTier: ['Columbus, OH', 'Powell, OH', 'Westerville, OH', 'New Albany, OH']
+      },
+      TX: {
+        name: 'Texas (Affluent Suburbs)',
+        topTier: ['Prosper, TX', 'Celina, TX', 'Fulshear, TX'],
+        secondaryTier: ['Frisco, TX', 'McKinney, TX', 'Allen, TX', 'Katy, TX', 'Sugar Land, TX']
+      },
+      TN: {
+        name: 'Tennessee',
+        topTier: ['Brentwood, TN'],
+        secondaryTier: ['Nashville, TN', 'Franklin, TN', 'Murfreesboro, TN', 'Nolensville, TN']
       }
     }
   }
@@ -141,15 +161,24 @@ export const ORDERED_CASCADE_CITIES = [
   ...TERRITORY_CASCADE.eastern.states.FL.topTier,
   ...TERRITORY_CASCADE.eastern.states.NY.topTier,
   ...TERRITORY_CASCADE.eastern.states.GA.topTier,
-  // 3. Pacific Secondary Tier
+  // 3. NEW: High-Income Suburban Markets (Phase 3 Priority)
+  ...TERRITORY_CASCADE.eastern.states.IN.topTier,   // Carmel & Zionsville, IN
+  ...TERRITORY_CASCADE.eastern.states.OH.topTier,   // Dublin, OH
+  ...TERRITORY_CASCADE.eastern.states.TX.topTier,   // Prosper, Celina, Fulshear, TX
+  ...TERRITORY_CASCADE.eastern.states.TN.topTier,   // Brentwood, TN
+  // 4. Pacific Secondary Tier
   ...TERRITORY_CASCADE.pacific.states.CA.secondaryTier,
   ...TERRITORY_CASCADE.pacific.states.WA.secondaryTier,
   ...TERRITORY_CASCADE.pacific.states.OR.secondaryTier,
   ...TERRITORY_CASCADE.pacific.states.NV.secondaryTier,
-  // 4. Eastern Secondary Tier
+  // 5. Eastern Secondary Tier
   ...TERRITORY_CASCADE.eastern.states.FL.secondaryTier,
   ...TERRITORY_CASCADE.eastern.states.NY.secondaryTier,
   ...TERRITORY_CASCADE.eastern.states.GA.secondaryTier,
+  ...TERRITORY_CASCADE.eastern.states.IN.secondaryTier,
+  ...TERRITORY_CASCADE.eastern.states.OH.secondaryTier,
+  ...TERRITORY_CASCADE.eastern.states.TX.secondaryTier,
+  ...TERRITORY_CASCADE.eastern.states.TN.secondaryTier,
 ];
 
 export function getNextCascadeCity(currentCity) {
@@ -428,6 +457,47 @@ const CURATED_TARGETS = {
     savannah: [
       { title: 'Canady\'s Heating & Air Savannah', url: 'https://canadys.com', city: 'Savannah, GA' },
     ],
+    // ── NEW HIGH-INCOME SUBURBAN MARKETS ──────────────────────────────
+    carmel: [
+      { title: 'Morehart HVAC & Cooling Carmel IN', url: 'https://www.alltemperatureservices.com', city: 'Carmel, IN' },
+      { title: 'Summers Plumbing Heating & Cooling Carmel', url: 'https://www.summersphc.com', city: 'Carmel, IN' },
+      { title: 'Godby Heating Plumbing Electrical Carmel', url: 'https://www.godbyhpe.com', city: 'Carmel, IN' },
+      { title: 'Service Plus Heating Cooling Plumbing Carmel', url: 'https://www.serviceplusheating.com', city: 'Carmel, IN' },
+    ],
+    zionsville: [
+      { title: 'Summers PHC Zionsville IN', url: 'https://www.summersphc.com', city: 'Zionsville, IN' },
+      { title: 'Godby HPE Zionsville IN', url: 'https://www.godbyhpe.com', city: 'Zionsville, IN' },
+      { title: 'ARS Rescue Rooter Indianapolis', url: 'https://www.ars.com', city: 'Zionsville, IN' },
+    ],
+    dublin: [
+      { title: 'Columbus Worthington Air Dublin OH', url: 'https://www.worthingtonair.com', city: 'Dublin, OH' },
+      { title: 'Apex Plumbing Heating Air Dublin OH', url: 'https://www.apexohio.com', city: 'Dublin, OH' },
+      { title: 'Buckeye Heating Cooling Plumbing Dublin', url: 'https://www.buckeyeheatingcooling.com', city: 'Dublin, OH' },
+      { title: 'Five Star Home Services Dublin OH', url: 'https://www.fivestarohio.com', city: 'Dublin, OH' },
+    ],
+    prosper: [
+      { title: 'Service Experts Heating & Air Prosper TX', url: 'https://www.serviceexperts.com', city: 'Prosper, TX' },
+      { title: 'AirOne Heating & Air Conditioning Prosper', url: 'https://www.air1hvac.com', city: 'Prosper, TX' },
+      { title: 'Frisco HVAC & Air Conditioning Prosper TX', url: 'https://www.friscoac.com', city: 'Prosper, TX' },
+      { title: 'Milestone Electric AC Plumbing Prosper TX', url: 'https://www.milestoneplumbing.com', city: 'Prosper, TX' },
+    ],
+    celina: [
+      { title: 'Service Experts HVAC Celina TX', url: 'https://www.serviceexperts.com', city: 'Celina, TX' },
+      { title: 'Milestone Electric AC & Plumbing Celina', url: 'https://www.milestoneplumbing.com', city: 'Celina, TX' },
+      { title: 'TDT Plumbing Celina TX', url: 'https://www.tdtplumbing.com', city: 'Celina, TX' },
+    ],
+    fulshear: [
+      { title: 'Abacus Plumbing Air Conditioning Fulshear TX', url: 'https://www.abacusplumbing.net', city: 'Fulshear, TX' },
+      { title: 'CoolPro AC & Heating Fulshear TX', url: 'https://www.coolproac.com', city: 'Fulshear, TX' },
+      { title: 'Clements Plumbing Fulshear TX', url: 'https://www.clementsplumbing.com', city: 'Fulshear, TX' },
+      { title: 'Rescue Air & Plumbing Fulshear', url: 'https://www.rescueairandplumbing.com', city: 'Fulshear, TX' },
+    ],
+    brentwood: [
+      { title: 'Lee Company 24/7 HVAC Brentwood TN', url: 'https://leecompany.com', city: 'Brentwood, TN' },
+      { title: 'Hiller Plumbing Heating & Air Brentwood', url: 'https://happyhiller.com', city: 'Brentwood, TN' },
+      { title: 'Covenant Heating & Cooling Brentwood TN', url: 'https://www.covenantheatingandcooling.com', city: 'Brentwood, TN' },
+      { title: 'ARS Rescue Rooter Nashville Brentwood', url: 'https://www.ars.com', city: 'Brentwood, TN' },
+    ],
   },
 };
 
@@ -552,6 +622,13 @@ export async function searchLocalBusinesses({ query, city = 'Los Angeles, CA', n
     if (cityKey === 'philly') cityKey = 'philadelphia';
     if (cityKey === 'dc' || cityKey === 'washington') cityKey = 'washington dc';
     if (cityKey === 'vegas') cityKey = 'las vegas';
+    if (cityKey === 'carmel' || cityKey === 'carmel & zionsville') cityKey = 'carmel';
+    if (cityKey === 'zionsville') cityKey = 'zionsville';
+    if (cityKey === 'dublin') cityKey = 'dublin';
+    if (cityKey === 'prosper' || cityKey === 'prosper & celina') cityKey = 'prosper';
+    if (cityKey === 'celina') cityKey = 'celina';
+    if (cityKey === 'fulshear') cityKey = 'fulshear';
+    if (cityKey === 'brentwood') cityKey = 'brentwood';
 
     const targetsDict = CURATED_TARGETS[niche] || CURATED_TARGETS['hvac'] || {};
     const primaryList = targetsDict[cityKey] || CURATED_TARGETS['hvac']?.[cityKey] || [];
