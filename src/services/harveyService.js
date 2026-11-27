@@ -130,6 +130,10 @@ export function buildHarveyPrompt(dossier, prospect = {}) {
   const treatment = prospect.treatment || dossier.primaryTreatment || 'Emergency Dispatch';
   const salutation = formatSalutation(doctor, clinic, prospect.niche || dossier.niche || 'hvac');
 
+  const qualLine = prospect.qual_score
+    ? `- Qualifier Rate Score: ${prospect.qual_score}/100 (${prospect.qual_grade || 'Q'})${prospect.review_count ? ` • ${prospect.review_count} Google Reviews` : ''}${prospect.fleet_size ? ` • ~${prospect.fleet_size} Trucks` : ''}`
+    : '';
+
   return `You are Harvey, principal outbound sales strategist for SureGreet AI.
 You write strictly for Archit (Founder of SureGreet AI, 17, building an AI receptionist & voice dispatching agency for US trade contractors).
 
@@ -142,6 +146,7 @@ You write strictly for Archit (Founder of SureGreet AI, 17, building an AI recep
 - Operating Hours: ${dossier.hoursSummary || 'Standard'}
 - Friction Finding: ${dossier.frictionObservation || prospect.specific_observation || 'Routes after-hours calls to voicemail'}
 - Estimated Revenue Leak: ${dossier.napkinMathLoss || '$4,000/mo'}
+${qualLine ? qualLine + '\n' : ''}
 
 [STRICT HARVEY COPYWRITING RULES]
 1. PEER-TO-PEER FOUNDER TONE: Write as Archit. Zero automated agency fluff.

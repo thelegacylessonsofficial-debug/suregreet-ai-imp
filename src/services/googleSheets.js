@@ -88,9 +88,10 @@ export async function appendProspectToSheet(prospect) {
   const email = prospect.email || '';
   const website = prospect.website_url || prospect.url || '';
   const dateAdded = new Date().toLocaleDateString('en-US');
+  const qualScore = prospect.qual_score !== undefined && prospect.qual_score !== null ? `${prospect.qual_score}/100 (${prospect.qual_grade || ''})` : 'Legacy';
 
   // Exact 5 columns requested by Archit: [Company | Owner | Phone | City | Full Harvey Email]
-  // followed by contact email, website, and date added
+  // followed by contact email, website, date added, and qualification rate score
   const row = [
     company,
     owner,
@@ -100,6 +101,7 @@ export async function appendProspectToSheet(prospect) {
     email,
     website,
     dateAdded,
+    qualScore,
   ];
 
   // 1. Try Google Apps Script Webhook
@@ -129,7 +131,7 @@ export async function appendProspectToSheet(prospect) {
   const client = await getSheetsClient();
   if (client) {
     try {
-      const range = `${config.googleSheets.leadsTabName}!A:H`;
+      const range = `${config.googleSheets.leadsTabName}!A:I`;
       const response = await client.spreadsheets.values.append({
         spreadsheetId: config.googleSheets.sheetId,
         range,
@@ -172,7 +174,7 @@ export function formatProspectsTsv(prospects = []) {
  */
 export function formatProspectsCsv(prospects = []) {
   const escapeCsv = (val) => `"${String(val || '').replace(/"/g, '""')}"`;
-  const header = ['Company', 'Owner', 'Phone', 'City', 'Full Harvey Email', 'Email', 'Website', 'Date Added'].map(escapeCsv).join(',');
+  const header = ['Company', 'Owner', 'Phone', 'City', 'Full Harvey Email', 'Email', 'Website', 'Date Added', 'Qual Score', 'Reviews'].map(escapeCsv).join(',');
   const rows = prospects.map((p) => {
     const company = p.clinic_name || p.clinicName || '';
     const owner = formatSalutation(p.doctor_name || p.doctorName, company, p.niche || 'hvac');
@@ -182,7 +184,9 @@ export function formatProspectsCsv(prospects = []) {
     const email = p.email || '';
     const website = p.website_url || p.url || '';
     const dateAdded = new Date().toLocaleDateString('en-US');
-    return [company, owner, phone, city, emailDraft, email, website, dateAdded].map(escapeCsv).join(',');
+    const qualScore = p.qual_score !== undefined && p.qual_score !== null ? `${p.qual_score}/100 (${p.qual_grade || ''})` : 'Legacy';
+    const reviews = p.review_count ? `${p.review_count}${p.google_rating ? ` (${p.google_rating}★)` : ''}` : '';
+    return [company, owner, phone, city, emailDraft, email, website, dateAdded, qualScore, reviews].map(escapeCsv).join(',');
   });
   return [header, ...rows].join('\n');
 }

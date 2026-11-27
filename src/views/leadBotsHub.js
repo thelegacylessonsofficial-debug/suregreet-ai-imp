@@ -41,7 +41,7 @@ export function renderLeadBotsHubHtml(keyQuery = '') {
                 <h3 class="font-bold text-sm text-[var(--text-primary)]">The Lead Sourcing Operator</h3>
                 <span class="text-[10px] font-mono px-2 py-0.5 rounded bg-cyan-500/10 text-cyan-300 font-semibold border border-cyan-500/20">Lead Hunter</span>
               </div>
-              <p class="text-xs text-[var(--text-secondary)]">Autonomous Business Extraction & Jina AI Friction Diagnostics</p>
+              <p class="text-xs text-[var(--text-secondary)]">Autonomous Business Extraction + 100-Pt Qualification Gate</p>
             </div>
           </div>
           <span class="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
@@ -53,11 +53,11 @@ export function renderLeadBotsHubHtml(keyQuery = '') {
         <div class="p-3.5 rounded-xl bg-[var(--bg-card-subtle)] border border-[var(--border-subtle)] space-y-2 text-xs font-mono">
           <div class="flex justify-between items-center">
             <span class="text-[var(--text-muted)]">Engine & Protocol:</span>
-            <span class="text-[var(--text-primary)]">DuckDuckGo + Jina AI Reader (r.jina.ai)</span>
+            <span class="text-[var(--text-primary)]">Direct Crawl + Jina AI + 10-Sec Eye Test</span>
           </div>
           <div class="flex justify-between items-center">
-            <span class="text-[var(--text-muted)]">Target Metros:</span>
-            <span class="text-cyan-400">Miami, Dallas, Phoenix, Austin, Atlanta</span>
+            <span class="text-[var(--text-muted)]">CRM Gate:</span>
+            <span class="text-emerald-400">60/100 Rate Points Required (Blocks PE Chains)</span>
           </div>
           <div class="flex justify-between items-center">
             <span class="text-[var(--text-muted)]">Cost Structure:</span>

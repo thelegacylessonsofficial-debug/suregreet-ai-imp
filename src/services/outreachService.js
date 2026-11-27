@@ -192,6 +192,13 @@ export async function addProspect({
   harvey_draft,
   harvey_score,
   harvey_status,
+  qual_score,
+  qual_grade,
+  qual_status,
+  qual_breakdown,
+  review_count,
+  google_rating,
+  fleet_size,
 }) {
   const normalizedEmail = (email || '').trim().toLowerCase();
   if (!normalizedEmail) {
@@ -222,6 +229,13 @@ export async function addProspect({
     harvey_draft: harvey_draft || null,
     harvey_score: harvey_score || null,
     harvey_status: harvey_status || null,
+    qual_score: qual_score !== undefined && qual_score !== null ? Number(qual_score) : null,
+    qual_grade: qual_grade || null,
+    qual_status: qual_status || null,
+    qual_breakdown: qual_breakdown || {},
+    review_count: review_count !== undefined && review_count !== null ? Number(review_count) : null,
+    google_rating: google_rating !== undefined && google_rating !== null ? Number(google_rating) : null,
+    fleet_size: fleet_size !== undefined && fleet_size !== null ? Number(fleet_size) : null,
   };
 
   const res = await supabaseFetch('/prospects', {

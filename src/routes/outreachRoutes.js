@@ -26,6 +26,7 @@ import {
 import { sendEmail, getMailerStatus } from '../services/mailer.js';
 import { getSheetsStatus, syncAllProspectsToSheet, appendProspectToSheet, formatProspectsTsv, formatProspectsCsv } from '../services/googleSheets.js';
 import { runHarveyAutonomousPipeline, diagnoseAndGenerateFullSequence } from '../services/harveyService.js';
+import { huntAndEnrichLead } from '../services/leadHunterService.js';
 import { config } from '../config.js';
 
 export const outreachRouter = Router();
@@ -199,6 +200,9 @@ function renderProspectsHtml(list, authKey = '') {
             <button onclick="filterNiche('trades')" id="tab-niche-trades" class="niche-filter-tab px-3 py-1.5 rounded-xl bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 font-bold transition flex items-center gap-1.5 cursor-pointer">
               <span>⚡ HVAC & Trade Contractors (${hvacTradeCount})</span>
             </button>
+            <button onclick="filterNiche('qualified')" id="tab-niche-qualified" class="niche-filter-tab px-3 py-1.5 rounded-xl bg-[var(--bg-surface)] text-[var(--text-secondary)] border border-[var(--border-subtle)] font-medium transition flex items-center gap-1.5 cursor-pointer">
+              <span>🎯 Qualified 60+ Pts (${list.filter(p => (p.qual_score || 0) >= 60).length})</span>
+            </button>
             <button onclick="filterNiche('all')" id="tab-niche-all" class="niche-filter-tab px-3 py-1.5 rounded-xl bg-[var(--bg-surface)] text-[var(--text-secondary)] border border-[var(--border-subtle)] font-medium transition flex items-center gap-1.5 cursor-pointer">
               <span>All Leads (${total})</span>
             </button>
@@ -243,6 +247,7 @@ function renderProspectsHtml(list, authKey = '') {
               <tr>
                 <th class="py-3.5 px-4 font-semibold">Owner / Decision Maker</th>
                 <th class="py-3.5 px-4 font-semibold">Trade Company & Location</th>
+                <th class="py-3.5 px-4 font-semibold text-emerald-400">Qual Rate Score</th>
                 <th class="py-3.5 px-4 font-semibold text-[var(--accent-emerald)]">1-Click Phone Dial & Direct Email</th>
                 <th class="py-3.5 px-4 font-semibold text-cyan-400">Harvey 24/7 Call Hook</th>
                 <th class="py-3.5 px-4 font-semibold">Sequence Pipeline</th>
@@ -298,8 +303,18 @@ function renderProspectsHtml(list, authKey = '') {
                     </div>`;
                   }
 
+                  const qScore = p.qual_score !== undefined && p.qual_score !== null ? Number(p.qual_score) : null;
+                  const qGrade = p.qual_grade || '';
+                  const qColor = qScore === null
+                    ? 'bg-gray-500/10 text-gray-400 border-gray-500/20'
+                    : qScore >= 75
+                    ? 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30'
+                    : qScore >= 60
+                    ? 'bg-amber-500/15 text-amber-300 border-amber-500/30'
+                    : 'bg-rose-500/15 text-rose-400 border-rose-500/30';
+
                   return `
-                  <tr class="hover:bg-[var(--bg-hover)] transition prospect-row" data-id="${p.id}" data-status="${p.status}" data-istrade="${isTrade ? 'true' : 'false'}" data-search="${(p.clinic_name + ' ' + (p.doctor_name || '') + ' ' + (p.city || '') + ' ' + (p.treatment || '') + ' ' + p.email + ' ' + (p.phone || '') + ' ' + (p.niche || '')).toLowerCase()}">
+                  <tr class="hover:bg-[var(--bg-hover)] transition prospect-row" data-id="${p.id}" data-status="${p.status}" data-istrade="${isTrade ? 'true' : 'false'}" data-qual="${qScore ?? -1}" data-search="${(p.clinic_name + ' ' + (p.doctor_name || '') + ' ' + (p.city || '') + ' ' + (p.treatment || '') + ' ' + p.email + ' ' + (p.phone || '') + ' ' + (p.niche || '')).toLowerCase()}">
                     
                     <!-- Owner / Decision Maker -->
                     <td class="py-3.5 px-4">
@@ -322,6 +337,25 @@ function renderProspectsHtml(list, authKey = '') {
                       </div>
                       <div class="text-[11px] text-[var(--text-muted)] flex items-center gap-1 mt-0.5">
                         <span>📍 ${escapeHtml(p.city || 'United States')}</span>
+                      </div>
+                    </td>
+
+                    <!-- Qual Rate Score Column -->
+                    <td class="py-3.5 px-4 whitespace-nowrap" id="qual-cell-${p.id}">
+                      <div class="space-y-1">
+                        <div class="flex items-center gap-1.5">
+                          ${
+                            qScore !== null
+                              ? `<span class="px-2 py-0.5 rounded text-[10px] font-bold font-mono border ${qColor}">${qScore}/100 ${escapeHtml(qGrade)}</span>`
+                              : `<span class="px-2 py-0.5 rounded text-[10px] font-mono bg-gray-500/10 text-gray-400 border border-gray-500/20">Unscored</span>`
+                          }
+                          <button type="button" onclick="requalifyProspect('${p.id}', this)" class="text-[10px] text-cyan-400 hover:underline font-mono cursor-pointer" title="Run 10-Second Eye Test & 100-Pt Score on this website">↻ Score</button>
+                        </div>
+                        ${
+                          p.review_count
+                            ? `<div class="text-[10px] font-mono text-amber-300">★ ${p.google_rating || '4.8'} (${p.review_count} rev)</div>`
+                            : ''
+                        }
                       </div>
                     </td>
 
@@ -984,10 +1018,14 @@ function renderProspectsHtml(list, authKey = '') {
         rows.forEach(row => {
           const rowStatus = row.getAttribute('data-status') || '';
           const isTrade = row.getAttribute('data-istrade') === 'true';
+          const qualVal = Number(row.getAttribute('data-qual') || -1);
           const searchText = row.getAttribute('data-search') || '';
 
           const matchesStatus = currentStatusFilter === 'all' || rowStatus === currentStatusFilter;
-          const matchesNiche = currentNicheFilter === 'all' || (currentNicheFilter === 'trades' && isTrade);
+          const matchesNiche =
+            currentNicheFilter === 'all' ||
+            (currentNicheFilter === 'trades' && isTrade) ||
+            (currentNicheFilter === 'qualified' && qualVal >= 60);
           const matchesSearch = !query || searchText.includes(query);
 
           if (matchesStatus && matchesNiche && matchesSearch) {
@@ -1151,6 +1189,46 @@ function renderProspectsHtml(list, authKey = '') {
           if (btn) {
             btn.disabled = false;
             btn.innerHTML = '<span>📊 Sync to Sheets</span>';
+          }
+        }
+      }
+
+      async function requalifyProspect(id, btnEl) {
+        if (btnEl) {
+          btnEl.disabled = true;
+          btnEl.innerText = '...';
+        }
+        try {
+          const res = await fetch(getAuthUrl('/outreach/requalify'), {
+            method: 'POST',
+            credentials: 'include',
+            headers: getAuthHeaders(),
+            body: JSON.stringify({ prospectId: id })
+          });
+          const data = await res.json();
+          if (res.ok && data.success) {
+            const q = data.qualification;
+            const cell = document.getElementById('qual-cell-' + id);
+            const cClass = q.score >= 75
+              ? 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30'
+              : q.score >= 60
+              ? 'bg-amber-500/15 text-amber-300 border-amber-500/30'
+              : 'bg-rose-500/15 text-rose-400 border-rose-500/30';
+            if (cell) {
+              cell.innerHTML = '<div class="space-y-1"><div class="flex items-center gap-1.5"><span class="px-2 py-0.5 rounded text-[10px] font-bold font-mono border ' + cClass + '">' + q.score + '/100 ' + q.grade + '</span><button type="button" onclick="requalifyProspect(\\'' + id + '\\', this)" class="text-[10px] text-cyan-400 hover:underline font-mono cursor-pointer">↻ Score</button></div>' + (q.reviewCount ? '<div class="text-[10px] font-mono text-amber-300">★ ' + (q.googleRating || '4.8') + ' (' + q.reviewCount + ' rev)</div>' : '') + '</div>';
+            }
+            const row = document.querySelector('.prospect-row[data-id="' + id + '"]');
+            if (row) row.setAttribute('data-qual', q.score);
+            showToast('Lead Re-Scored', q.score + '/100 (' + q.tierLabel + ')', q.qualified ? 'success' : 'error');
+          } else {
+            showToast('Re-Score Error', data.message || 'Could not score domain', 'error');
+          }
+        } catch (e) {
+          showToast('Error', e.message, 'error');
+        } finally {
+          if (btnEl) {
+            btnEl.disabled = false;
+            btnEl.innerText = '↻ Score';
           }
         }
       }
@@ -2203,6 +2281,46 @@ ${escapeHtml(seq.text)}
           }
         }
       }
+
+      async function requalifyProspect(id, btnEl) {
+        if (btnEl) {
+          btnEl.disabled = true;
+          btnEl.innerText = '...';
+        }
+        try {
+          const res = await fetch(getAuthUrl('/outreach/requalify'), {
+            method: 'POST',
+            credentials: 'include',
+            headers: getAuthHeaders(),
+            body: JSON.stringify({ prospectId: id })
+          });
+          const data = await res.json();
+          if (res.ok && data.success) {
+            const q = data.qualification;
+            const cell = document.getElementById('qual-cell-' + id);
+            const cClass = q.score >= 75
+              ? 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30'
+              : q.score >= 60
+              ? 'bg-amber-500/15 text-amber-300 border-amber-500/30'
+              : 'bg-rose-500/15 text-rose-400 border-rose-500/30';
+            if (cell) {
+              cell.innerHTML = '<div class="space-y-1"><div class="flex items-center gap-1.5"><span class="px-2 py-0.5 rounded text-[10px] font-bold font-mono border ' + cClass + '">' + q.score + '/100 ' + q.grade + '</span><button type="button" onclick="requalifyProspect(\\'' + id + '\\', this)" class="text-[10px] text-cyan-400 hover:underline font-mono cursor-pointer">↻ Score</button></div>' + (q.reviewCount ? '<div class="text-[10px] font-mono text-amber-300">★ ' + (q.googleRating || '4.8') + ' (' + q.reviewCount + ' rev)</div>' : '') + '</div>';
+            }
+            const row = document.querySelector('.prospect-row[data-id="' + id + '"]');
+            if (row) row.setAttribute('data-qual', q.score);
+            showToast('Lead Re-Scored', q.score + '/100 (' + q.tierLabel + ')', q.qualified ? 'success' : 'error');
+          } else {
+            showToast('Re-Score Error', data.message || 'Could not score domain', 'error');
+          }
+        } catch (e) {
+          showToast('Error', e.message, 'error');
+        } finally {
+          if (btnEl) {
+            btnEl.disabled = false;
+            btnEl.innerText = '↻ Score';
+          }
+        }
+      }
     </script>
   `;
 
@@ -2746,7 +2864,52 @@ outreachRouter.post(['/delete', '/remove'], async (req, res) => {
   }
 });
 
-// 5. Manual trigger of queue worker
+// 5. Re-Qualify / Score an existing CRM Prospect (10-Second Eye Test + 100-Pt Rubric)
+outreachRouter.post('/requalify', async (req, res) => {
+  const { prospectId } = req.body || {};
+  if (!prospectId) {
+    return res.status(400).json({ success: false, message: 'Field "prospectId" is required' });
+  }
+
+  try {
+    const prospect = await getProspectById(prospectId);
+    if (!prospect) {
+      return res.status(404).json({ success: false, message: 'Prospect not found' });
+    }
+
+    const domainUrl = prospect.website_url || (prospect.email ? `https://${prospect.email.split('@')[1]}` : '');
+    if (!domainUrl) {
+      return res.status(400).json({ success: false, message: 'No website URL or domain available for prospect' });
+    }
+
+    const enriched = await huntAndEnrichLead({
+      url: domainUrl,
+      city: prospect.city || '',
+      niche: prospect.niche || 'hvac',
+      doctorOverride: prospect.doctor_name,
+      fast: false,
+    });
+
+    const qual = enriched.qualification;
+    const updated = await updateProspect(prospect.id, {
+      qual_score: qual.score,
+      qual_grade: qual.grade,
+      qual_status: qual.qualified ? 'qualified' : 'rejected',
+      qual_breakdown: qual,
+      review_count: qual.reviewCount,
+      google_rating: qual.googleRating,
+      fleet_size: qual.fleetSize,
+      phone: prospect.phone || enriched.phone || null,
+      specific_observation: prospect.specific_observation || enriched.specificObservation || null,
+    });
+
+    res.json({ success: true, qualification: qual, prospect: updated });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// 5b. Manual trigger of queue worker
 outreachRouter.post('/cron/trigger', async (req, res) => {
   try {
     const force = req.body?.force === true || req.query?.force === 'true';

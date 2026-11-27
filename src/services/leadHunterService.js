@@ -2,19 +2,20 @@ import * as cheerio from 'cheerio';
 import { fetchJinaMarkdown, runDigitalAudit } from './auditorService.js';
 import { addProspect, getProspectById, updateProspect, getProspects } from './outreachService.js';
 import { scrapeClinicWebsite, normalizeUrl } from './scraperService.js';
-import { qualifyLead, getQualificationBadge } from './qualifierService.js';
+import { qualifyLead, getQualificationBadge, DEFAULT_QUALIFY_THRESHOLD } from './qualifierService.js';
+import { sendTelegram } from './telegram.js';
 
-const USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36';
+const USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36';
 
 /**
- * High-Ticket Search Queries per Trade Niche (Emergency Services & High Replacement Tickets)
+ * High-Ticket Search Queries per Trade Niche (Real Contractor Sites > SEO Doorway Farms)
  */
 const NICHE_QUERIES = {
   hvac: [
+    'Heating and Air Conditioning HVAC Company',
+    'Family Owned HVAC Heating Cooling Contractor',
+    'AC Replacement and Furnace Repair',
     'Emergency HVAC Repair',
-    '24/7 AC Repair Commercial Heating',
-    'Air Conditioning Replacement Installation',
-    'Emergency Furnace and Heat Pump Repair',
   ],
   plumbing: [
     '24/7 Emergency Plumbing Repair',
@@ -458,114 +459,150 @@ const CURATED_TARGETS = {
     savannah: [
       { title: 'Canady\'s Heating & Air Savannah', url: 'https://canadys.com', city: 'Savannah, GA' },
     ],
-    // ── NEW HIGH-INCOME SUBURBAN MARKETS ──────────────────────────────
+    // ── NEW HIGH-INCOME SUBURBAN MARKETS (Verified Family-Owned Contractors) ────────────────
     carmel: [
-      { title: 'Morehart HVAC & Cooling Carmel IN', url: 'https://www.alltemperatureservices.com', city: 'Carmel, IN' },
-      { title: 'Summers Plumbing Heating & Cooling Carmel', url: 'https://www.summersphc.com', city: 'Carmel, IN' },
-      { title: 'Godby Heating Plumbing Electrical Carmel', url: 'https://www.godbyhpe.com', city: 'Carmel, IN' },
-      { title: 'Service Plus Heating Cooling Plumbing Carmel', url: 'https://www.serviceplusheating.com', city: 'Carmel, IN' },
+      { title: 'Family Heating & Air Conditioning Carmel IN', url: 'https://www.familyhvac.net', city: 'Carmel, IN' },
+      { title: 'Paul Henderson Plumbing Heating Air Carmel IN', url: 'https://paulhendersonplumbing.com', city: 'Carmel, IN' },
+      { title: 'Godby Heating Plumbing Electrical Carmel IN', url: 'https://www.godbyhpe.com', city: 'Carmel, IN' },
     ],
     zionsville: [
-      { title: 'Summers PHC Zionsville IN', url: 'https://www.summersphc.com', city: 'Zionsville, IN' },
-      { title: 'Godby HPE Zionsville IN', url: 'https://www.godbyhpe.com', city: 'Zionsville, IN' },
-      { title: 'ARS Rescue Rooter Indianapolis', url: 'https://www.ars.com', city: 'Zionsville, IN' },
+      { title: 'Earl Russell Heating & Cooling Zionsville IN', url: 'https://www.russellheatingandcooling.com', city: 'Zionsville, IN' },
+      { title: 'Family Heating & Air Zionsville IN', url: 'https://www.familyhvac.net', city: 'Zionsville, IN' },
+      { title: 'Paul Henderson Plumbing HVAC Zionsville IN', url: 'https://paulhendersonplumbing.com', city: 'Zionsville, IN' },
     ],
     dublin: [
-      { title: 'Columbus Worthington Air Dublin OH', url: 'https://www.worthingtonair.com', city: 'Dublin, OH' },
-      { title: 'Apex Plumbing Heating Air Dublin OH', url: 'https://www.apexohio.com', city: 'Dublin, OH' },
-      { title: 'Buckeye Heating Cooling Plumbing Dublin', url: 'https://www.buckeyeheatingcooling.com', city: 'Dublin, OH' },
-      { title: 'Five Star Home Services Dublin OH', url: 'https://www.fivestarohio.com', city: 'Dublin, OH' },
+      { title: 'Wind Bender Heating Cooling & Plumbing Dublin OH', url: 'https://windbenderohio.com', city: 'Dublin, OH' },
+      { title: 'TTM Mechanical HVAC Dublin OH', url: 'https://www.ttmmechanical.com', city: 'Dublin, OH' },
+      { title: 'Trinity Heating & Cooling Dublin OH', url: 'https://trinityheatcool.com', city: 'Dublin, OH' },
+      { title: 'Kendawgs Heating & Cooling Dublin OH', url: 'https://kdhvacair.com', city: 'Dublin, OH' },
+      { title: 'Five Star Heating & Cooling Group Dublin OH', url: 'https://fivestarheatingandcoolinggroup.com', city: 'Dublin, OH' },
     ],
     prosper: [
-      { title: 'Service Experts Heating & Air Prosper TX', url: 'https://www.serviceexperts.com', city: 'Prosper, TX' },
-      { title: 'AirOne Heating & Air Conditioning Prosper', url: 'https://www.air1hvac.com', city: 'Prosper, TX' },
-      { title: 'Frisco HVAC & Air Conditioning Prosper TX', url: 'https://www.friscoac.com', city: 'Prosper, TX' },
-      { title: 'Milestone Electric AC Plumbing Prosper TX', url: 'https://www.milestoneplumbing.com', city: 'Prosper, TX' },
+      { title: 'Crows Heat & Air Prosper TX', url: 'https://crowsheatandair.com', city: 'Prosper, TX' },
+      { title: 'Prosper Air Heating & Cooling Prosper TX', url: 'https://prosperair.com', city: 'Prosper, TX' },
+      { title: 'Matco Services Heating & Air Prosper TX', url: 'https://matcoservices.com', city: 'Prosper, TX' },
+      { title: 'Airmax Air Conditioning Prosper TX', url: 'https://www.airmaxac.com', city: 'Prosper, TX' },
     ],
     celina: [
-      { title: 'Service Experts HVAC Celina TX', url: 'https://www.serviceexperts.com', city: 'Celina, TX' },
-      { title: 'Milestone Electric AC & Plumbing Celina', url: 'https://www.milestoneplumbing.com', city: 'Celina, TX' },
-      { title: 'TDT Plumbing Celina TX', url: 'https://www.tdtplumbing.com', city: 'Celina, TX' },
+      { title: 'Crows Heat & Air Celina TX', url: 'https://crowsheatandair.com', city: 'Celina, TX' },
+      { title: 'Prosper Air Celina TX', url: 'https://prosperair.com', city: 'Celina, TX' },
+      { title: 'Bill Joplins Air Conditioning Celina TX', url: 'https://www.billjoplins.com', city: 'Celina, TX' },
     ],
     fulshear: [
-      { title: 'Abacus Plumbing Air Conditioning Fulshear TX', url: 'https://www.abacusplumbing.net', city: 'Fulshear, TX' },
-      { title: 'CoolPro AC & Heating Fulshear TX', url: 'https://www.coolproac.com', city: 'Fulshear, TX' },
-      { title: 'Clements Plumbing Fulshear TX', url: 'https://www.clementsplumbing.com', city: 'Fulshear, TX' },
-      { title: 'Rescue Air & Plumbing Fulshear', url: 'https://www.rescueairandplumbing.com', city: 'Fulshear, TX' },
+      { title: 'Vance Air & Heat Fulshear TX', url: 'https://vanceairandheat.com', city: 'Fulshear, TX' },
+      { title: 'AC Comfort Fulshear TX', url: 'https://accomfort.us', city: 'Fulshear, TX' },
     ],
     brentwood: [
-      { title: 'Lee Company 24/7 HVAC Brentwood TN', url: 'https://leecompany.com', city: 'Brentwood, TN' },
-      { title: 'Hiller Plumbing Heating & Air Brentwood', url: 'https://happyhiller.com', city: 'Brentwood, TN' },
+      { title: 'Rapid Response Heating & Cooling Brentwood TN', url: 'https://rapidhvactn.com', city: 'Brentwood, TN' },
+      { title: 'Brentwood Comfort Control Brentwood TN', url: 'https://brentwoodcomfort.net', city: 'Brentwood, TN' },
       { title: 'Covenant Heating & Cooling Brentwood TN', url: 'https://www.covenantheatingandcooling.com', city: 'Brentwood, TN' },
-      { title: 'ARS Rescue Rooter Nashville Brentwood', url: 'https://www.ars.com', city: 'Brentwood, TN' },
+      { title: 'Airstream Services Brentwood TN', url: 'https://airstreamteam.com', city: 'Brentwood, TN' },
     ],
   },
 };
 
+const DIRECTORY_OR_SPAM_DOMAINS = /(yelp\.com|groupon\.com|healthgrades\.com|yellowpages\.com|angi\.com|angieslist\.com|mapquest\.com|bbb\.org|facebook\.com|instagram\.com|tripadvisor\.com|expertise\.com|thumbtack\.com|indeed\.com|duckduckgo\.com|bing\.com|homeadvisor\.com|networx\.com|bark\.com|porch\.com|modernize\.com|threebestrated\.com|houzz\.com|nextdoor\.com|emergencyhvacservices\.com|emergency-hvac-repair\.com|hvacacrepair\.org|zaptheory\.com|topchoiceheatingairconditioningusa\.com|ama-hvac\.com|brentwoodhvacrepair\.com|near-me)/i;
+
 /**
- * Query search engines (DuckDuckGo HTML -> DuckDuckGo Lite -> Curated Fallbacks)
+ * Query search engines (Verified City Targets + DuckDuckGo HTML -> DuckDuckGo Lite -> Regional Pool)
  */
 export async function searchLocalBusinesses({ query, city = 'Los Angeles, CA', niche = 'hvac', limit = 5 }) {
-  const defaultQuery = NICHE_QUERIES[niche]?.[0] || 'Emergency HVAC Repair';
+  const defaultQuery = NICHE_QUERIES[niche]?.[0] || 'Heating and Air Conditioning HVAC Company';
   const fullQuery = `${query || defaultQuery} ${city}`.trim();
   console.log(`[LeadHunter] Searching local businesses: "${fullQuery}" (Limit: ${limit})...`);
 
   const rawResults = [];
 
-  // Strategy 1: Standard DuckDuckGo HTML
-  try {
-    const searchUrl = `https://html.duckduckgo.com/html/?q=${encodeURIComponent(fullQuery)}`;
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 3500);
+  // Resolve normalized cityKey upfront so curated verified local businesses are always prioritized
+  let cityKey = (city.toLowerCase().split(',')[0] || '').trim();
+  if (cityKey === 'nyc' || cityKey === 'manhattan') cityKey = 'new york';
+  if (cityKey === 'la') cityKey = 'los angeles';
+  if (cityKey === 'dfw' || cityKey === 'fort worth') cityKey = 'dallas';
+  if (cityKey === 'scottsdale') cityKey = 'phoenix';
+  if (cityKey === 'sf' || cityKey === 'bay area') cityKey = 'san francisco';
+  if (cityKey === 'philly') cityKey = 'philadelphia';
+  if (cityKey === 'dc' || cityKey === 'washington') cityKey = 'washington dc';
+  if (cityKey === 'vegas') cityKey = 'las vegas';
+  if (cityKey === 'carmel' || cityKey === 'carmel & zionsville') cityKey = 'carmel';
+  if (cityKey === 'zionsville') cityKey = 'zionsville';
+  if (cityKey === 'dublin') cityKey = 'dublin';
+  if (cityKey === 'prosper' || cityKey === 'prosper & celina') cityKey = 'prosper';
+  if (cityKey === 'celina') cityKey = 'celina';
+  if (cityKey === 'fulshear') cityKey = 'fulshear';
+  if (cityKey === 'brentwood') cityKey = 'brentwood';
 
-    const res = await fetch(searchUrl, {
-      signal: controller.signal,
-      headers: {
-        'User-Agent': USER_AGENT,
-        Accept: 'text/html,application/xhtml+xml',
-        'Accept-Language': 'en-US,en;q=0.9',
-      },
-    });
+  const targetsDict = CURATED_TARGETS[niche] || CURATED_TARGETS['hvac'] || {};
+  const primaryCityList = targetsDict[cityKey] || CURATED_TARGETS['hvac']?.[cityKey] || [];
 
-    clearTimeout(timer);
-    if (res.ok) {
-      const html = await res.text();
-      const $ = cheerio.load(html);
-
-      $('.result').each((i, el) => {
-        if (rawResults.length >= limit * 2) return;
-
-        const title = $(el).find('.result__title a').text().trim();
-        let rawHref = $(el).find('.result__title a').attr('href') || '';
-        const snippet = $(el).find('.result__snippet').text().trim();
-
-        if (rawHref.includes('uddg=')) {
-          try {
-            const match = rawHref.match(/uddg=([^&]+)/);
-            if (match) rawHref = decodeURIComponent(match[1]);
-          } catch (e) {}
-        }
-
-        if (!rawHref.startsWith('http')) return;
-
-        const isDirectory = /(yelp\.com|groupon\.com|healthgrades\.com|yellowpages\.com|angi\.com|mapquest\.com|bbb\.org|facebook\.com|instagram\.com|tripadvisor\.com|expertise\.com|thumbtack\.com|indeed\.com|duckduckgo\.com)/i.test(rawHref);
-        if (isDirectory) return;
-
-        const normalized = normalizeUrl(rawHref);
-        if (!normalized) return;
-
-        if (!rawResults.some((r) => r.url === normalized)) {
-          rawResults.push({ title, url: normalized, snippet, city, niche });
-        }
+  // Seed verified city-matched targets first so SEO spam farms never crowd out real contractors
+  for (const c of primaryCityList) {
+    if (rawResults.length >= limit) break;
+    const norm = normalizeUrl(c.url);
+    if (norm && !rawResults.some((r) => r.url === norm)) {
+      rawResults.push({
+        title: c.title,
+        url: norm,
+        snippet: `${c.title} - Verified Local Contractor in ${c.city}`,
+        city: c.city,
+        niche,
       });
     }
-  } catch (err) {
-    console.warn('[LeadHunter] DDG standard search warning:', err.message);
   }
 
-  // Strategy 2: DuckDuckGo Lite Fallback if standard HTML was blocked
-  if (rawResults.length === 0) {
-    console.log('[LeadHunter] DDG standard returned 0. Trying DuckDuckGo Lite fallback...');
+  // Strategy 1: Standard DuckDuckGo HTML (filtered against directories & doorway spam)
+  if (rawResults.length < limit) {
+    try {
+      const searchUrl = `https://html.duckduckgo.com/html/?q=${encodeURIComponent(fullQuery)}`;
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 3500);
+
+      const res = await fetch(searchUrl, {
+        signal: controller.signal,
+        headers: {
+          'User-Agent': USER_AGENT,
+          Accept: 'text/html,application/xhtml+xml',
+          'Accept-Language': 'en-US,en;q=0.9',
+        },
+      });
+
+      clearTimeout(timer);
+      if (res.ok) {
+        const html = await res.text();
+        const $ = cheerio.load(html);
+
+        $('.result').each((i, el) => {
+          if (rawResults.length >= limit * 2) return;
+
+          const title = $(el).find('.result__title a').text().trim();
+          let rawHref = $(el).find('.result__title a').attr('href') || '';
+          const snippet = $(el).find('.result__snippet').text().trim();
+
+          if (rawHref.includes('uddg=')) {
+            try {
+              const match = rawHref.match(/uddg=([^&]+)/);
+              if (match) rawHref = decodeURIComponent(match[1]);
+            } catch (e) {}
+          }
+
+          if (!rawHref.startsWith('http')) return;
+          if (DIRECTORY_OR_SPAM_DOMAINS.test(rawHref)) return;
+
+          const normalized = normalizeUrl(rawHref);
+          if (!normalized) return;
+
+          if (!rawResults.some((r) => r.url === normalized)) {
+            rawResults.push({ title, url: normalized, snippet, city, niche });
+          }
+        });
+      }
+    } catch (err) {
+      console.warn('[LeadHunter] DDG standard search warning:', err.message);
+    }
+  }
+
+  // Strategy 2: DuckDuckGo Lite Fallback if still below limit
+  if (rawResults.length < limit) {
+    console.log('[LeadHunter] Trying DuckDuckGo Lite for additional local contractors...');
     try {
       const controllerLite = new AbortController();
       const timerLite = setTimeout(() => controllerLite.abort(), 3500);
@@ -596,9 +633,7 @@ export async function searchLocalBusinesses({ query, city = 'Los Angeles, CA', n
           }
 
           if (!href.startsWith('http')) return;
-
-          const isDir = /(yelp\.com|groupon\.com|healthgrades\.com|yellowpages\.com|angi\.com|mapquest\.com|bbb\.org|facebook\.com|instagram\.com|tripadvisor\.com|expertise\.com|thumbtack\.com|indeed\.com|duckduckgo\.com|bing\.com)/i.test(href);
-          if (isDir) return;
+          if (DIRECTORY_OR_SPAM_DOMAINS.test(href)) return;
 
           const norm = normalizeUrl(href);
           if (norm && !rawResults.some((r) => r.url === norm)) {
@@ -611,57 +646,26 @@ export async function searchLocalBusinesses({ query, city = 'Los Angeles, CA', n
     }
   }
 
-  // Strategy 3: Curated Geographic High-Ticket Targets (Used if search engine blocks cloud IP or to guarantee batch size up to 20)
+  // Strategy 3: Regional Curated Overflow Pool if needed to fulfill target candidate buffer
   if (rawResults.length < limit) {
-    console.log(`[LeadHunter] Pooling regional targets to fulfill batch requirement of ${limit} leads...`);
-    let cityKey = (city.toLowerCase().split(',')[0] || '').trim();
-    if (cityKey === 'nyc' || cityKey === 'manhattan') cityKey = 'new york';
-    if (cityKey === 'la') cityKey = 'los angeles';
-    if (cityKey === 'dfw' || cityKey === 'fort worth') cityKey = 'dallas';
-    if (cityKey === 'scottsdale') cityKey = 'phoenix';
-    if (cityKey === 'sf' || cityKey === 'bay area') cityKey = 'san francisco';
-    if (cityKey === 'philly') cityKey = 'philadelphia';
-    if (cityKey === 'dc' || cityKey === 'washington') cityKey = 'washington dc';
-    if (cityKey === 'vegas') cityKey = 'las vegas';
-    if (cityKey === 'carmel' || cityKey === 'carmel & zionsville') cityKey = 'carmel';
-    if (cityKey === 'zionsville') cityKey = 'zionsville';
-    if (cityKey === 'dublin') cityKey = 'dublin';
-    if (cityKey === 'prosper' || cityKey === 'prosper & celina') cityKey = 'prosper';
-    if (cityKey === 'celina') cityKey = 'celina';
-    if (cityKey === 'fulshear') cityKey = 'fulshear';
-    if (cityKey === 'brentwood') cityKey = 'brentwood';
-
-    const targetsDict = CURATED_TARGETS[niche] || CURATED_TARGETS['hvac'] || {};
-    const primaryList = targetsDict[cityKey] || CURATED_TARGETS['hvac']?.[cityKey] || [];
-    const pool = [...primaryList];
-
-    // If limit exceeds the targets of the primary city, pool sister cities from the same niche
-    if (pool.length < limit) {
-      const allKeys = Object.keys(targetsDict);
-      for (const k of allKeys) {
-        if (pool.length >= limit) break;
-        if (k === cityKey) continue;
-        const extra = targetsDict[k] || [];
-        for (const item of extra) {
-          if (!pool.some((p) => p.url === item.url)) {
-            pool.push(item);
-            if (pool.length >= limit) break;
-          }
-        }
-      }
-    }
-
-    for (const c of pool) {
+    console.log(`[LeadHunter] Pooling regional targets to reach ${limit} candidates...`);
+    const allKeys = Object.keys(targetsDict);
+    for (const k of allKeys) {
       if (rawResults.length >= limit) break;
-      const norm = normalizeUrl(c.url);
-      if (norm && !rawResults.some((r) => r.url === norm)) {
-        rawResults.push({
-          title: c.title,
-          url: norm,
-          snippet: `${c.title} - High-Ticket Service Center in ${c.city}`,
-          city: c.city,
-          niche,
-        });
+      if (k === cityKey) continue;
+      const extra = targetsDict[k] || [];
+      for (const item of extra) {
+        const norm = normalizeUrl(item.url);
+        if (norm && !rawResults.some((r) => r.url === norm)) {
+          rawResults.push({
+            title: item.title,
+            url: norm,
+            snippet: `${item.title} - High-Ticket Service Center in ${item.city}`,
+            city: item.city,
+            niche,
+          });
+          if (rawResults.length >= limit) break;
+        }
       }
     }
   }
@@ -671,15 +675,29 @@ export async function searchLocalBusinesses({ query, city = 'Los Angeles, CA', n
 }
 
 /**
- * Enrich a raw scraped lead with decision-maker name, direct email, phone, and run digital audit
+ * Enrich a raw scraped lead, run digital audit, and evaluate 100-pt qualification gate
  */
-export async function huntAndEnrichLead({ url, city, niche = 'hvac', doctorOverride, treatmentOverride, businessNameOverride, fast = false }) {
-  console.log(`[LeadHunter] Enriching & Auditing: ${url} (${niche})...`);
+export async function huntAndEnrichLead({
+  url,
+  city,
+  niche = 'hvac',
+  doctorOverride,
+  treatmentOverride,
+  businessNameOverride,
+  fast = false,
+  minScore = DEFAULT_QUALIFY_THRESHOLD,
+}) {
+  console.log(`[LeadHunter] Enriching & Qualifying: ${url} (${niche})...`);
 
-  // 1. Scrape domain for decision maker, emails, phones, and ad tracking pixels
-  let scraped = await scrapeClinicWebsite(url, { fast, niche });
+  // 1. Scrape domain (direct HTML -> www swap -> Jina fallback + /about subpage)
+  let scraped = null;
+  try {
+    scraped = await scrapeClinicWebsite(url, { fast, niche });
+  } catch (scrapeErr) {
+    console.warn(`[LeadHunter] scrapeClinicWebsite exception for ${url}:`, scrapeErr.message);
+    scraped = null;
+  }
 
-  // Graceful fallback for domains protected by Cloudflare/firewall so high-ticket leads are never dropped
   if (!scraped || !scraped.success) {
     let fallbackName = businessNameOverride;
     if (!fallbackName) {
@@ -690,7 +708,6 @@ export async function huntAndEnrichLead({ url, city, niche = 'hvac', doctorOverr
         fallbackName = 'Local Service Center';
       }
     }
-    // Clean up title noise
     fallbackName = fallbackName.split(/[-|•–]/)[0].trim();
 
     const isTradeSite = niche !== 'medspa';
@@ -702,9 +719,13 @@ export async function huntAndEnrichLead({ url, city, niche = 'hvac', doctorOverr
       fallbackEmail = `info@${hostname}`;
     } catch (e) {}
 
+    // Even when unreachable, check domain against PE chain patterns so chains never sneak through
+    const chainCheck = detectFallbackChain(url, fallbackName);
+
     scraped = {
       success: true,
       url,
+      dataSource: 'unreachable_fallback',
       clinicName: fallbackName,
       doctorName: doctorOverride || fallbackTitle,
       email: fallbackEmail,
@@ -714,78 +735,95 @@ export async function huntAndEnrichLead({ url, city, niche = 'hvac', doctorOverr
       treatment: treatmentOverride || fallbackTreatment,
       allTreatments: [fallbackTreatment],
       adSignals: { hasPaidAds: false, metaPixel: false, googleAds: false, tikTokPixel: false, source: 'fallback_unverified' },
+      multiLocation: chainCheck,
       rawHtml: null,
+      visibleText: '',
+      hasHtmlForm: false,
+      hasLiveScheduler: false,
+      jsonLd: null,
     };
   }
 
-  // 2. Decision Maker fallback extraction
+  // 2. Decision Maker resolution
   let decisionMaker = doctorOverride || scraped.doctorName;
   const isTradeSite = niche !== 'medspa';
   if (!decisionMaker || decisionMaker === 'Doctor' || (isTradeSite && (decisionMaker.includes('Medical Director') || decisionMaker.includes('Doctor')))) {
-    if (isTradeSite) {
-      decisionMaker = `Owner / Operations Lead at ${scraped.clinicName || 'Company'}`;
-    } else {
-      decisionMaker = `Medical Director at ${scraped.clinicName || 'Clinic'}`;
-    }
+    decisionMaker = isTradeSite
+      ? `Owner / Operations Lead at ${scraped.clinicName || 'Company'}`
+      : `Medical Director at ${scraped.clinicName || 'Clinic'}`;
   }
 
-  // 3. Run The Auditor (Speed-to-lead & Friction Diagnostics)
+  // 3. Run The Auditor using already-downloaded HTML or visible text (0 extra latency when available)
   const audit = await runDigitalAudit({
     url,
     niche,
     businessName: scraped.clinicName,
     doctorName: decisionMaker,
-    htmlContent: scraped.rawHtml,
+    htmlContent: scraped.rawHtml || scraped.visibleText || null,
   });
 
   let primaryTreatment = treatmentOverride || audit.primaryService || scraped.treatment;
   const TRADE_VALID_SERVICES = [
-    'Emergency AC Repair', 'HVAC Replacement', 'Heat Pump Repair', 'Furnace Maintenance',
-    'Ductless Mini-Split', 'Commercial Refrigeration', 'Emergency Plumbing', 'Emergency AC & Heating Repair',
-    'Air Conditioning Repair Replacement', 'Water Heater Replacement', 'Drain Cleaning', 'Emergency Roof Repair',
-    'Roof Replacement', 'Emergency Electrician', 'Panel Upgrade', 'Water Damage Restoration', 'Emergency Service Calls'
+    'Emergency AC Repair', 'HVAC Replacement', 'HVAC System Replacement', 'Heat Pump Repair', 'Furnace Maintenance',
+    'Furnace Installation', 'Ductless Mini-Split', 'Commercial Refrigeration', 'Emergency Plumbing', 'Emergency AC & Heating Repair',
+    'AC Replacement & Installation', 'Water Heater Replacement', 'Drain Cleaning', 'Emergency Roof Repair',
+    'Roof Replacement', 'Emergency Electrician', 'Panel Upgrade', 'Backup Generator Installation', 'Water Damage Restoration', 'Emergency Service Calls'
   ];
   if (isTradeSite) {
-    const isValid = TRADE_VALID_SERVICES.some(t => primaryTreatment && primaryTreatment.toLowerCase().includes(t.toLowerCase()));
+    const isValid = TRADE_VALID_SERVICES.some((t) => primaryTreatment && primaryTreatment.toLowerCase().includes(t.toLowerCase()));
     if (!primaryTreatment || !isValid) {
-      primaryTreatment = niche === 'plumbing'
-        ? 'Emergency Plumbing & Water Heater Repair'
-        : niche === 'roofing'
-        ? 'Emergency Roof Repair & Replacement'
-        : niche === 'electrical'
-        ? '24/7 Emergency Electrical Service'
-        : niche === 'water_damage'
-        ? 'Emergency Water Damage Restoration'
-        : 'Emergency AC & Heating Repair';
+      primaryTreatment =
+        niche === 'plumbing'
+          ? 'Emergency Plumbing & Water Heater Repair'
+          : niche === 'roofing'
+          ? 'Emergency Roof Repair & Replacement'
+          : niche === 'electrical'
+          ? '24/7 Emergency Electrical Service'
+          : niche === 'water_damage'
+          ? 'Emergency Water Damage Restoration'
+          : 'Emergency AC & Heating Repair';
     }
   }
 
-  // 4. Construct direct email or fallback domain email so clinics with verified phones are never discarded
+  // 4. Construct direct email (or fallback domain email if phone is verified)
   let finalEmail = scraped.email;
-  if (!finalEmail && scraped.url) {
+  if (!finalEmail && scraped.phone && scraped.url) {
     try {
       const hostname = new URL(scraped.url).hostname.replace(/^www\./, '');
       finalEmail = `info@${hostname}`;
     } catch (e) {}
   }
 
-  // ── 5. Run 10-Second Eye Test + 100-Point Qualification Score ───────────────
+  // 5. Run 10-Second Eye Test + 100-Point Rate Qualification Engine
   const enrichedForQual = {
+    url: scraped.url,
+    dataSource: scraped.dataSource,
+    clinicName: scraped.clinicName,
     doctorName: decisionMaker,
     phone: scraped.phone,
     email: finalEmail,
+    treatment: primaryTreatment,
+    allTreatments: scraped.allTreatments || [],
     adSignals: scraped.adSignals,
     multiLocation: scraped.multiLocation || { isMultiLocation: false },
+    jsonLd: scraped.jsonLd || null,
+    hasHtmlForm: scraped.hasHtmlForm,
+    hasLiveScheduler: scraped.hasLiveScheduler,
+    visibleText: scraped.visibleText || '',
     rawHtml: scraped.rawHtml || null,
   };
-  const qualification = qualifyLead(enrichedForQual, {
-    hasStaticForm: audit.hasStaticForm,
-    hasVoicemailComplaint: audit.hasVoicemailComplaint,
-    mentionsAfterHours: audit.mentionsAfterHours,
-  });
+  const qualification = qualifyLead(
+    enrichedForQual,
+    {
+      hasStaticForm: audit.hasStaticForm || (scraped.hasHtmlForm && !scraped.hasLiveScheduler),
+      hasVoicemailComplaint: audit.hasVoicemailComplaint,
+      mentionsAfterHours: audit.mentionsAfterHours,
+    },
+    minScore
+  );
 
   const badge = getQualificationBadge(qualification);
-  console.log(`[Qualifier] ${scraped.clinicName}: ${badge}`);
+  console.log(`[Qualifier] ${scraped.clinicName} (${scraped.url}): ${badge}`);
   if (!qualification.qualified) {
     console.log(`[Qualifier] REJECTED — Reasons: ${qualification.disqualifyReasons.join(' | ')}`);
   }
@@ -793,13 +831,14 @@ export async function huntAndEnrichLead({ url, city, niche = 'hvac', doctorOverr
   return {
     success: true,
     url: scraped.url,
+    dataSource: scraped.dataSource,
     clinicName: scraped.clinicName,
     doctorName: decisionMaker,
     salutation: scraped.salutation || null,
     email: finalEmail,
     allEmails: scraped.allEmails,
     phone: scraped.phone,
-    city: city || scraped.city,
+    city: city && !city.toLowerCase().includes('undefined') ? city : scraped.city,
     treatment: primaryTreatment,
     niche,
     adSignals: scraped.adSignals,
@@ -807,33 +846,52 @@ export async function huntAndEnrichLead({ url, city, niche = 'hvac', doctorOverr
     socialSignals: scraped.socialSignals || { hasGmb: false, hasInstagram: false, hasFacebook: false, summary: 'Organic Direct' },
     specificObservation: audit.specificObservation,
     recommendedAngle: audit.recommendedAngle,
-    hasStaticForm: audit.hasStaticForm,
+    hasStaticForm: audit.hasStaticForm || scraped.hasHtmlForm,
     qualification,
+  };
+}
+
+function detectFallbackChain(url = '', name = '') {
+  const s = `${url} ${name}`.toLowerCase();
+  const hit = /(ars\.com|rescue rooter|serviceexperts|rotorooter|roto-rooter|happyhiller|leecompany|onehour|benjaminfranklin|mistersparky|mrrooter|aireserv|goettl|fourseasonsheatingcooling|morrisjenkins|summersphc|premierishere)/i.test(
+    s
+  );
+  return {
+    isMultiLocation: hit,
+    reason: hit ? 'National / multi-location PE chain domain' : 'Unverified domain',
   };
 }
 
 /**
  * Deduplicate against Supabase and save enriched lead as RAW_LEAD (pending) in 1 round-trip.
- * QUALIFICATION GATE: Only commits leads that passed the 100-pt scoring rubric (score ≥ 60).
+ * STRICT QUALIFICATION GATE: Only commits leads with qualification.qualified === true.
  */
 export async function commitLeadToSupabase(enrichedLead, existingProspectsMap) {
-  if (!enrichedLead || !enrichedLead.email) {
+  // ── QUALIFICATION GATE (Runs first so rejected chains/junk are always tagged disqualified) ──
+  const qual = enrichedLead?.qualification;
+  if (!qual || !qual.qualified) {
     return {
       success: false,
-      message: 'Cannot commit to Supabase: No direct email found.',
+      disqualified: true,
+      score: qual?.score ?? 0,
+      grade: qual?.grade ?? 'F',
+      message: `Lead REJECTED (${qual?.score ?? 0}/100 — ${qual?.grade ?? 'F'}): ${(qual?.disqualifyReasons || ['Failed qualification gate']).join('; ')}`,
       lead: enrichedLead,
     };
   }
 
-  // ── QUALIFICATION GATE ───────────────────────────────────────────────────────
-  const qual = enrichedLead.qualification;
-  if (qual && !qual.qualified) {
+  if (!enrichedLead || (!enrichedLead.email && !enrichedLead.phone)) {
     return {
       success: false,
-      disqualified: true,
-      score: qual.score,
-      grade: qual.grade,
-      message: `Lead REJECTED (${qual.score}/100 — ${qual.grade}): ${qual.disqualifyReasons.join('; ')}`,
+      message: 'Cannot commit to Supabase: No email or phone found.',
+      lead: enrichedLead,
+    };
+  }
+
+  if (!enrichedLead.email) {
+    return {
+      success: false,
+      message: 'Qualified lead has phone only; domain email unavailable.',
       lead: enrichedLead,
     };
   }
@@ -843,31 +901,41 @@ export async function commitLeadToSupabase(enrichedLead, existingProspectsMap) {
   // Deduplication check: in-memory map or query
   const existing = existingProspectsMap ? existingProspectsMap.get(normalizedEmail) : await getProspectById(normalizedEmail);
   if (existing) {
-    // If it exists, update specific_observation and recommended_angle if missing
+    const patch = {};
     if (!existing.specific_observation && enrichedLead.specificObservation) {
-      await updateProspect(existing.id, {
-        specific_observation: enrichedLead.specificObservation,
-        recommended_angle: enrichedLead.recommendedAngle,
-        website_url: enrichedLead.url,
-        phone: enrichedLead.phone,
-        niche: enrichedLead.niche,
-      });
+      patch.specific_observation = enrichedLead.specificObservation;
+      patch.recommended_angle = enrichedLead.recommendedAngle;
+    }
+    if (!existing.phone && enrichedLead.phone) patch.phone = enrichedLead.phone;
+    if (!existing.website_url && enrichedLead.url) patch.website_url = enrichedLead.url;
+    if (existing.qual_score === null || existing.qual_score === undefined) {
+      patch.qual_score = qual.score;
+      patch.qual_grade = qual.grade;
+      patch.qual_status = 'qualified';
+      patch.qual_breakdown = qual;
+      patch.review_count = qual.reviewCount;
+      patch.google_rating = qual.googleRating;
+      patch.fleet_size = qual.fleetSize;
+    }
+    if (Object.keys(patch).length > 0) {
+      await updateProspect(existing.id, patch);
     }
 
     return {
       success: false,
       alreadyExists: true,
-      message: `Prospect ${normalizedEmail} already exists in Supabase.`,
+      message: `Prospect ${normalizedEmail} already exists in Supabase (${qual.score}/100 ${qual.grade}).`,
       prospect: existing,
     };
   }
 
   // Insert into Supabase public.prospects in 1 single round-trip
-  const chainTag = enrichedLead.multiLocation?.isMultiLocation ? 'CHAIN' : 'Single-Location';
+  const chainTag = qual.isFamilyOwned ? 'Family-Owned' : 'Single-Location';
   const gmbTag = enrichedLead.socialSignals?.hasGmb ? 'GMB:✓' : 'GMB:○';
-  const igTag = enrichedLead.socialSignals?.hasInstagram ? 'IG:✓' : 'IG:○';
-  const qualScore = qual ? ` | QualScore:${qual.score}/100(${qual.grade})` : '';
-  const notes = `Hunter: ${chainTag} | ${gmbTag} | ${igTag} | Ads: ${enrichedLead.adSignals?.hasPaidAds ? 'ACTIVE' : 'Organic'} | Phone: ${enrichedLead.phone || 'N/A'}${qualScore}`;
+  const revTag = qual.reviewCount ? `${qual.reviewCount} revs${qual.googleRating ? ` (${qual.googleRating}★)` : ''}` : 'Revs:N/A';
+  const notes = `Hunter: ${chainTag} | ${gmbTag} | ${revTag} | Ads: ${qual.breakdown?.adSpend?.pass ? 'ACTIVE' : 'Organic'} | Phone: ${
+    enrichedLead.phone || 'N/A'
+  } | Qual:${qual.score}/100(${qual.grade})`;
 
   const addResult = await addProspect({
     doctorName: enrichedLead.doctorName,
@@ -880,7 +948,14 @@ export async function commitLeadToSupabase(enrichedLead, existingProspectsMap) {
     specific_observation: enrichedLead.specificObservation,
     recommended_angle: enrichedLead.recommendedAngle,
     website_url: enrichedLead.url,
-    niche: enrichedLead.niche || 'medspa',
+    niche: enrichedLead.niche || 'hvac',
+    qual_score: qual.score,
+    qual_grade: qual.grade,
+    qual_status: 'qualified',
+    qual_breakdown: qual,
+    review_count: qual.reviewCount,
+    google_rating: qual.googleRating,
+    fleet_size: qual.fleetSize,
   });
 
   if (!addResult.success) {
@@ -898,14 +973,22 @@ export async function commitLeadToSupabase(enrichedLead, existingProspectsMap) {
 }
 
 /**
- * Full Autonomous Lead Hunter Execution: Search -> Enrich -> Audit -> Deduplicate -> Commit
+ * Full Autonomous Lead Hunter Execution: Search -> Enrich -> Qualify (Eye Test + 100-Pt Gate) -> Deduplicate -> Commit
  */
-export async function runAutonomousHunt({ city = 'Los Angeles, CA', niche = 'hvac', query, limit = 5 }) {
+export async function runAutonomousHunt({
+  city = 'Los Angeles, CA',
+  niche = 'hvac',
+  query,
+  limit = 5,
+  minScore = DEFAULT_QUALIFY_THRESHOLD,
+  notifyTelegram = true,
+}) {
   const targetLimit = Math.min(Math.max(Number(limit) || 5, 1), 40);
-  console.log(`[LeadHunter] Starting Autonomous Hunt for ${niche} in ${city} (Target: ${targetLimit})...`);
+  const threshold = Math.min(Math.max(Number(minScore) || DEFAULT_QUALIFY_THRESHOLD, 0), 100);
+  console.log(`[LeadHunter] Starting Qualified Hunt for ${niche} in ${city} (Target Qualified: ${targetLimit}, Min Score: ${threshold}/100)...`);
 
-  // Step 1: Search with candidate buffer (targetLimit * 2) so domain timeouts don't starve batch size
-  const candidateTarget = Math.min(Math.max(targetLimit * 2, targetLimit + 4), 60);
+  // Fetch extra candidates so rejecting unqualified leads still reaches qualified quota
+  const candidateTarget = Math.min(Math.max(targetLimit * 3, targetLimit + 8), 45);
   const businesses = await searchLocalBusinesses({ query, city, niche, limit: candidateTarget });
   if (!businesses || businesses.length === 0) {
     return {
@@ -913,11 +996,12 @@ export async function runAutonomousHunt({ city = 'Los Angeles, CA', niche = 'hva
       message: `No eligible non-directory domains found for ${city} query.`,
       city,
       niche,
+      minScore: threshold,
       leads: [],
     };
   }
 
-  // Pre-load all existing prospect emails in 1 single Supabase call (50ms) to eliminate N+1 latency
+  // Pre-load all existing prospect emails in 1 single Supabase call
   let existingEmailMap = null;
   try {
     const allExisting = await getProspects({ limit: 1000 });
@@ -929,61 +1013,91 @@ export async function runAutonomousHunt({ city = 'Los Angeles, CA', niche = 'hva
     console.warn('[LeadHunter] Pre-load map warning:', e.message);
   }
 
-  // Step 2 & 3: Concurrently Enrich, Audit & Commit in parallel
-  // Fast mode + in-memory HTML parsing + 1-trip inserts ensure all leads qualify rapidly
-  const enrichmentPromises = businesses.map(async (item) => {
-    try {
-      const enriched = await Promise.race([
-        huntAndEnrichLead({
-          url: item.url,
-          city: item.city,
-          niche: item.niche,
-          businessNameOverride: item.title,
-          fast: true,
-        }),
-        new Promise((_, reject) => setTimeout(() => reject(new Error('Domain timeout (8s)')), 8000)),
-      ]);
-
-      if (enriched && enriched.success) {
-        // Commit with single-trip deduplication + qualification gate
-        const commitRes = await commitLeadToSupabase(enriched, existingEmailMap);
-        enriched.savedToDb = commitRes.success;
-        enriched.dbStatus = commitRes.alreadyExists
-          ? 'duplicate'
-          : commitRes.disqualified
-          ? 'disqualified'
-          : commitRes.success
-          ? 'saved'
-          : 'no_email';
-        return { success: true, lead: enriched, committed: commitRes.success, disqualified: !!commitRes.disqualified };
-      }
-    } catch (err) {
-      console.warn(`[LeadHunter] Failed to process ${item.url}:`, err.message);
-    }
-    return { success: false, url: item.url };
-  });
-
-  const settled = await Promise.allSettled(enrichmentPromises);
   const enrichedLeads = [];
   let committedCount = 0;
   let disqualifiedCount = 0;
+  let duplicateCount = 0;
+  let evaluatedCount = 0;
 
-  for (const res of settled) {
-    if (res.status === 'fulfilled' && res.value?.success && res.value.lead) {
-      enrichedLeads.push(res.value.lead);
-      if (res.value.committed) committedCount++;
-      if (res.value.disqualified) disqualifiedCount++;
-      if (enrichedLeads.length >= targetLimit) break;
+  // Evaluate in clean waves of 5 concurrent domains until targetLimit NEW qualified leads committed or pool exhausted
+  const WAVE_SIZE = 5;
+  for (let i = 0; i < businesses.length; i += WAVE_SIZE) {
+    if (committedCount >= targetLimit) break;
+
+    const wave = businesses.slice(i, i + WAVE_SIZE);
+    const waveResults = await Promise.allSettled(
+      wave.map(async (item) => {
+        try {
+          const enriched = await Promise.race([
+            huntAndEnrichLead({
+              url: item.url,
+              city: item.city,
+              niche: item.niche,
+              businessNameOverride: item.title,
+              fast: false,
+              minScore: threshold,
+            }),
+            new Promise((_, reject) => setTimeout(() => reject(new Error('Domain timeout (14s)')), 14000)),
+          ]);
+
+          if (enriched && enriched.success) {
+            const commitRes = await commitLeadToSupabase(enriched, existingEmailMap);
+            enriched.savedToDb = commitRes.success;
+            enriched.dbStatus = commitRes.alreadyExists
+              ? 'duplicate'
+              : commitRes.disqualified
+              ? 'disqualified'
+              : commitRes.success
+              ? 'saved'
+              : 'no_email';
+            return { success: true, lead: enriched, committed: commitRes.success, disqualified: !!commitRes.disqualified, duplicate: !!commitRes.alreadyExists };
+          }
+        } catch (err) {
+          console.warn(`[LeadHunter] Failed to process ${item.url}:`, err.message);
+        }
+        return { success: false, url: item.url };
+      })
+    );
+
+    for (const res of waveResults) {
+      evaluatedCount++;
+      if (res.status === 'fulfilled' && res.value?.success && res.value.lead) {
+        enrichedLeads.push(res.value.lead);
+        if (res.value.committed) committedCount++;
+        if (res.value.disqualified) disqualifiedCount++;
+        if (res.value.duplicate) duplicateCount++;
+      }
     }
+  }
+
+  // Send Telegram summary when new qualified leads are committed
+  if (committedCount > 0 && notifyTelegram) {
+    const qualifiedList = enrichedLeads.filter((l) => l.savedToDb);
+    const avgScore = Math.round(
+      qualifiedList.reduce((acc, l) => acc + (l.qualification?.score || 0), 0) / Math.max(qualifiedList.length, 1)
+    );
+    const topLines = qualifiedList
+      .slice(0, 5)
+      .map((l) => `• *${l.clinicName}* — ${l.qualification?.score}/100 (${l.qualification?.grade})`)
+      .join('\n');
+    sendTelegram(
+      `🎯 *Lead Hunter Qualified Batch (${city})*\n\n` +
+        `✅ Committed to CRM: *${committedCount}* (Avg Score: ${avgScore}/100)\n` +
+        `❌ Rejected by Qualifier: ${disqualifiedCount}\n` +
+        `♻️ Already in CRM: ${duplicateCount}\n\n${topLines}`
+    ).catch(() => {});
   }
 
   return {
     success: true,
     city,
     niche,
+    minScore: threshold,
     totalSearched: businesses.length,
+    evaluatedCount,
     committedCount,
     disqualifiedCount,
+    duplicateCount,
     leads: enrichedLeads,
   };
 }
