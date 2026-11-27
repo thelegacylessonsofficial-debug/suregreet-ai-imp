@@ -2,6 +2,7 @@ import * as cheerio from 'cheerio';
 import { fetchJinaMarkdown, runDigitalAudit } from './auditorService.js';
 import { addProspect, getProspectById, updateProspect, getProspects } from './outreachService.js';
 import { scrapeClinicWebsite, normalizeUrl } from './scraperService.js';
+import { qualifyLead, getQualificationBadge } from './qualifierService.js';
 
 const USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36';
 
@@ -768,6 +769,27 @@ export async function huntAndEnrichLead({ url, city, niche = 'hvac', doctorOverr
     } catch (e) {}
   }
 
+  // ── 5. Run 10-Second Eye Test + 100-Point Qualification Score ───────────────
+  const enrichedForQual = {
+    doctorName: decisionMaker,
+    phone: scraped.phone,
+    email: finalEmail,
+    adSignals: scraped.adSignals,
+    multiLocation: scraped.multiLocation || { isMultiLocation: false },
+    rawHtml: scraped.rawHtml || null,
+  };
+  const qualification = qualifyLead(enrichedForQual, {
+    hasStaticForm: audit.hasStaticForm,
+    hasVoicemailComplaint: audit.hasVoicemailComplaint,
+    mentionsAfterHours: audit.mentionsAfterHours,
+  });
+
+  const badge = getQualificationBadge(qualification);
+  console.log(`[Qualifier] ${scraped.clinicName}: ${badge}`);
+  if (!qualification.qualified) {
+    console.log(`[Qualifier] REJECTED — Reasons: ${qualification.disqualifyReasons.join(' | ')}`);
+  }
+
   return {
     success: true,
     url: scraped.url,
@@ -786,17 +808,32 @@ export async function huntAndEnrichLead({ url, city, niche = 'hvac', doctorOverr
     specificObservation: audit.specificObservation,
     recommendedAngle: audit.recommendedAngle,
     hasStaticForm: audit.hasStaticForm,
+    qualification,
   };
 }
 
 /**
- * Deduplicate against Supabase and save enriched lead as RAW_LEAD (pending) in 1 round-trip
+ * Deduplicate against Supabase and save enriched lead as RAW_LEAD (pending) in 1 round-trip.
+ * QUALIFICATION GATE: Only commits leads that passed the 100-pt scoring rubric (score ≥ 60).
  */
 export async function commitLeadToSupabase(enrichedLead, existingProspectsMap) {
   if (!enrichedLead || !enrichedLead.email) {
     return {
       success: false,
       message: 'Cannot commit to Supabase: No direct email found.',
+      lead: enrichedLead,
+    };
+  }
+
+  // ── QUALIFICATION GATE ───────────────────────────────────────────────────────
+  const qual = enrichedLead.qualification;
+  if (qual && !qual.qualified) {
+    return {
+      success: false,
+      disqualified: true,
+      score: qual.score,
+      grade: qual.grade,
+      message: `Lead REJECTED (${qual.score}/100 — ${qual.grade}): ${qual.disqualifyReasons.join('; ')}`,
       lead: enrichedLead,
     };
   }
@@ -829,7 +866,8 @@ export async function commitLeadToSupabase(enrichedLead, existingProspectsMap) {
   const chainTag = enrichedLead.multiLocation?.isMultiLocation ? 'CHAIN' : 'Single-Location';
   const gmbTag = enrichedLead.socialSignals?.hasGmb ? 'GMB:✓' : 'GMB:○';
   const igTag = enrichedLead.socialSignals?.hasInstagram ? 'IG:✓' : 'IG:○';
-  const notes = `Hunter: ${chainTag} | ${gmbTag} | ${igTag} | Ads: ${enrichedLead.adSignals?.hasPaidAds ? 'ACTIVE' : 'Organic'} | Phone: ${enrichedLead.phone || 'N/A'}`;
+  const qualScore = qual ? ` | QualScore:${qual.score}/100(${qual.grade})` : '';
+  const notes = `Hunter: ${chainTag} | ${gmbTag} | ${igTag} | Ads: ${enrichedLead.adSignals?.hasPaidAds ? 'ACTIVE' : 'Organic'} | Phone: ${enrichedLead.phone || 'N/A'}${qualScore}`;
 
   const addResult = await addProspect({
     doctorName: enrichedLead.doctorName,
@@ -907,11 +945,17 @@ export async function runAutonomousHunt({ city = 'Los Angeles, CA', niche = 'hva
       ]);
 
       if (enriched && enriched.success) {
-        // Commit with single-trip deduplication
+        // Commit with single-trip deduplication + qualification gate
         const commitRes = await commitLeadToSupabase(enriched, existingEmailMap);
         enriched.savedToDb = commitRes.success;
-        enriched.dbStatus = commitRes.alreadyExists ? 'duplicate' : commitRes.success ? 'saved' : 'no_email';
-        return { success: true, lead: enriched, committed: commitRes.success };
+        enriched.dbStatus = commitRes.alreadyExists
+          ? 'duplicate'
+          : commitRes.disqualified
+          ? 'disqualified'
+          : commitRes.success
+          ? 'saved'
+          : 'no_email';
+        return { success: true, lead: enriched, committed: commitRes.success, disqualified: !!commitRes.disqualified };
       }
     } catch (err) {
       console.warn(`[LeadHunter] Failed to process ${item.url}:`, err.message);
@@ -922,11 +966,13 @@ export async function runAutonomousHunt({ city = 'Los Angeles, CA', niche = 'hva
   const settled = await Promise.allSettled(enrichmentPromises);
   const enrichedLeads = [];
   let committedCount = 0;
+  let disqualifiedCount = 0;
 
   for (const res of settled) {
     if (res.status === 'fulfilled' && res.value?.success && res.value.lead) {
       enrichedLeads.push(res.value.lead);
       if (res.value.committed) committedCount++;
+      if (res.value.disqualified) disqualifiedCount++;
       if (enrichedLeads.length >= targetLimit) break;
     }
   }
@@ -937,6 +983,7 @@ export async function runAutonomousHunt({ city = 'Los Angeles, CA', niche = 'hva
     niche,
     totalSearched: businesses.length,
     committedCount,
+    disqualifiedCount,
     leads: enrichedLeads,
   };
 }
