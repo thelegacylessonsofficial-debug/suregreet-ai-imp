@@ -539,9 +539,9 @@ scraperRouter.get('/dashboard', async (req, res) => {
               '<div>' +
                 '<div class="flex items-center gap-2">' +
                   '<span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>' +
-                  '<h4 class="text-sm font-bold text-white">' + data.committedCount + ' New Leads Committed to Pipeline CRM</h4>' +
+                  '<h4 class="text-sm font-bold text-white">' + data.committedCount + ' Qualified Leads → Pipeline CRM</h4>' +
                 '</div>' +
-                '<p class="text-xs text-gray-400 mt-0.5">Leads are saved in Supabase as pending. Open the CRM to review doctor observations or trigger outreach.</p>' +
+                '<p class="text-xs text-gray-400 mt-0.5">' + (data.disqualifiedCount || 0) + ' leads rejected by qualifier (score &lt; 60/100). Only verified high-ticket targets saved.</p>' +
               '</div>' +
               '<a href="' + crmUrl + '" class="px-4 py-2 bg-emerald-500 hover:bg-emerald-400 text-black font-extrabold rounded-xl text-xs transition shadow-md shadow-emerald-500/20 whitespace-nowrap flex items-center gap-1.5">' +
                 '<span>View in Pipeline CRM</span>' +
@@ -551,12 +551,31 @@ scraperRouter.get('/dashboard', async (req, res) => {
 
             cardsList.innerHTML = bannerHtml + data.leads.map(lead => {
               const hasHook = lead.specificObservation;
+              const qual = lead.qualification || {};
+              const qualScore = qual.score !== undefined ? qual.score : null;
+              const qualGrade = qual.grade || '';
+              const qualPassed = qual.qualified === true;
+
+              // Score badge
+              const scoreColor = qualScore >= 75 ? 'emerald' : qualScore >= 60 ? 'yellow' : 'rose';
+              const scoreBadge = qualScore !== null
+                ? '<span class="text-[10px] font-bold px-2 py-0.5 rounded bg-' + scoreColor + '-500/10 text-' + scoreColor + '-400 border border-' + scoreColor + '-500/20 font-mono">' + (qualPassed ? '✓ ' : '✗ ') + qualScore + '/100 ' + qualGrade + '</span>'
+                : '';
+
               const badgeClass = lead.dbStatus === 'saved'
                 ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
                 : lead.dbStatus === 'duplicate'
                 ? 'bg-amber-500/10 text-amber-400 border border-amber-500/20'
+                : lead.dbStatus === 'disqualified'
+                ? 'bg-rose-500/10 text-rose-400 border border-rose-500/20'
                 : 'bg-gray-800 text-gray-400';
-              const badgeText = lead.dbStatus === 'saved' ? '✓ Saved to CRM' : lead.dbStatus === 'duplicate' ? 'Already in CRM' : 'No Email';
+              const badgeText = lead.dbStatus === 'saved'
+                ? '✓ Saved to CRM'
+                : lead.dbStatus === 'duplicate'
+                ? 'Already in CRM'
+                : lead.dbStatus === 'disqualified'
+                ? '✗ Rejected'
+                : 'No Email';
 
               let hookHtml = '';
               if (hasHook) {
@@ -583,12 +602,41 @@ scraperRouter.get('/dashboard', async (req, res) => {
                 ? '<div class="text-[10px] text-gray-400 font-mono pt-1">Salutation: <span class="text-cyan-300">"Hey ' + lead.salutation + ',"</span></div>'
                 : '';
 
-              return '<div class="bg-[var(--bg-surface)] border border-[var(--border-subtle)] rounded-xl p-4 space-y-3 hunter-card">' +
+              // ── Qualification Score Card ──────────────────────────────────────
+              const qual = lead.qualification || {};
+              const qualScore = qual.score !== undefined ? qual.score : null;
+              const qualGrade = qual.grade || '';
+              const qualPassed = qual.qualified === true;
+              const scoreColor = qualScore !== null ? (qualScore >= 75 ? 'emerald' : qualScore >= 60 ? 'yellow' : 'rose') : 'gray';
+              const scoreBadge = qualScore !== null
+                ? '<span class="text-[10px] font-bold px-2 py-0.5 rounded bg-' + scoreColor + '-500/10 text-' + scoreColor + '-400 border border-' + scoreColor + '-500/20 font-mono">' + (qualPassed ? '✓ ' : '✗ ') + qualScore + '/100 ' + qualGrade + '</span>'
+                : '';
+
+              // Breakdown mini-table (collapsed inline)
+              let qualBreakdownHtml = '';
+              if (qual.breakdown) {
+                const rows = Object.values(qual.breakdown).map(b =>
+                  '<div class="flex items-center justify-between gap-2">' +
+                    '<span class="' + (b.pass ? 'text-emerald-400' : 'text-gray-500') + '">' + (b.pass ? '✓' : '✗') + ' ' + b.label + '</span>' +
+                    '<span class="font-mono font-bold ' + (b.earned > 0 ? 'text-cyan-300' : 'text-gray-600') + '">' + b.earned + '/' + b.max + '</span>' +
+                  '</div>'
+                ).join('');
+                qualBreakdownHtml = '<details class="text-[10px] text-gray-400 mt-1">' +
+                  '<summary class="cursor-pointer hover:text-gray-300 font-semibold">🎯 Qual Score: ' + (qualScore || '?') + '/100 ' + qualGrade + ' — click to expand</summary>' +
+                  '<div class="mt-2 space-y-1 bg-[var(--bg-card)] rounded-lg p-2.5 border border-[var(--border-subtle)]">' + rows + '</div>' +
+                  (qual.disqualifyReasons && qual.disqualifyReasons.length > 0
+                    ? '<div class="mt-1 text-rose-400 text-[10px]">Rejected: ' + qual.disqualifyReasons.join(' · ') + '</div>'
+                    : '') +
+                '</details>';
+              }
+
+              return '<div class="bg-[var(--bg-surface)] border border-[var(--border-subtle)] rounded-xl p-4 space-y-3 hunter-card' + (lead.dbStatus === 'disqualified' ? ' opacity-60' : '') + '">' +
                 '<div class="flex items-start justify-between gap-2">' +
                   '<div>' +
                     '<div class="flex items-center gap-1.5 flex-wrap">' +
                       '<h4 class="font-bold text-[var(--text-primary)] text-sm">' + (lead.clinicName || 'Practice') + '</h4>' +
                       chainBadge +
+                      scoreBadge +
                     '</div>' +
                     '<p class="text-[11px] text-[var(--text-muted)] mt-0.5">' + (lead.doctorName || 'Lead') + ' • ' + (lead.city || city) + '</p>' +
                     salutationHtml +
@@ -615,6 +663,7 @@ scraperRouter.get('/dashboard', async (req, res) => {
                     '<span>Procedure: <span class="text-purple-300 font-medium">' + (lead.treatment || 'High-Ticket') + '</span></span>' +
                     socialHtml +
                   '</div>' +
+                  qualBreakdownHtml +
                 '</div>' +
                 hookHtml +
                 '<div class="pt-2 border-t border-[var(--border-subtle)] flex items-center justify-between text-[11px]">' +
