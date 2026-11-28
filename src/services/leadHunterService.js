@@ -133,9 +133,12 @@ export const ORDERED_CASCADE_CITIES = [
 
 export function getNextCascadeCity(currentCity) {
   if (!currentCity) return ORDERED_CASCADE_CITIES[0];
-  const idx = ORDERED_CASCADE_CITIES.findIndex(
-    (c) => c.toLowerCase().includes(currentCity.toLowerCase()) || currentCity.toLowerCase().includes(c.toLowerCase())
-  );
+  const curLower = currentCity.toLowerCase().trim();
+  const curName = curLower.split(',')[0].trim();
+  const idx = ORDERED_CASCADE_CITIES.findIndex((c) => {
+    const cLower = c.toLowerCase();
+    return cLower === curLower || (curName && cLower.split(',')[0].trim() === curName);
+  });
   return idx === -1 || idx === ORDERED_CASCADE_CITIES.length - 1
     ? ORDERED_CASCADE_CITIES[0]
     : ORDERED_CASCADE_CITIES[idx + 1];
@@ -222,45 +225,302 @@ const CURATED_TARGETS = {
 const DIRECTORY_OR_SPAM_DOMAINS =
   /(yelp\.com|groupon\.com|healthgrades\.com|yellowpages\.com|angi\.com|angieslist\.com|mapquest\.com|bbb\.org|facebook\.com|instagram\.com|tripadvisor\.com|expertise\.com|thumbtack\.com|indeed\.com|duckduckgo\.com|bing\.com|homeadvisor\.com|networx\.com|bark\.com|porch\.com|modernize\.com|threebestrated\.com|houzz\.com|nextdoor\.com|emergency-[a-z0-9-]+\.|[a-z0-9-]+-pros\.|airconditioneremergency\.com|emergencyhvacservices\.com|emergency-hvac-repair\.com|hvacacrepair\.org|zaptheory\.com|topchoiceheatingairconditioningusa\.com|ama-hvac\.com|brentwoodhvacrepair\.com|near-me)/i;
 
+const US_STATE_ABBR = {
+  alabama: 'al', alaska: 'ak', arizona: 'az', arkansas: 'ar', california: 'ca',
+  colorado: 'co', connecticut: 'ct', delaware: 'de', florida: 'fl', georgia: 'ga',
+  hawaii: 'hi', idaho: 'id', illinois: 'il', indiana: 'in', iowa: 'ia',
+  kansas: 'ks', kentucky: 'ky', louisiana: 'la', maine: 'me', maryland: 'md',
+  massachusetts: 'ma', michigan: 'mi', minnesota: 'mn', mississippi: 'ms', missouri: 'mo',
+  montana: 'mt', nebraska: 'ne', nevada: 'nv', 'new hampshire': 'nh', 'new jersey': 'nj',
+  'new mexico': 'nm', 'new york': 'ny', 'north carolina': 'nc', 'north dakota': 'nd',
+  ohio: 'oh', oklahoma: 'ok', oregon: 'or', pennsylvania: 'pa', 'rhode island': 'ri',
+  'south carolina': 'sc', 'south dakota': 'sd', tennessee: 'tn', texas: 'tx', utah: 'ut',
+  vermont: 'vt', virginia: 'va', washington: 'wa', 'west virginia': 'wv',
+  wisconsin: 'wi', wyoming: 'wy', dc: 'dc', 'district of columbia': 'dc',
+};
+
+const CITY_DEFAULT_STATES = {
+  'los angeles': 'ca', 'san diego': 'ca', 'san jose': 'ca', 'san francisco': 'ca',
+  sacramento: 'ca', fresno: 'ca', irvine: 'ca', oakland: 'ca', anaheim: 'ca', riverside: 'ca',
+  seattle: 'wa', spokane: 'wa', tacoma: 'wa', vancouver: 'wa', bellevue: 'wa',
+  portland: 'or', eugene: 'or', salem: 'or', beaverton: 'or', hillsboro: 'or',
+  'las vegas': 'nv', henderson: 'nv', reno: 'nv',
+  phoenix: 'az', scottsdale: 'az', mesa: 'az', chandler: 'az', tucson: 'az',
+  dallas: 'tx', austin: 'tx', houston: 'tx', 'san antonio': 'tx', 'fort worth': 'tx',
+  frisco: 'tx', mckinney: 'tx', plano: 'tx', prosper: 'tx', celina: 'tx',
+  allen: 'tx', fulshear: 'tx', katy: 'tx', 'sugar land': 'tx',
+  miami: 'fl', tampa: 'fl', orlando: 'fl', jacksonville: 'fl', 'st petersburg': 'fl',
+  'fort lauderdale': 'fl', clearwater: 'fl',
+  atlanta: 'ga', marietta: 'ga', alpharetta: 'ga', roswell: 'ga', savannah: 'ga',
+  'new york': 'ny', 'new york city': 'ny', buffalo: 'ny', rochester: 'ny', albany: 'ny',
+  carmel: 'in', zionsville: 'in', indianapolis: 'in', fishers: 'in', westfield: 'in', noblesville: 'in',
+  dublin: 'oh', columbus: 'oh', cleveland: 'oh', cincinnati: 'oh', powell: 'oh', westerville: 'oh',
+  brentwood: 'tn', nashville: 'tn', franklin: 'tn', murfreesboro: 'tn',
+  chicago: 'il', denver: 'co', charlotte: 'nc', raleigh: 'nc', boston: 'ma',
+  philadelphia: 'pa', pittsburgh: 'pa', detroit: 'mi', minneapolis: 'mn',
+  'salt lake city': 'ut', boise: 'id', omaha: 'ne', 'kansas city': 'mo', 'st louis': 'mo',
+};
+
+const SAME_METRO_FALLBACKS = {
+  carmel: ['carmel', 'indianapolis'],
+  zionsville: ['zionsville', 'carmel', 'indianapolis'],
+  westfield: ['westfield', 'carmel', 'indianapolis'],
+  fishers: ['fishers', 'carmel', 'indianapolis'],
+  noblesville: ['noblesville', 'carmel', 'indianapolis'],
+  dublin: ['dublin', 'columbus'],
+  powell: ['powell', 'dublin', 'columbus'],
+  westerville: ['westerville', 'columbus'],
+  'new albany': ['new albany', 'columbus'],
+  prosper: ['prosper', 'frisco', 'mckinney', 'plano', 'dallas'],
+  celina: ['celina', 'frisco', 'mckinney', 'dallas'],
+  allen: ['allen', 'plano', 'mckinney', 'dallas'],
+  frisco: ['frisco', 'plano', 'dallas'],
+  mckinney: ['mckinney', 'plano', 'dallas'],
+  fulshear: ['fulshear', 'katy', 'sugar-land', 'houston'],
+  katy: ['katy', 'houston'],
+  'sugar land': ['sugar-land', 'houston'],
+  brentwood: ['brentwood', 'franklin', 'nashville'],
+  franklin: ['franklin', 'nashville'],
+  nolensville: ['nolensville', 'franklin', 'nashville'],
+  murfreesboro: ['murfreesboro', 'nashville'],
+  scottsdale: ['scottsdale', 'phoenix'],
+  summerlin: ['las-vegas', 'henderson'],
+  'summerlin south': ['las-vegas', 'henderson'],
+  'north las vegas': ['north-las-vegas', 'las-vegas'],
+  'carson city': ['reno'],
+  henderson: ['henderson', 'las-vegas'],
+  beaverton: ['beaverton', 'portland'],
+  hillsboro: ['hillsboro', 'portland'],
+  gresham: ['gresham', 'portland'],
+  'lake oswego': ['lake-oswego', 'portland'],
+  bellevue: ['bellevue', 'seattle'],
+  kent: ['kent', 'seattle'],
+  everett: ['everett', 'seattle'],
+  renton: ['renton', 'seattle'],
+  kirkland: ['kirkland', 'seattle'],
+  clearwater: ['clearwater', 'tampa', 'st-petersburg'],
+  irvine: ['irvine', 'anaheim', 'los-angeles'],
+  'long beach': ['long-beach', 'los-angeles'],
+  roswell: ['roswell', 'marietta', 'atlanta'],
+  alpharetta: ['alpharetta', 'marietta', 'atlanta'],
+  marietta: ['marietta', 'atlanta'],
+  atlanta: ['atlanta', 'marietta', 'roswell', 'alpharetta'],
+  dallas: ['dallas', 'plano', 'frisco', 'mckinney'],
+  austin: ['austin', 'round-rock'],
+  houston: ['houston', 'katy', 'sugar-land'],
+  phoenix: ['phoenix', 'scottsdale', 'mesa', 'chandler'],
+  tampa: ['tampa', 'clearwater', 'st-petersburg'],
+  miami: ['miami', 'fort-lauderdale'],
+  seattle: ['seattle', 'bellevue', 'tacoma'],
+  portland: ['portland', 'beaverton', 'hillsboro'],
+  indianapolis: ['indianapolis', 'carmel', 'fishers'],
+  columbus: ['columbus', 'dublin', 'westerville'],
+  nashville: ['nashville', 'brentwood', 'franklin'],
+  'white plains': ['new-york'],
+  'new york city': ['new-york'],
+};
+
+const EXPERTISE_NICHE_SLUGS = {
+  hvac: 'hvac',
+  plumbing: 'plumbing',
+  roofing: 'roofing',
+  electrical: 'electricians',
+  water_damage: 'water-damage',
+};
+
+function decodeHtmlEntities(str = '') {
+  return String(str)
+    .replace(/&amp;/gi, '&')
+    .replace(/&apos;|&#39;|&#x27;/gi, "'")
+    .replace(/&quot;/gi, '"')
+    .replace(/&lt;/gi, '<')
+    .replace(/&gt;/gi, '>')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
 function resolveCityKey(city = '') {
-  let key = (city.toLowerCase().split(',')[0] || '').trim();
+  let key = (city.toLowerCase().split(',')[0] || '').trim().replace(/\./g, '');
   const aliases = {
     nyc: 'new york',
+    'new york city': 'new york',
     manhattan: 'new york',
     la: 'los angeles',
     dfw: 'dallas',
-    'fort worth': 'dallas',
-    scottsdale: 'phoenix',
+    'fort worth': 'fort worth',
     sf: 'san francisco',
-    'bay area': 'san francisco',
-    philly: 'philadelphia',
-    dc: 'washington dc',
-    washington: 'washington dc',
     vegas: 'las vegas',
     'carmel & zionsville': 'carmel',
     'prosper & celina': 'prosper',
+    'st louis': 'st louis',
+    'st petersburg': 'st petersburg',
   };
   return aliases[key] || key;
 }
 
-export async function searchLocalBusinesses({ query, city = 'Los Angeles, CA', niche = 'hvac', limit = 10 }) {
-  const defaultQuery = NICHE_QUERIES[niche]?.[0] || NICHE_QUERIES.hvac[0];
-  const fullQuery = `${query || defaultQuery} ${city}`.trim();
-  const rawResults = [];
-  const cityKey = resolveCityKey(city);
+function parseCityAndState(cityInput = '') {
+  const cleaned = String(cityInput || '').trim();
+  const parts = cleaned.split(',').map((s) => s.trim()).filter(Boolean);
+  const rawCity = resolveCityKey(parts[0] || '');
+  let stateCode = '';
 
-  const targetsDict = CURATED_TARGETS[niche] || CURATED_TARGETS.hvac || {};
-  const primaryCityList = targetsDict[cityKey] || CURATED_TARGETS.hvac?.[cityKey] || [];
-
-  for (const c of primaryCityList) {
-    if (rawResults.length >= limit) break;
-    const norm = normalizeUrl(c.url);
-    if (norm && !rawResults.some((r) => r.url === norm)) {
-      rawResults.push({ title: c.title.trim(), url: norm, snippet: `Verified local contractor in ${c.city}`, city: c.city, niche });
+  if (parts.length > 1) {
+    const rawState = parts.slice(1).join(' ').replace(/[^a-zA-Z\s]/g, '').trim().toLowerCase();
+    if (rawState.length === 2) {
+      stateCode = rawState;
+    } else if (US_STATE_ABBR[rawState]) {
+      stateCode = US_STATE_ABBR[rawState];
+    } else {
+      const token = rawState.split(/\s+/)[0];
+      if (token && token.length === 2) stateCode = token;
+      else if (US_STATE_ABBR[token]) stateCode = US_STATE_ABBR[token];
     }
   }
 
-  // Live DuckDuckGo HTML discovery (filtered against aggregator/doorway spam)
+  if (!stateCode && rawCity) {
+    stateCode = CITY_DEFAULT_STATES[rawCity] || '';
+  }
+
+  const citySlug = rawCity.replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
+  const displayCity = parts[0]
+    ? `${parts[0].trim()}${stateCode ? ', ' + stateCode.toUpperCase() : ''}`
+    : cleaned || 'Carmel, IN';
+
+  return { cityKey: rawCity, citySlug, stateCode, displayCity };
+}
+
+async function fetchExpertiseDirectory({ stateCode, citySlug, cityLabel, niche, maxResults = 25 }) {
+  if (!stateCode || !citySlug) return [];
+  const verticalSlug = EXPERTISE_NICHE_SLUGS[niche] || 'hvac';
+  const targetUrl = `https://www.expertise.com/${stateCode}/${citySlug}/${verticalSlug}`;
+  const out = [];
+
+  try {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 10000);
+    const res = await fetch(targetUrl, {
+      signal: controller.signal,
+      headers: {
+        'User-Agent': USER_AGENT,
+        Accept: 'text/html,application/xhtml+xml',
+        'Accept-Language': 'en-US,en;q=0.9',
+      },
+    });
+    clearTimeout(timer);
+    if (!res.ok) return [];
+
+    // Cap buffered HTML cleanly to keep memory well under Render's 384MB heap ceiling
+    const rawHtml = (await res.text()).slice(0, 1_100_000);
+    const ldRegex = /<script[^>]*type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi;
+    let m;
+    while ((m = ldRegex.exec(rawHtml)) !== null) {
+      if (out.length >= maxResults) break;
+      const rawJson = (m[1] || '').trim();
+      if (!rawJson || !rawJson.includes('LocalBusiness')) continue;
+      try {
+        const parsed = JSON.parse(rawJson);
+        const items = Array.isArray(parsed) ? parsed : [parsed];
+        for (const item of items) {
+          if (!item || item['@type'] !== 'LocalBusiness' || !item.url) continue;
+          const norm = normalizeUrl(item.url);
+          const title = decodeHtmlEntities(item.name || '');
+          if (!norm || DIRECTORY_OR_SPAM_DOMAINS.test(norm)) continue;
+          if (isAffiliateShellDomain(norm, title).isAffiliate || isEnterpriseOrPeChain(norm, title).matched) continue;
+          if (out.some((x) => x.url === norm)) continue;
+
+          const addr = item.address || {};
+          const itemCity = addr.addressLocality && addr.addressRegion
+            ? `${decodeHtmlEntities(addr.addressLocality)}, ${decodeHtmlEntities(addr.addressRegion)}`
+            : cityLabel;
+
+          out.push({
+            title: title || norm,
+            url: norm,
+            phone: item.telephone ? String(item.telephone).trim() : null,
+            snippet: decodeHtmlEntities(item.description || `Local ${niche} contractor in ${itemCity}`).slice(0, 420),
+            city: itemCity,
+            niche,
+          });
+        }
+      } catch (_) {}
+    }
+  } catch (err) {
+    console.warn(`[LeadHunter] Expertise directory lookup (${targetUrl}):`, err.message);
+  }
+
+  return out;
+}
+
+export async function searchLocalBusinesses({ query, city = 'Carmel, IN', niche = 'hvac', limit = 10 }) {
+  const defaultQuery = NICHE_QUERIES[niche]?.[0] || NICHE_QUERIES.hvac[0];
+  const fullQuery = `${query || defaultQuery} ${city}`.trim();
+  const rawResults = [];
+  const parsed = parseCityAndState(city);
+  const { cityKey, citySlug, stateCode, displayCity } = parsed;
+
+  const pushUnique = (item) => {
+    if (!item || !item.url || rawResults.length >= limit) return;
+    const norm = normalizeUrl(item.url);
+    if (!norm || rawResults.some((r) => r.url === norm)) return;
+    if (DIRECTORY_OR_SPAM_DOMAINS.test(norm)) return;
+    if (isAffiliateShellDomain(norm, item.title || '').isAffiliate || isEnterpriseOrPeChain(norm, item.title || '').matched) return;
+    rawResults.push({ ...item, url: norm });
+  };
+
+  // 1. Live city-accurate local contractor directory discovery (Exact City first)
+  if (stateCode && citySlug) {
+    const primaryExp = await fetchExpertiseDirectory({
+      stateCode,
+      citySlug,
+      cityLabel: displayCity,
+      niche,
+      maxResults: limit,
+    });
+    for (const item of primaryExp) pushUnique(item);
+  }
+
+  // 2. City-exact curated seeds (ONLY for exact cityKey AND exact vertical)
+  const nicheSeeds = CURATED_TARGETS[niche] || {};
+  for (const c of nicheSeeds[cityKey] || []) {
+    pushUnique({
+      title: c.title.trim(),
+      url: c.url,
+      snippet: `Local contractor in ${c.city}`,
+      city: c.city,
+      niche,
+    });
+  }
+
+  // 3. Same-metro local expansion ONLY inside the same metro/state (never random out-of-state cities)
+  if (rawResults.length < limit && stateCode) {
+    const metroFallbacks = SAME_METRO_FALLBACKS[cityKey] || [];
+    for (const subSlug of metroFallbacks) {
+      if (rawResults.length >= limit) break;
+      const subClean = subSlug.replace(/-/g, ' ');
+      if (subSlug !== citySlug) {
+        const subCityTitle = subClean.replace(/\b\w/g, (ch) => ch.toUpperCase()) + ', ' + stateCode.toUpperCase();
+        const metroExp = await fetchExpertiseDirectory({
+          stateCode,
+          citySlug: subSlug,
+          cityLabel: subCityTitle,
+          niche,
+          maxResults: limit - rawResults.length,
+        });
+        for (const item of metroExp) pushUnique(item);
+      }
+      for (const c of nicheSeeds[subClean] || []) {
+        pushUnique({
+          title: c.title.trim(),
+          url: c.url,
+          snippet: `Same-metro contractor in ${c.city}`,
+          city: c.city,
+          niche,
+        });
+      }
+    }
+  }
+
+  // 4. Optional live DuckDuckGo HTML fallback strictly for the requested city if still under limit
   if (rawResults.length < limit) {
     try {
       const controller = new AbortController();
@@ -270,11 +530,11 @@ export async function searchLocalBusinesses({ query, city = 'Los Angeles, CA', n
         headers: { 'User-Agent': USER_AGENT, Accept: 'text/html' },
       });
       clearTimeout(timer);
-      if (res.ok) {
+      if (res.ok && res.status === 200) {
         const html = await res.text();
         const $ = cheerio.load(html);
         $('.result').each((_, el) => {
-          if (rawResults.length >= limit * 2) return;
+          if (rawResults.length >= limit) return;
           const title = $(el).find('.result__title a').text().trim();
           let rawHref = $(el).find('.result__title a').attr('href') || '';
           if (rawHref.includes('uddg=')) {
@@ -282,33 +542,11 @@ export async function searchLocalBusinesses({ query, city = 'Los Angeles, CA', n
             if (match) rawHref = decodeURIComponent(match[1]);
           }
           if (!rawHref.startsWith('http') || DIRECTORY_OR_SPAM_DOMAINS.test(rawHref)) return;
-          const norm = normalizeUrl(rawHref);
-          if (
-            norm &&
-            !isAffiliateShellDomain(norm, title).isAffiliate &&
-            !isEnterpriseOrPeChain(norm, title).matched &&
-            !rawResults.some((r) => r.url === norm)
-          ) {
-            rawResults.push({ title, url: norm, snippet: title, city, niche });
-          }
+          pushUnique({ title, url: rawHref, snippet: title, city: displayCity, niche });
         });
       }
     } catch (err) {
       console.warn('[LeadHunter] DDG search warning:', err.message);
-    }
-  }
-
-  // Regional overflow pool only if candidate count still below target
-  if (rawResults.length < limit) {
-    for (const k of Object.keys(targetsDict)) {
-      if (rawResults.length >= limit || k === cityKey) continue;
-      for (const item of targetsDict[k] || []) {
-        const norm = normalizeUrl(item.url);
-        if (norm && !rawResults.some((r) => r.url === norm)) {
-          rawResults.push({ title: item.title.trim(), url: norm, snippet: `Regional target in ${item.city}`, city: item.city, niche });
-          if (rawResults.length >= limit) break;
-        }
-      }
     }
   }
 
@@ -329,6 +567,8 @@ export async function huntAndEnrichLead({
   doctorOverride,
   treatmentOverride,
   businessNameOverride,
+  phoneOverride,
+  descriptionOverride,
   fast = false,
   minScore = DEFAULT_QUALIFY_THRESHOLD,
 }) {
@@ -363,19 +603,22 @@ export async function huntAndEnrichLead({
       doctorName: doctorOverride || (isTrade ? `Owner / Operations Lead at ${fallbackName}` : `Medical Director at ${fallbackName}`),
       email: fallbackEmail,
       allEmails: fallbackEmail ? [fallbackEmail] : [],
-      phone: null,
+      phone: phoneOverride || null,
       city: city || 'US',
       treatment: treatmentOverride || (isTrade ? 'Emergency AC & Heating Repair' : 'Morpheus8'),
       allTreatments: [],
       adSignals: { hasPaidAds: false, metaPixel: false, googleAds: false, tikTokPixel: false },
       multiLocation: detectFallbackChain(url, fallbackName),
       socialSignals: { hasGmb: false, hasInstagram: false, hasFacebook: false, summary: 'Unreachable' },
-      visibleText: '',
+      visibleText: descriptionOverride || '',
       hasHtmlForm: false,
       hasLiveScheduler: false,
       jsonLd: null,
     };
   }
+
+  const effectivePhone = scraped.phone || phoneOverride || null;
+  const effectiveVisibleText = [scraped.visibleText || '', descriptionOverride || ''].filter(Boolean).join('\n');
 
   let decisionMaker = doctorOverride || scraped.doctorName;
   const isTradeSite = niche !== 'medspa';
@@ -388,7 +631,7 @@ export async function huntAndEnrichLead({
     niche,
     businessName: scraped.clinicName,
     doctorName: decisionMaker,
-    htmlContent: scraped.visibleText || null,
+    htmlContent: effectiveVisibleText || null,
   });
 
   const resolvedCity = city && !city.toLowerCase().includes('undefined') ? city : scraped.city;
@@ -408,7 +651,7 @@ export async function huntAndEnrichLead({
   }
 
   let finalEmail = scraped.email;
-  if (!finalEmail && scraped.phone && scraped.url) {
+  if (!finalEmail && effectivePhone && scraped.url) {
     try {
       finalEmail = `info@${new URL(scraped.url).hostname.replace(/^www\./, '')}`;
     } catch (e) {}
@@ -420,7 +663,7 @@ export async function huntAndEnrichLead({
       dataSource: scraped.dataSource,
       clinicName: scraped.clinicName,
       doctorName: decisionMaker,
-      phone: scraped.phone,
+      phone: effectivePhone,
       email: finalEmail,
       city: resolvedCity,
       treatment: primaryTreatment,
@@ -431,7 +674,7 @@ export async function huntAndEnrichLead({
       jsonLd: scraped.jsonLd || null,
       hasHtmlForm: scraped.hasHtmlForm,
       hasLiveScheduler: scraped.hasLiveScheduler,
-      visibleText: scraped.visibleText || '',
+      visibleText: effectiveVisibleText,
     },
     {
       hasStaticForm: audit.hasStaticForm || (scraped.hasHtmlForm && !scraped.hasLiveScheduler),
@@ -452,7 +695,7 @@ export async function huntAndEnrichLead({
     salutation: scraped.salutation || null,
     email: finalEmail,
     allEmails: scraped.allEmails,
-    phone: scraped.phone,
+    phone: effectivePhone,
     city: resolvedCity,
     treatment: primaryTreatment,
     niche,
@@ -668,6 +911,8 @@ async function executeHuntPipeline({ city, niche, query, limit, minScore, notify
             city: item.city,
             niche: item.niche,
             businessNameOverride: item.title,
+            phoneOverride: item.phone || null,
+            descriptionOverride: item.snippet || null,
             fast: targetLimit > 10,
             minScore: threshold,
           }),

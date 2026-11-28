@@ -36,12 +36,17 @@ function escapeHtmlAttr(str) {
     .replace(/>/g, '&gt;');
 }
 
-function buildTerritoryOptionsHtml() {
-  const groups = [];
+function buildTerritoryOptionsHtml(defaultCity = 'Carmel, IN') {
+  const groups = ['<option value="">Custom / Select US city preset...</option>'];
+  const defLower = String(defaultCity || '').toLowerCase().trim();
+  const renderOpt = (c) => {
+    const sel = c.toLowerCase() === defLower ? ' selected' : '';
+    return '<option value="' + escapeHtmlAttr(c) + '"' + sel + '>' + escapeHtmlAttr(c) + '</option>';
+  };
 
   groups.push(
     '<optgroup label="Affluent Suburbs (High-Ticket Owner-Operators)">' +
-      FEATURED_SUBURBS.map((c) => '<option value="' + escapeHtmlAttr(c) + '">' + escapeHtmlAttr(c) + '</option>').join('') +
+      FEATURED_SUBURBS.map(renderOpt).join('') +
       '</optgroup>'
   );
 
@@ -53,7 +58,7 @@ function buildTerritoryOptionsHtml() {
         '<optgroup label="' +
           escapeHtmlAttr(tz.name + ' - ' + st.name) +
           '">' +
-          cities.map((c) => '<option value="' + escapeHtmlAttr(c) + '">' + escapeHtmlAttr(c) + '</option>').join('') +
+          cities.map(renderOpt).join('') +
           '</optgroup>'
       );
     }
@@ -419,7 +424,7 @@ scraperRouter.get('/dashboard', (req, res) => {
       </div>
 
       <div class="flex items-center gap-2.5 flex-wrap shrink-0">
-        <a href="https://www.facebook.com/ads/library/?active_status=active&ad_type=all&country=US&media_type=all&q=HVAC%20Los%20Angeles%2C%20CA" id="topMetaAdsBtn" target="_blank" rel="noopener noreferrer" class="px-3.5 py-2 rounded-xl bg-[var(--bg-surface)] hover:bg-[var(--bg-hover)] text-[var(--accent-cyan)] border border-[var(--border-subtle)] text-xs font-semibold transition flex items-center gap-1.5 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500" title="Open live Meta Ads Library for the active trade and city">
+        <a href="https://www.facebook.com/ads/library/?active_status=active&ad_type=all&country=US&media_type=all&q=HVAC%20Carmel%2C%20IN" id="topMetaAdsBtn" target="_blank" rel="noopener noreferrer" class="px-3.5 py-2 rounded-xl bg-[var(--bg-surface)] hover:bg-[var(--bg-hover)] text-[var(--accent-cyan)] border border-[var(--border-subtle)] text-xs font-semibold transition flex items-center gap-1.5 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500" title="Open live Meta Ads Library for the active trade and city">
           ${getSvgIcon('globe', 'w-3.5 h-3.5')}
           <span>Meta Ads Library</span>
           ${getSvgIcon('external', 'w-3 h-3 opacity-75')}
@@ -452,7 +457,7 @@ scraperRouter.get('/dashboard', (req, res) => {
             <span class="pointer-events-none absolute inset-y-0 left-3 flex items-center text-[var(--text-muted)]">
               ${getSvgIcon('mapPin', 'w-3.5 h-3.5')}
             </span>
-            <input id="huntCity" type="text" value="Carmel, IN" oninput="syncMetaAdsLink()" onkeydown="if(event.key==='Enter'){event.preventDefault();runAutonomousHuntClient();}" class="w-full bg-[var(--bg-surface)] border border-[var(--border-subtle)] rounded-xl pl-8 pr-3 py-2.5 text-xs text-[var(--text-primary)] font-medium focus:outline-none focus:border-cyan-500 transition" placeholder="e.g. Carmel, IN or Los Angeles, CA">
+            <input id="huntCity" type="text" value="Carmel, IN" oninput="onHuntCityInput()" onkeydown="if(event.key==='Enter'){event.preventDefault();runAutonomousHuntClient();}" class="w-full bg-[var(--bg-surface)] border border-[var(--border-subtle)] rounded-xl pl-8 pr-3 py-2.5 text-xs text-[var(--text-primary)] font-medium focus:outline-none focus:border-cyan-500 transition" placeholder="e.g. Carmel, IN or Dallas, TX">
           </div>
         </div>
 
@@ -703,12 +708,32 @@ scraperRouter.get('/dashboard', (req, res) => {
 
     function syncMetaAdsLink() {
       const niche = document.getElementById('huntNiche').value || 'hvac';
-      const city = document.getElementById('huntCity').value.trim() || 'Los Angeles, CA';
+      const city = document.getElementById('huntCity').value.trim() || 'Carmel, IN';
       const label = NICHE_LABELS[niche] || 'HVAC';
       const btn = document.getElementById('topMetaAdsBtn');
       if (btn) {
         btn.href = 'https://www.facebook.com/ads/library/?active_status=active&ad_type=all&country=US&media_type=all&q=' + encodeURIComponent(label + ' ' + city);
       }
+    }
+
+    function syncCascadeDropdown(cityText) {
+      const sel = document.getElementById('cascadeCitySelect');
+      if (!sel) return;
+      const cur = String(cityText || '').trim().toLowerCase();
+      let matchedVal = '';
+      for (const opt of sel.options) {
+        if (opt.value && opt.value.toLowerCase() === cur) {
+          matchedVal = opt.value;
+          break;
+        }
+      }
+      sel.value = matchedVal;
+    }
+
+    function onHuntCityInput() {
+      const input = document.getElementById('huntCity');
+      syncCascadeDropdown(input ? input.value : '');
+      syncMetaAdsLink();
     }
 
     function selectCascadeCity(cityVal) {
@@ -720,16 +745,21 @@ scraperRouter.get('/dashboard', (req, res) => {
     function nextTerritoryCity() {
       const input = document.getElementById('huntCity');
       const cur = (input.value || '').trim().toLowerCase();
-      let idx = CASCADE_CITIES.findIndex((c) => c.toLowerCase() === cur || cur.indexOf(c.toLowerCase()) !== -1);
+      const curName = cur.split(',')[0].trim();
+      let idx = CASCADE_CITIES.findIndex((c) => {
+        const cLow = c.toLowerCase();
+        return cLow === cur || (curName && cLow.split(',')[0].trim() === curName);
+      });
       if (idx === -1 || idx >= CASCADE_CITIES.length - 1) idx = 0;
       else idx += 1;
       const nextCity = CASCADE_CITIES[idx];
       input.value = nextCity;
-      const sel = document.getElementById('cascadeCitySelect');
-      if (sel) sel.value = nextCity;
+      syncCascadeDropdown(nextCity);
       syncMetaAdsLink();
-      showToast('Territory Shifted', 'Next market set to ' + nextCity, 'success');
+      showToast('Territory Shifted', 'Target market set to ' + nextCity, 'success');
     }
+
+    syncMetaAdsLink();
 
     function toggleRubricPanel() {
       const panel = document.getElementById('rubricPanel');
@@ -828,6 +858,10 @@ scraperRouter.get('/dashboard', (req, res) => {
       const forceState = leadKey ? window.__suregreetForceSavedUrls[leadKey] : null;
       const forcedHref = (leadKey && window.__suregreetForceSavedHrefs[leadKey]) || getAuthUrl('/outreach/prospects');
 
+      if (forceState === 'saved' || forceState === 'synced') {
+        dbPill = '<span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-semibold bg-[var(--accent-emerald-subtle)] text-[var(--accent-emerald)] border border-emerald-500/30">' + SVG.checkCircle + '<span>Committed to CRM</span></span>';
+      }
+
       const forceBtn = forceState === 'saved' || forceState === 'synced'
         ? '<div data-force-key="' + esc(leadKey) + '" class="inline-flex items-center gap-1.5 flex-wrap">' +
             '<span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-semibold bg-[var(--accent-emerald-subtle)] text-[var(--accent-emerald)] border border-emerald-500/30">' + (forceState === 'synced' ? 'Synced in CRM' : 'Added to CRM') + '</span>' +
@@ -881,7 +915,7 @@ scraperRouter.get('/dashboard', (req, res) => {
 
         '<!-- Hard Must-Haves & Stack Row -->' +
         '<div class="flex items-center gap-2 flex-wrap">' +
-          eyeChip(mh.residentialFocus || true, 'Residential Focus') +
+          eyeChip(mh.residentialFocus !== undefined ? mh.residentialFocus : null, 'Residential Focus') +
           eyeChip(eye.reviewsInRange, '20-500 Reviews') +
           eyeChip(mh.independentOwnership || eye.familyOwned, 'Independent Owner') +
           eyeChip(mh.verifiablePhoneAndOwner, 'Verified Owner + Phone') +
@@ -1001,6 +1035,27 @@ scraperRouter.get('/dashboard', (req, res) => {
       currentLeads = [];
       lastRenderedSig = '';
       pollFailures = 0;
+      currentFilter = 'all';
+      const singleBox = document.getElementById('singleQualCard');
+      if (singleBox) singleBox.classList.add('hidden');
+      const toolbarEl = document.getElementById('resultsToolbar');
+      if (toolbarEl) toolbarEl.classList.add('hidden');
+      document.getElementById('filterAllBtn').textContent = 'All (0)';
+      document.getElementById('filterQualifiedBtn').textContent = 'Qualified (0)';
+      document.getElementById('filterDisqualifiedBtn').textContent = 'Disqualified (0)';
+      document.querySelectorAll('.result-filter-btn').forEach((b) => {
+        b.className = 'result-filter-btn px-3 py-1.5 rounded-xl bg-[var(--bg-surface)] text-[var(--text-secondary)] border border-[var(--border-subtle)] font-medium cursor-pointer transition';
+      });
+      const allBtnEl = document.getElementById('filterAllBtn');
+      if (allBtnEl) {
+        allBtnEl.className = 'result-filter-btn px-3 py-1.5 rounded-xl bg-cyan-500/15 text-[var(--accent-cyan)] border border-cyan-500/35 font-bold cursor-pointer transition';
+      }
+      document.getElementById('leadsContainer').innerHTML =
+        '<div class="bg-[var(--bg-card)] border border-[var(--border-subtle)] rounded-2xl p-8 text-center space-y-2">' +
+          '<div class="flex justify-center text-[var(--accent-cyan)]">' + SVG.spinner + '</div>' +
+          '<div class="text-xs font-semibold text-[var(--text-primary)]">Scouting ' + esc(NICHE_LABELS[niche] || niche) + ' contractors in ' + esc(city) + '...</div>' +
+          '<p class="text-[11px] text-[var(--text-muted)]">Fetching local websites and running 100-Point Eye Test.</p>' +
+        '</div>';
       setHuntingUiState(true);
 
       document.getElementById('telemetryIcon').innerHTML = SVG.spinner;
@@ -1039,13 +1094,15 @@ scraperRouter.get('/dashboard', (req, res) => {
     }
 
     async function pollHuntStatus() {
-      if (!activeJobId) return;
+      const pollJobId = activeJobId;
+      if (!pollJobId) return;
       try {
-        const res = await fetch(getAuthUrl('/scraper/hunt/status/' + encodeURIComponent(activeJobId)), {
+        const res = await fetch(getAuthUrl('/scraper/hunt/status/' + encodeURIComponent(pollJobId)), {
           credentials: 'include',
           headers: getAuthHeaders(),
         });
         const data = await res.json();
+        if (pollJobId !== activeJobId) return;
         if (!res.ok || !data.success || !data.job) {
           throw new Error(data.error || 'Status check failed (' + res.status + ')');
         }
@@ -1101,13 +1158,20 @@ scraperRouter.get('/dashboard', (req, res) => {
 
     async function stopActiveHunt() {
       if (!activeJobId) return;
+      const stopBtn = document.getElementById('btnStopHunt');
+      if (stopBtn) stopBtn.disabled = true;
       document.getElementById('telemetryStage').textContent = 'Stopping active hunt wave...';
       try {
         await fetch(getAuthUrl('/scraper/hunt/cancel/' + encodeURIComponent(activeJobId)), {
           method: 'POST',
+          credentials: 'include',
           headers: getAuthHeaders(),
         });
-      } catch (_) {}
+        setTimeout(pollHuntStatus, 250);
+      } catch (_) {
+      } finally {
+        if (stopBtn) stopBtn.disabled = false;
+      }
     }
 
     async function runSingleUrlTest() {
@@ -1146,7 +1210,7 @@ scraperRouter.get('/dashboard', (req, res) => {
         box.classList.remove('hidden');
 
         if (data.committed) {
-          showToast('CRM Committed', (data.lead.businessName || rawUrl) + ' passed (' + (data.qualification?.score || 0) + '/100).', 'success');
+          showToast('CRM Committed', (data.lead.clinicName || data.lead.businessName || rawUrl) + ' passed (' + (data.qualification?.score || 0) + '/100).', 'success');
         } else {
           showToast('Audit Complete', 'Score: ' + (data.qualification?.score || 0) + '/100 (Tier ' + (data.qualification?.grade || 'C') + ')', 'success');
         }
