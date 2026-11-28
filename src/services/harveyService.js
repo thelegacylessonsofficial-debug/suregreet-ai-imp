@@ -1,4 +1,5 @@
 import { auditHarveyCopy, BANNED_AI_PHRASES, formatSalutation, getUnsubscribeUrl } from '../templates/outreachTemplates.js';
+import { getCityClimateProfile } from './qualifierService.js';
 import { fetchJinaMarkdown } from './auditorService.js';
 import { updateProspect, getProspectById } from './outreachService.js';
 import { config } from '../config.js';
@@ -133,6 +134,11 @@ export function buildHarveyPrompt(dossier, prospect = {}) {
   const qualLine = prospect.qual_score
     ? `- Qualifier Rate Score: ${prospect.qual_score}/100 (${prospect.qual_grade || 'Q'})${prospect.review_count ? ` • ${prospect.review_count} Google Reviews` : ''}${prospect.fleet_size ? ` • ~${prospect.fleet_size} Trucks` : ''}`
     : '';
+  const climate = getCityClimateProfile(city);
+  const climateRule =
+    climate.belt === 'hot_belt'
+      ? `\n12. CLIMATE MATCH (${city}): Never mention furnaces, boilers, or winter freeze calls; focus strictly on cooling / AC / residential emergencies.`
+      : '';
 
   return `You are Harvey, principal outbound sales strategist for SureGreet AI.
 You write strictly for Archit (Founder of SureGreet AI, 17, building an AI receptionist & voice dispatching agency for US trade contractors).
@@ -159,7 +165,7 @@ ${qualLine ? qualLine + '\n' : ''}
 8. ECONOMIC TICKET MATH: Mention that the average emergency ticket is $2,000+ and missing 2 after-hours calls a month leaks $4,000+ in revenue.
 9. SUBJECT LINE: 2 to 4 words lowercase (e.g. "${getCleanSubject(clinic)}").
 10. LOW-FRICTION CTA: Soft interest ask ("Worth a quick look?").
-11. RETURN FORMAT: Valid JSON only with keys: "subject", "body", "frictionHook".`;
+11. RETURN FORMAT: Valid JSON only with keys: "subject", "body", "frictionHook".${climateRule}`;
 }
 
 /**
@@ -296,10 +302,12 @@ export async function generateHarveyDraft(prompt, dossier, prospect = {}) {
 export async function runQualityGateAndHeal(draftData, prompt, dossier, prospect = {}, maxRetries = 2) {
   let currentDraft = { ...draftData };
   const currentNiche = prospect.niche || dossier.niche || 'hvac';
+  const city = prospect.city || dossier.city || '';
+  const climate = getCityClimateProfile(city);
 
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
-    // Audit current draft
-    const audit = auditHarveyCopy(currentDraft.body, currentDraft.subject, currentNiche);
+    // Audit current draft with city climate awareness
+    const audit = auditHarveyCopy(currentDraft.body, currentDraft.subject, currentNiche, city);
 
     if (audit.passed) {
       return {
@@ -328,10 +336,14 @@ export async function runQualityGateAndHeal(draftData, prompt, dossier, prospect
       cleanedBody = cleanedBody.replace(reg, '');
     }
 
-    // 4. Remove forbidden trade words if found
+    // 4. Remove forbidden trade words & heal hot-belt climate mismatches (e.g. never pitch furnaces in Phoenix)
     for (const tw of ['patient', 'patients', 'morpheus8', 'botox', 'juvederm', 'bodytite', 'consultation', 'medical director']) {
       const reg = new RegExp(`\\b${tw}\\b`, 'gi');
       cleanedBody = cleanedBody.replace(reg, '');
+    }
+    if (climate.belt === 'hot_belt') {
+      cleanedBody = cleanedBody.replace(/\bfurnaces?\b/gi, 'AC systems').replace(/\bboilers?\b/gi, 'cooling systems').replace(/\bwinter\s+freeze\b/gi, 'peak cooling');
+      cleanedSubject = cleanedSubject.replace(/\bfurnaces?\b/gi, 'ac');
     }
 
     // 5. Clean subject line to 2-4 words lowercase
@@ -357,7 +369,7 @@ export async function runQualityGateAndHeal(draftData, prompt, dossier, prospect
     currentDraft.subject = cleanedSubject;
 
     // Re-verify after self-healing
-    const reAudit = auditHarveyCopy(currentDraft.body, currentDraft.subject, currentNiche);
+    const reAudit = auditHarveyCopy(currentDraft.body, currentDraft.subject, currentNiche, city);
     if (reAudit.passed) {
       return {
         passed: true,
@@ -370,7 +382,7 @@ export async function runQualityGateAndHeal(draftData, prompt, dossier, prospect
   }
 
   // Return last state with audit breakdown
-  const finalAudit = auditHarveyCopy(currentDraft.body, currentDraft.subject, currentNiche);
+  const finalAudit = auditHarveyCopy(currentDraft.body, currentDraft.subject, currentNiche, city);
   return {
     passed: finalAudit.score >= 80,
     attempts: maxRetries + 1,

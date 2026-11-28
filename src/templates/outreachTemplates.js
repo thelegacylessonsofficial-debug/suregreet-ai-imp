@@ -1,4 +1,5 @@
 import { config } from '../config.js';
+import { getCityClimateProfile } from '../services/qualifierService.js';
 
 export function getUnsubscribeUrl(prospectEmail) {
   const base = 'https://suregreet-automation.onrender.com';
@@ -44,7 +45,7 @@ export const BANNED_TRADE_WORDS = [
 /**
  * Deterministic Harvey Anti-AI & Deliverability Gate
  */
-export function auditHarveyCopy(text, subject = '', niche = 'hvac') {
+export function auditHarveyCopy(text, subject = '', niche = 'hvac', city = '') {
   if (!text) return { score: 0, wordCount: 0, passed: false, issues: ['Empty email text'] };
   const cleanBody = text.split('--')[0].trim();
   const lines = cleanBody.split(/\n+/).map(l => l.trim()).filter(Boolean);
@@ -123,6 +124,12 @@ export function auditHarveyCopy(text, subject = '', niche = 'hvac') {
     score -= 10;
   }
 
+  const climate = getCityClimateProfile(city);
+  if (climate.belt === 'hot_belt' && /\b(furnace|boiler|winter\s+freeze|frozen\s+pipe)\b/i.test(`${cleanBody} ${cleanSubject}`)) {
+    issues.push(`Climate mismatch: heating/furnace pitch in hot-belt market (${city})`);
+    score -= 30;
+  }
+
   score = Math.max(0, Math.min(100, score));
 
   return {
@@ -136,7 +143,7 @@ export function auditHarveyCopy(text, subject = '', niche = 'hvac') {
     exclamations,
     questionMarks,
     subjectWords,
-    passed: score >= 85 && foundBanned.length === 0 && foundTradeBanned.length === 0 && wordCount <= 75 && exclamations === 0 && questionMarks <= 1,
+    passed: score >= 85 && foundBanned.length === 0 && foundTradeBanned.length === 0 && wordCount <= 75 && exclamations === 0 && questionMarks <= 1 && !(climate.belt === 'hot_belt' && /\b(furnace|boiler|winter\s+freeze)\b/i.test(`${cleanBody} ${cleanSubject}`)),
     issues,
   };
 }
@@ -203,7 +210,7 @@ export function generateHarveyScript({
   framework = 'pas',
   signalHook = 'after_hours',
   doctorName = 'Owner',
-  clinicName = 'Lex Air Conditioning & Heating',
+  clinicName = 'Summit Heating & Cooling',
   city = 'Phoenix, AZ',
   treatment = 'Emergency AC & Heating Repair',
   niche = 'hvac',

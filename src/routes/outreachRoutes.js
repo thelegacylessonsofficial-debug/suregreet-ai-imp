@@ -29,6 +29,7 @@ import { sendEmail, getMailerStatus, verifyMailerConnection } from '../services/
 import { getSheetsStatus, syncAllProspectsToSheet, appendProspectToSheet, formatProspectsTsv, formatProspectsCsv } from '../services/googleSheets.js';
 import { runHarveyAutonomousPipeline, diagnoseAndGenerateFullSequence } from '../services/harveyService.js';
 import { huntAndEnrichLead } from '../services/leadHunterService.js';
+import { getRatePointTier } from '../services/qualifierService.js';
 import { config } from '../config.js';
 
 export const outreachRouter = Router();
@@ -325,11 +326,12 @@ function renderProspectsHtml(list, authKey = '') {
                   const qGrade = p.qual_grade || '';
                   const qColor = qScore === null
                     ? 'bg-gray-500/10 text-gray-400 border-gray-500/20'
-                    : qScore >= 75
-                    ? 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30'
+                    : qScore >= 80
+                    ? 'bg-emerald-500/15 text-[var(--accent-emerald)] border-emerald-500/30'
                     : qScore >= 60
-                    ? 'bg-amber-500/15 text-amber-300 border-amber-500/30'
-                    : 'bg-rose-500/15 text-rose-400 border-rose-500/30';
+                    ? 'bg-cyan-500/15 text-[var(--accent-cyan)] border-cyan-500/30'
+                    : 'bg-rose-500/15 text-rose-500 border-rose-500/30';
+                  const hasMysteryFail = Boolean(p.qual_breakdown?.breakdown?.painSignals?.subScores?.mysteryCall > 0);
 
                   return `
                   <tr class="hover:bg-[var(--bg-hover)] transition prospect-row" data-id="${p.id}" data-status="${p.status}" data-istrade="${isTrade ? 'true' : 'false'}" data-qual="${qScore ?? -1}" data-search="${(p.clinic_name + ' ' + (p.doctor_name || '') + ' ' + (p.city || '') + ' ' + (p.treatment || '') + ' ' + p.email + ' ' + (p.phone || '') + ' ' + (p.niche || '')).toLowerCase()}">
@@ -368,7 +370,12 @@ function renderProspectsHtml(list, authKey = '') {
                               ? `<span class="px-2 py-0.5 rounded text-[10px] font-bold font-mono border ${qColor}">${qScore}/100 ${escapeHtml(qGrade)}</span>`
                               : `<span class="px-2 py-0.5 rounded text-[10px] font-mono bg-gray-500/10 text-gray-400 border border-gray-500/20">Unscored</span>`
                           }
-                          <button type="button" onclick="requalifyProspect('${p.id}', this)" class="inline-flex items-center gap-1 text-[10px] text-[var(--accent-cyan)] hover:underline font-mono cursor-pointer" title="Run 10-Second Eye Test & 100-Pt Score on this website">${getSvgIcon('refresh', 'w-3 h-3')}<span>Score</span></button>
+                          <button type="button" onclick="requalifyProspect('${p.id}', this)" class="inline-flex items-center gap-1 text-[10px] text-[var(--accent-cyan)] hover:underline font-mono cursor-pointer" title="Run Hard Must-Haves & 100-Pt Score on this website">${getSvgIcon('refresh', 'w-3 h-3')}<span>Score</span></button>
+                          ${
+                            !hasMysteryFail
+                              ? `<button type="button" onclick="logMysteryCallFail('${p.id}', this)" class="text-[10px] text-amber-500 hover:underline font-mono cursor-pointer" title="Log failed mystery test call (voicemail/no answer) to add +15 pts">+15 Call Leak</button>`
+                              : `<span class="text-[10px] text-[var(--accent-emerald)] font-mono" title="Mystery call fail logged (+15 pts)">Call Leak+15</span>`
+                          }
                         </div>
                         ${
                           p.review_count
@@ -1231,11 +1238,11 @@ function renderProspectsHtml(list, authKey = '') {
           if (res.ok && data.success) {
             const q = data.qualification;
             const cell = document.getElementById('qual-cell-' + id);
-            const cClass = q.score >= 75
-              ? 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30'
+            const cClass = q.score >= 80
+              ? 'bg-emerald-500/15 text-[var(--accent-emerald)] border-emerald-500/30'
               : q.score >= 60
-              ? 'bg-amber-500/15 text-amber-300 border-amber-500/30'
-              : 'bg-rose-500/15 text-rose-400 border-rose-500/30';
+              ? 'bg-cyan-500/15 text-[var(--accent-cyan)] border-cyan-500/30'
+              : 'bg-rose-500/15 text-rose-500 border-rose-500/30';
             if (cell) {
               const refreshSvg = '${getSvgIcon('refresh', 'w-3 h-3').replace(/'/g, '"')}';
               const starSvg = '${getSvgIcon('star', 'w-3 h-3').replace(/'/g, '"')}';
@@ -1254,6 +1261,30 @@ function renderProspectsHtml(list, authKey = '') {
             btnEl.disabled = false;
             btnEl.innerHTML = '${getSvgIcon('refresh', 'w-3 h-3').replace(/'/g, '"')}<span>Score</span>';
           }
+        }
+      }
+
+      async function logMysteryCallFail(id, btnEl) {
+        if (btnEl) {
+          btnEl.disabled = true;
+          btnEl.textContent = '...';
+        }
+        try {
+          const res = await fetch(getAuthUrl('/outreach/mystery-call'), {
+            method: 'POST',
+            credentials: 'include',
+            headers: getAuthHeaders(),
+            body: JSON.stringify({ prospectId: id, failed: true })
+          });
+          const data = await res.json();
+          if (res.ok && data.success) {
+            showToast('Mystery Call Logged', 'Score boosted to ' + data.score + '/100 (Tier ' + data.grade + ')', 'success');
+            setTimeout(() => window.location.reload(), 900);
+          } else {
+            showToast('Update Failed', data.message || 'Could not update score', 'error');
+          }
+        } catch (e) {
+          showToast('Error', e.message, 'error');
         }
       }
 
@@ -2447,11 +2478,11 @@ ${escapeHtml(seq.text)}
           if (res.ok && data.success) {
             const q = data.qualification;
             const cell = document.getElementById('qual-cell-' + id);
-            const cClass = q.score >= 75
-              ? 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30'
+            const cClass = q.score >= 80
+              ? 'bg-emerald-500/15 text-[var(--accent-emerald)] border-emerald-500/30'
               : q.score >= 60
-              ? 'bg-amber-500/15 text-amber-300 border-amber-500/30'
-              : 'bg-rose-500/15 text-rose-400 border-rose-500/30';
+              ? 'bg-cyan-500/15 text-[var(--accent-cyan)] border-cyan-500/30'
+              : 'bg-rose-500/15 text-rose-500 border-rose-500/30';
             if (cell) {
               const refreshSvg = '${getSvgIcon('refresh', 'w-3 h-3').replace(/'/g, '"')}';
               const starSvg = '${getSvgIcon('star', 'w-3 h-3').replace(/'/g, '"')}';
@@ -3104,6 +3135,65 @@ outreachRouter.post('/requalify', async (req, res) => {
     });
 
     res.json({ success: true, qualification: qual, prospect: updated });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// 5a. Log failed mystery test call (+15 Pain pts -> boosts qualified leads to Tier A)
+outreachRouter.post('/mystery-call', async (req, res) => {
+  const { prospectId, failed = true } = req.body || {};
+  if (!prospectId) {
+    return res.status(400).json({ success: false, message: 'Field "prospectId" is required' });
+  }
+
+  try {
+    const p = await getProspectById(prospectId);
+    if (!p) {
+      return res.status(404).json({ success: false, message: 'Prospect not found' });
+    }
+
+    const qb = p.qual_breakdown && typeof p.qual_breakdown === 'object' ? { ...p.qual_breakdown } : {};
+    const bd = qb.breakdown ? { ...qb.breakdown } : {};
+    const pain = bd.painSignals ? { ...bd.painSignals } : { label: 'A. Pain Signals', max: 35, earned: 0, subScores: {} };
+    const sub = pain.subScores ? { ...pain.subScores } : {};
+    const prevMystery = Number(sub.mysteryCall || 0);
+    const nextMystery = failed ? 15 : 0;
+    const prevPain = Number(pain.earned || 0);
+    const nextPain = Math.min(35, Math.max(0, prevPain - prevMystery + nextMystery));
+
+    sub.mysteryCall = nextMystery;
+    pain.subScores = sub;
+    pain.earned = nextPain;
+    pain.pass = nextPain >= 10;
+    if (failed && !(pain.detail || '').includes('Failed mystery test call')) {
+      pain.detail = `Failed mystery test call (+15)${pain.detail ? ' | ' + pain.detail : ''}`;
+    }
+    bd.painSignals = pain;
+    if (bd.intakeFriction) bd.intakeFriction = { ...bd.intakeFriction, earned: nextPain, pass: nextPain >= 10 };
+    qb.breakdown = bd;
+
+    const baseScore = Number.isFinite(Number(qb.score)) ? Number(qb.score) : Number(p.qual_score || 0);
+    const newScore = Math.min(100, Math.max(0, baseScore - prevPain + nextPain));
+    const hardPass = qb.hardPass !== false;
+    const tier = getRatePointTier(newScore, hardPass && newScore >= 60);
+    qb.score = newScore;
+    qb.grade = tier.grade;
+    qb.tier = tier.tier;
+    qb.tierLabel = tier.label;
+    qb.qualified = hardPass && newScore >= 60;
+
+    const updated = await updateProspect(p.id, {
+      qual_score: newScore,
+      qual_grade: tier.grade,
+      qual_status: qb.qualified ? 'qualified' : 'rejected',
+      qual_breakdown: qb,
+      specific_observation: failed
+        ? 'Called emergency line during mystery test and hit voicemail instead of live dispatch.'
+        : p.specific_observation,
+    });
+
+    res.json({ success: true, score: newScore, grade: tier.grade, tier: tier.tier, prospect: updated });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
   }

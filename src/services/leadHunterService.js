@@ -3,7 +3,7 @@ import crypto from 'crypto';
 import { runDigitalAudit } from './auditorService.js';
 import { addProspect, getProspectById, updateProspect, getProspectDedupeIndex } from './outreachService.js';
 import { scrapeClinicWebsite, normalizeUrl } from './scraperService.js';
-import { qualifyLead, getQualificationBadge, DEFAULT_QUALIFY_THRESHOLD } from './qualifierService.js';
+import { qualifyLead, getQualificationBadge, DEFAULT_QUALIFY_THRESHOLD, getCityClimateProfile, isAffiliateShellDomain, isEnterpriseOrPeChain } from './qualifierService.js';
 import { sendTelegram } from './telegram.js';
 
 const USER_AGENT =
@@ -141,103 +141,61 @@ export function getNextCascadeCity(currentCity) {
     : ORDERED_CASCADE_CITIES[idx + 1];
 }
 
-// Verified Trade Contractor Seed Directory (strictly local single/family operators — chains excluded)
+// Verified Trade Contractor Seed Directory (strictly local 2-15 truck independent family operators — PE/enterprise excluded)
 const CURATED_TARGETS = {
   hvac: {
     'los angeles': [
       { title: 'JW Plumbing Heating and Air', url: 'https://jwheatingandair.com', city: 'Los Angeles, CA' },
-      { title: 'Brody Pennell Heating & Air Conditioning', url: 'https://www.brodypennell.com', city: 'Los Angeles, CA' },
-    ],
-    'san diego': [
-      { title: 'Anderson Plumbing Heating & Air', url: 'https://andersonpha.com', city: 'San Diego, CA' },
-      { title: 'Bill Howe Plumbing Heating & Air', url: 'https://billhowe.com', city: 'San Diego, CA' },
     ],
     'san francisco': [
       { title: 'Atlas Heating & Air Conditioning', url: 'https://atlasheating.com', city: 'San Francisco, CA' },
-      { title: 'Bellows Plumbing Heating & Air', url: 'https://bellowsservice.com', city: 'San Francisco, CA' },
     ],
     'san jose': [
       { title: 'Pelle Heating & Air Conditioning', url: 'https://pellehvac.com', city: 'San Jose, CA' },
-    ],
-    seattle: [
-      { title: "Bob's Heating & Air Conditioning", url: 'https://bobsheating.com', city: 'Seattle, WA' },
-      { title: 'BelRed Energy Solutions', url: 'https://belred.com', city: 'Seattle, WA' },
     ],
     spokane: [
       { title: 'Holiday Heating & Air Conditioning', url: 'https://holidayheating.com', city: 'Spokane, WA' },
     ],
     portland: [
-      { title: 'Sky Heating AC & Plumbing', url: 'https://skyheating.com', city: 'Portland, OR' },
       { title: 'Pyramid Heating & Cooling', url: 'https://pyramidheating.com', city: 'Portland, OR' },
-    ],
-    'las vegas': [
-      { title: 'Sierra Air Conditioning & Plumbing', url: 'https://sierraairconditioning.com', city: 'Las Vegas, NV' },
-    ],
-    reno: [
-      { title: 'Lincoln Heating & Air Conditioning', url: 'https://lincolnheating.com', city: 'Reno, NV' },
     ],
     phoenix: [
       { title: 'Morehart Air Conditioning & Heating', url: 'https://morehartac.com', city: 'Phoenix, AZ' },
-      { title: 'Compass Air Conditioning & Furnace Repair', url: 'https://azcompassair.com', city: 'Phoenix, AZ' },
     ],
     dallas: [
-      { title: 'Lex Air Conditioning & Heating', url: 'https://www.lexairconditioning.com', city: 'Dallas, TX' },
       { title: 'Total Air & Heat', url: 'https://www.totalair.com', city: 'Dallas, TX' },
     ],
     austin: [
-      { title: 'Fox Service Company', url: 'https://foxservice.com', city: 'Austin, TX' },
       { title: 'Totally Cool AC', url: 'https://www.totallycoolac.com', city: 'Austin, TX' },
-      { title: 'McCullough Heating & Air', url: 'https://www.mcculloughair.com', city: 'Austin, TX' },
     ],
     houston: [
-      { title: 'Airteam HVAC', url: 'https://airteam.com', city: 'Houston, TX' },
       { title: 'Custom Comfort Air', url: 'https://customcomfortair.com', city: 'Houston, TX' },
     ],
     miami: [
-      { title: 'Direct Air Conditioning', url: 'https://www.directairfl.com', city: 'Miami, FL' },
-      { title: 'Air Around the Clock', url: 'https://www.airaroundtheclock.com', city: 'Miami, FL' },
       { title: 'Freezing Mechanical', url: 'https://freezingmechanical.com', city: 'Miami, FL' },
-      { title: 'All Year Cooling & Heating', url: 'https://allyearcooling.com', city: 'Miami, FL' },
     ],
     tampa: [
-      { title: 'Cornerstone Pros Air Conditioning', url: 'https://cornerstonepros.com', city: 'Tampa, FL' },
       { title: 'Air Hawk Heating and Cooling', url: 'https://airhawkac.com', city: 'Tampa, FL' },
     ],
-    orlando: [
-      { title: 'Ferran Services Air Conditioning', url: 'https://ferran-services.com', city: 'Orlando, FL' },
-    ],
     jacksonville: [
-      { title: 'Snyder Air Conditioning & Plumbing', url: 'https://snyderac.com', city: 'Jacksonville, FL' },
       { title: "Von's Heating and Air", url: 'https://vonsheatingandair.com', city: 'Jacksonville, FL' },
     ],
     atlanta: [
       { title: 'PV Heating Cooling & Plumbing', url: 'https://pvhvac.com', city: 'Atlanta, GA' },
       { title: 'Anchor Heating & Air', url: 'https://www.anchorac.com', city: 'Atlanta, GA' },
-      { title: 'Reliable Heating & Air', url: 'https://reliableair.com', city: 'Atlanta, GA' },
     ],
-    savannah: [
-      { title: "Canady's Heating & Air", url: 'https://canadys.com', city: 'Savannah, GA' },
-    ],
-    buffalo: [
-      { title: "Roy's Plumbing Heating & Cooling", url: 'https://callroys.com', city: 'Buffalo, NY' },
-    ],
-    // Affluent Suburb Targets
     carmel: [
-      { title: 'Family Heating & Air Conditioning', url: 'https://www.familyhvac.net', city: 'Carmel, IN' },
       { title: 'Paul Henderson Plumbing HVAC', url: 'https://paulhendersonplumbing.com', city: 'Carmel, IN' },
       { title: 'Godby Heating Plumbing Electrical', url: 'https://www.godbyhpe.com', city: 'Carmel, IN' },
     ],
     zionsville: [
       { title: 'Earl Russell Heating & Cooling', url: 'https://www.russellheatingandcooling.com', city: 'Zionsville, IN' },
-      { title: 'Family Heating & Air', url: 'https://www.familyhvac.net', city: 'Zionsville, IN' },
       { title: 'Paul Henderson Plumbing HVAC', url: 'https://paulhendersonplumbing.com', city: 'Zionsville, IN' },
     ],
     dublin: [
-      { title: 'Wind Bender Heating Cooling Plumbing', url: 'https://windbenderohio.com', city: 'Dublin, OH' },
       { title: 'TTM Mechanical HVAC', url: 'https://www.ttmmechanical.com', city: 'Dublin, OH' },
       { title: 'Trinity Heating & Cooling', url: 'https://trinityheatcool.com', city: 'Dublin, OH' },
       { title: 'Kendawgs Heating & Cooling', url: 'https://kdhvacair.com', city: 'Dublin, OH' },
-      { title: 'Five Star Heating & Cooling Group', url: 'https://fivestarheatingandcoolinggroup.com', city: 'Dublin, OH' },
     ],
     prosper: [
       { title: "Crow's Heat & Air", url: 'https://crowsheatandair.com', city: 'Prosper, TX' },
@@ -248,7 +206,6 @@ const CURATED_TARGETS = {
     celina: [
       { title: "Crow's Heat & Air", url: 'https://crowsheatandair.com', city: 'Celina, TX' },
       { title: 'Prosper Air Heating & Cooling', url: 'https://prosperair.com', city: 'Celina, TX' },
-      { title: "Bill Joplin's Air Conditioning", url: 'https://www.billjoplins.com', city: 'Celina, TX' },
     ],
     fulshear: [
       { title: 'Vance Air & Heat', url: 'https://vanceairandheat.com', city: 'Fulshear, TX' },
@@ -258,13 +215,12 @@ const CURATED_TARGETS = {
       { title: 'Rapid Response Heating & Cooling', url: 'https://rapidhvactn.com', city: 'Brentwood, TN' },
       { title: 'Brentwood Comfort Control', url: 'https://brentwoodcomfort.net', city: 'Brentwood, TN' },
       { title: 'Covenant Heating & Cooling', url: 'https://www.covenantheatingandcooling.com', city: 'Brentwood, TN' },
-      { title: 'Airstream Services', url: 'https://airstreamteam.com', city: 'Brentwood, TN' },
     ],
   },
 };
 
 const DIRECTORY_OR_SPAM_DOMAINS =
-  /(yelp\.com|groupon\.com|healthgrades\.com|yellowpages\.com|angi\.com|angieslist\.com|mapquest\.com|bbb\.org|facebook\.com|instagram\.com|tripadvisor\.com|expertise\.com|thumbtack\.com|indeed\.com|duckduckgo\.com|bing\.com|homeadvisor\.com|networx\.com|bark\.com|porch\.com|modernize\.com|threebestrated\.com|houzz\.com|nextdoor\.com|emergencyhvacservices\.com|emergency-hvac-repair\.com|hvacacrepair\.org|zaptheory\.com|topchoiceheatingairconditioningusa\.com|ama-hvac\.com|brentwoodhvacrepair\.com|near-me)/i;
+  /(yelp\.com|groupon\.com|healthgrades\.com|yellowpages\.com|angi\.com|angieslist\.com|mapquest\.com|bbb\.org|facebook\.com|instagram\.com|tripadvisor\.com|expertise\.com|thumbtack\.com|indeed\.com|duckduckgo\.com|bing\.com|homeadvisor\.com|networx\.com|bark\.com|porch\.com|modernize\.com|threebestrated\.com|houzz\.com|nextdoor\.com|emergency-[a-z0-9-]+\.|[a-z0-9-]+-pros\.|airconditioneremergency\.com|emergencyhvacservices\.com|emergency-hvac-repair\.com|hvacacrepair\.org|zaptheory\.com|topchoiceheatingairconditioningusa\.com|ama-hvac\.com|brentwoodhvacrepair\.com|near-me)/i;
 
 function resolveCityKey(city = '') {
   let key = (city.toLowerCase().split(',')[0] || '').trim();
@@ -327,7 +283,12 @@ export async function searchLocalBusinesses({ query, city = 'Los Angeles, CA', n
           }
           if (!rawHref.startsWith('http') || DIRECTORY_OR_SPAM_DOMAINS.test(rawHref)) return;
           const norm = normalizeUrl(rawHref);
-          if (norm && !rawResults.some((r) => r.url === norm)) {
+          if (
+            norm &&
+            !isAffiliateShellDomain(norm, title).isAffiliate &&
+            !isEnterpriseOrPeChain(norm, title).matched &&
+            !rawResults.some((r) => r.url === norm)
+          ) {
             rawResults.push({ title, url: norm, snippet: title, city, niche });
           }
         });
@@ -373,7 +334,7 @@ export async function huntAndEnrichLead({
 }) {
   let scraped = null;
   try {
-    scraped = await scrapeClinicWebsite(url, { fast, niche });
+    scraped = await scrapeClinicWebsite(url, { fast, niche, city });
   } catch (err) {
     scraped = null;
   }
@@ -430,6 +391,9 @@ export async function huntAndEnrichLead({
     htmlContent: scraped.visibleText || null,
   });
 
+  const resolvedCity = city && !city.toLowerCase().includes('undefined') ? city : scraped.city;
+  const climate = getCityClimateProfile(resolvedCity);
+
   let primaryTreatment = treatmentOverride || audit.primaryService || scraped.treatment;
   if (isTradeSite && (!primaryTreatment || /morpheus8|botox|juvederm/i.test(primaryTreatment))) {
     primaryTreatment =
@@ -438,6 +402,9 @@ export async function huntAndEnrichLead({
         : niche === 'electrical' ? '24/7 Emergency Electrical Service'
         : niche === 'water_damage' ? 'Emergency Water Damage Restoration'
         : 'Emergency AC & Heating Repair';
+  }
+  if (isTradeSite && climate.belt === 'hot_belt' && /\b(furnace|boiler)\b/i.test(primaryTreatment)) {
+    primaryTreatment = 'Emergency AC Repair';
   }
 
   let finalEmail = scraped.email;
@@ -455,9 +422,11 @@ export async function huntAndEnrichLead({
       doctorName: decisionMaker,
       phone: scraped.phone,
       email: finalEmail,
+      city: resolvedCity,
       treatment: primaryTreatment,
       allTreatments: scraped.allTreatments || [],
       adSignals: scraped.adSignals,
+      stackText: scraped.stackText || '',
       multiLocation: scraped.multiLocation || { isMultiLocation: false },
       jsonLd: scraped.jsonLd || null,
       hasHtmlForm: scraped.hasHtmlForm,
@@ -484,10 +453,11 @@ export async function huntAndEnrichLead({
     email: finalEmail,
     allEmails: scraped.allEmails,
     phone: scraped.phone,
-    city: city && !city.toLowerCase().includes('undefined') ? city : scraped.city,
+    city: resolvedCity,
     treatment: primaryTreatment,
     niche,
     adSignals: scraped.adSignals,
+    schedulingStack: qualification.schedulingStack,
     multiLocation: scraped.multiLocation || { isMultiLocation: false, reason: 'Single location' },
     socialSignals: scraped.socialSignals || { hasGmb: false, hasInstagram: false, hasFacebook: false, summary: 'Direct' },
     specificObservation: audit.specificObservation,

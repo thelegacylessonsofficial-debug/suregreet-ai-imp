@@ -1,6 +1,6 @@
 import * as cheerio from 'cheerio';
 import { addProspect, getProspectById } from './outreachService.js';
-import { qualifyLead } from './qualifierService.js';
+import { qualifyLead, HARD_BLOCKED_CHAIN_PATTERNS, getCityClimateProfile } from './qualifierService.js';
 import { getShortBusinessName, formatSalutation } from '../templates/outreachTemplates.js';
 
 const USER_AGENT =
@@ -75,41 +75,8 @@ const GENERIC_EMAIL_LOCALS = new Set([
   'quotes', 'quote', 'estimates', 'estimate', 'frontdesk', 'reception',
 ]);
 
-// National PE mega-chains & franchises filtered by the Ownership Gate
-const PE_CHAIN_PATTERNS = [
-  /\bars\.com\b/i,
-  /\bars\s*\/?\s*rescue\s*rooter\b/i,
-  /\bserviceexperts\.com\b/i,
-  /\bservice\s+experts\b/i,
-  /\brotorooter\.com\b/i,
-  /\broto-rooter\b/i,
-  /\bhappyhiller\.com\b/i,
-  /\bhiller\s+plumbing\b/i,
-  /\bleecompany\.com\b/i,
-  /\blee\s+company\b/i,
-  /\bonehourheatandair\.com\b/i,
-  /\bone\s+hour\s+heating\b/i,
-  /\bbenjaminfranklinplumbing\b/i,
-  /\bmistersparky\b/i,
-  /\bmrrooter\b/i,
-  /\baireserv\.com\b/i,
-  /\baire\s+serv\b/i,
-  /\bhorizonservices\b/i,
-  /\bgoettl\.com\b/i,
-  /\bturnpoint\b/i,
-  /\bwrenchgroup\b/i,
-  /\bapexservicepartners\b/i,
-  /\bpremierishere\.com\b/i,
-  /\bsummersphc\.com\b/i,
-  /\bfourseasonsheatingcooling\.com\b/i,
-  /\bmorrisjenkins\.com\b/i,
-  /\bberkeys\.com\b/i,
-  /\bbakerbrothersplumbing\.com\b/i,
-  /\bgeorgebrazilhvac\.com\b/i,
-  /\bchampionair\.com\b/i,
-  /\bairtron\b/i,
-  /\bsierraairconditioning\.com\b/i,
-];
+// National PE mega-chains & franchises filtered by the Ownership Gate (shared with qualifierService)
+const PE_CHAIN_PATTERNS = HARD_BLOCKED_CHAIN_PATTERNS;
 
 /**
  * Stream HTTP body up to `maxBytes` so bloated CMS pages cannot OOM the worker heap.
@@ -314,13 +281,18 @@ function extractTradeOwnerName(visibleText, primaryEmail, jsonLdFounder = null) 
   if (jsonLdFounder) return `${jsonLdFounder} (Founder)`;
 
   if (visibleText) {
-    const stopWords = /^(of|the|our|and|company|business|service|services|team|board|group|management|homes|homeowners|rapid|family|operated|operators|operator|owned|owner|founder|today|since|local|customers|clients|warranty|repair|hvac|heating|cooling|air|plumbing|roofing|electric|electrical|mechanical|veteran|staff|technicians|precision|quality|comfort|premier|elite)$/i;
-    const labeled = /\b(?:Owner|President|Founder|CEO|Founded\s+by|Owned\s+(?:and\s+operated\s+)?by|Operated\s+by|Started\s+by)\s*(?:[:\-–,]|\bis\b)?\s*([A-Z][a-z]{2,15}(?:\s+[A-Z][a-z]{2,15})?)\b/g;
-    let m;
-    while ((m = labeled.exec(visibleText)) !== null) {
-      const candidate = m[1].trim();
-      if (!candidate.split(/\s+/).some((w) => stopWords.test(w)) && candidate.length >= 3) {
-        return `${candidate} (Owner)`;
+    const stopWords = /^(of|the|our|and|company|business|service|services|team|board|group|management|homes|homeowners|rapid|family|operated|operators|operator|owned|owner|founder|today|since|local|customers|clients|warranty|repair|hvac|heating|cooling|air|plumbing|roofing|electric|electrical|mechanical|veteran|staff|technicians|precision|quality|comfort|premier|elite|north|south|east|west|central)$/i;
+    const patterns = [
+      /\b(?:Owner|President|Founder|CEO|Founded\s+by|Owned\s+(?:and\s+operated\s+)?by|Operated\s+by|Started\s+by)\s*(?:[:\-–,]|\bis\b)?\s*([A-Z][a-z]{2,15}(?:\s+[A-Z][a-z]{2,15})?)\b/g,
+      /\b([A-Z][a-z]{2,15}\s+[A-Z][a-z]{2,15})\s*,\s*(?:Owner|Founder|President|Co-Founder|Master\s+(?:Plumber|Electrician|Technician))\b/g,
+    ];
+    for (const reg of patterns) {
+      let m;
+      while ((m = reg.exec(visibleText)) !== null) {
+        const candidate = m[1].trim();
+        if (!candidate.split(/\s+/).some((w) => stopWords.test(w)) && candidate.length >= 3) {
+          return `${candidate} (Owner)`;
+        }
       }
     }
   }
@@ -575,7 +547,12 @@ export async function scrapeClinicWebsite(inputUrl, options = {}) {
     .replace(/\s+/g, ' ')
     .trim();
 
-  // Ad pixels & form detection BEFORE freeing homepageHtml
+  // Ad pixels, scheduling stack & form detection BEFORE freeing homepageHtml
+  const rawHomeLower = (homepageHtml || '').toLowerCase();
+  const stackMatches = (rawHomeLower + ' ' + visibleHomeText.toLowerCase()).match(
+    /(housecallpro\.com|getjobber\.com|clienthub\.getjobber|leadconnectorhq\.com|msgsndr\.com|gohighlevel|servicetitan\.com|scheduleengine|calendly\.com|cal\.com|calendar\.google\.com|outlook\.office365\.com|bookings\.microsoft\.com|avoca\.ai|smith\.ai|ruby\s+receptionists?)/g
+  );
+  const stackText = stackMatches ? Array.from(new Set(stackMatches)).join(' ') : '';
   const adSignals = detectAdPixels(homepageHtml || '', visibleHomeText);
   const hasHtmlForm = Boolean(snap?.hasHtmlFormTag) || /wpcf7|wpforms|gform|gravityforms|elementor-form|hubspot-form|<form\b/i.test(homepageHtml || '');
   const hasLiveSchedulerHome = /calendly\.com|acuityscheduling\.com|cal\.com|scheduleengine|servicetitan\.com\/web|housecallpro\.com\/book|jobber\.com/i.test(
@@ -648,7 +625,7 @@ export async function scrapeClinicWebsite(inputUrl, options = {}) {
   const detectedTreatments = searchPool.filter((s) =>
     new RegExp(`\\b${s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i').test(visibleText)
   );
-  const primaryTreatment = detectedTreatments[0] || (isTradeSite ? 'Emergency AC & Heating Repair' : 'Morpheus8');
+  let primaryTreatment = detectedTreatments[0] || (isTradeSite ? 'Emergency AC & Heating Repair' : 'Morpheus8');
 
   const primaryEmail = pickBestEmail(rawEmails);
   const primaryPhone = Array.from(rawPhones)[0] || null;
@@ -661,6 +638,13 @@ export async function scrapeClinicWebsite(inputUrl, options = {}) {
     /\b([A-Z][a-zA-Z\s]{2,20}),\s*(AL|AK|AZ|AR|CA|CO|CT|DE|FL|GA|HI|ID|IL|IN|IA|KS|KY|LA|ME|MD|MA|MI|MN|MS|MO|MT|NE|NV|NH|NJ|NM|NY|NC|ND|OH|OK|OR|PA|RI|SC|SD|TN|TX|UT|VT|VA|WA|WV|WI|WY)\b/
   );
   if (locationMatch) city = `${locationMatch[1].trim()}, ${locationMatch[2]}`;
+
+  const effectiveCity = options.city || city || 'US';
+  const climate = getCityClimateProfile(effectiveCity);
+  if (isTradeSite && climate.belt === 'hot_belt' && /\b(furnace|boiler)\b/i.test(primaryTreatment)) {
+    primaryTreatment =
+      detectedTreatments.find((t) => !/\b(furnace|boiler)\b/i.test(t)) || 'Emergency AC Repair';
+  }
 
   const multiLocation = detectMultiLocation(chainMatchHomepage ? 'our locations ' + visibleText : visibleText, locLinkCount, activeUrl, clinicName);
   const hasLiveScheduler = hasLiveSchedulerHome || /calendly|acuityscheduling|cal\.com|servicetitan|housecallpro|jobber/i.test(visibleText);
@@ -680,6 +664,7 @@ export async function scrapeClinicWebsite(inputUrl, options = {}) {
     treatment: primaryTreatment,
     allTreatments: detectedTreatments,
     adSignals,
+    stackText,
     multiLocation,
     socialSignals,
     jsonLd,
@@ -702,7 +687,7 @@ export async function scrapeAndIngestLead({
   minScore = 60,
   force = false,
 }) {
-  const result = await scrapeClinicWebsite(url, { niche: nicheOverride || 'hvac' });
+  const result = await scrapeClinicWebsite(url, { niche: nicheOverride || 'hvac', city: cityOverride });
   if (!result.success) return { success: false, error: result.error };
 
   let finalEmail = result.email;
@@ -721,7 +706,13 @@ export async function scrapeAndIngestLead({
   }
 
   const qualification = qualifyLead(
-    { ...result, email: finalEmail, doctorName: doctorOverride || result.doctorName },
+    {
+      ...result,
+      email: finalEmail,
+      city: cityOverride || result.city,
+      treatment: treatmentOverride || result.treatment,
+      doctorName: doctorOverride || result.doctorName,
+    },
     { hasStaticForm: result.hasHtmlForm && !result.hasLiveScheduler },
     Number(minScore) || 60
   );

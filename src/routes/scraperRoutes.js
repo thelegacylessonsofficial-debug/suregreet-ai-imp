@@ -357,10 +357,9 @@ scraperRouter.get('/dashboard', (req, res) => {
         <div>
           <label for="huntMinScore" class="block text-[11px] font-semibold uppercase tracking-wider text-[var(--text-muted)] mb-1.5">CRM Gate Threshold</label>
           <select id="huntMinScore" class="w-full bg-[var(--bg-surface)] border border-[var(--border-subtle)] rounded-xl px-3 py-2.5 text-xs text-[var(--text-primary)] font-medium focus:outline-none focus:border-cyan-500 transition cursor-pointer">
-            <option value="50">50+ Pts (Broad Intake)</option>
-            <option value="60" selected>60+ Pts (Standard Gate)</option>
-            <option value="75">75+ Pts (Tier A Priority)</option>
-            <option value="85">85+ Pts (Elite ICP Only)</option>
+            <option value="50">50+ Pts (Manual Review)</option>
+            <option value="60" selected>60+ Pts (Tier B + Tier A Gate)</option>
+            <option value="80">80+ Pts (Tier A Priority Only)</option>
           </select>
         </div>
 
@@ -429,28 +428,31 @@ scraperRouter.get('/dashboard', (req, res) => {
       <div id="rubricPanel" class="hidden border-t border-[var(--border-subtle)] pt-4 grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
         <div class="bg-[var(--bg-card-subtle)] rounded-xl border border-[var(--border-subtle)] p-4 space-y-2.5">
           <div class="flex items-center justify-between">
-            <h3 class="font-bold text-[var(--text-primary)]">10-Second Eye Test</h3>
-            <span class="text-[10px] font-mono text-[var(--text-muted)] uppercase">Binary Filters</span>
+            <h3 class="font-bold text-[var(--text-primary)]">Hard Must-Haves &amp; Auto-Blocklist</h3>
+            <span class="text-[10px] font-mono text-rose-500 uppercase">Any NO = Instant Skip</span>
           </div>
           <ul class="space-y-1.5 text-[var(--text-secondary)]">
-            <li class="flex items-center justify-between gap-2"><span>1. Review Sweet Spot (20 - 300)</span><span class="font-mono text-[11px] text-[var(--accent-emerald)]">Anti-Chain</span></li>
-            <li class="flex items-center justify-between gap-2"><span>2. Family-Owned / 1-2 Locations</span><span class="font-mono text-[11px] text-[var(--accent-emerald)]">PE Blocked</span></li>
-            <li class="flex items-center justify-between gap-2"><span>3. Form Leak / After-Hours Gap</span><span class="font-mono text-[11px] text-[var(--accent-emerald)]">Core Pain</span></li>
-            <li class="flex items-center justify-between gap-2"><span>4. Active Google Screened / Meta Ads</span><span class="font-mono text-[11px] text-[var(--accent-emerald)]">Ad Buyer</span></li>
+            <li class="flex items-center justify-between gap-2"><span>1. US Residential Service Only</span><span class="font-mono text-[11px] text-[var(--accent-emerald)]">No Commercial</span></li>
+            <li class="flex items-center justify-between gap-2"><span>2. Goldilocks Fleet (2-15 Trucks / 20-500 Rev)</span><span class="font-mono text-[11px] text-[var(--accent-emerald)]">&gt;500 &amp; &lt;15 Blocked</span></li>
+            <li class="flex items-center justify-between gap-2"><span>3. 100% Independent Owner</span><span class="font-mono text-[11px] text-[var(--accent-emerald)]">PE / AI Blocked</span></li>
+            <li class="flex items-center justify-between gap-2"><span>4. Active Phone + Verified Owner Name</span><span class="font-mono text-[11px] text-[var(--accent-emerald)]">No Generic Only</span></li>
+            <li class="flex items-center justify-between gap-2"><span>5. Compatible Stack (GCal/HCP/Jobber/GHL)</span><span class="font-mono text-[11px] text-[var(--accent-emerald)]">No Affiliates</span></li>
+            <li class="flex items-center justify-between gap-2"><span>6. Verifiable Intake Friction</span><span class="font-mono text-[11px] text-[var(--accent-emerald)]">Form / 5 PM Gap</span></li>
           </ul>
         </div>
         <div class="bg-[var(--bg-card-subtle)] rounded-xl border border-[var(--border-subtle)] p-4 space-y-2.5">
           <div class="flex items-center justify-between">
-            <h3 class="font-bold text-[var(--text-primary)]">100-Point Rate Breakdown</h3>
-            <span class="text-[10px] font-mono text-[var(--accent-cyan)]">CRM Gate Default: 60</span>
+            <h3 class="font-bold text-[var(--text-primary)]">100-Point Matrix &amp; Action Tiers</h3>
+            <span class="text-[10px] font-mono text-[var(--accent-cyan)]">80+ Tier A | 60-79 Tier B</span>
           </div>
-          <div class="grid grid-cols-2 gap-x-4 gap-y-1.5 text-[var(--text-secondary)]">
-            <div class="flex justify-between"><span>Fleet (5-15 trucks)</span><span class="font-mono font-semibold text-[var(--text-primary)]">20 pts</span></div>
-            <div class="flex justify-between"><span>Independent Owner</span><span class="font-mono font-semibold text-[var(--text-primary)]">20 pts</span></div>
-            <div class="flex justify-between"><span>Intake / Call Leak</span><span class="font-mono font-semibold text-[var(--text-primary)]">25 pts</span></div>
-            <div class="flex justify-between"><span>Active LSA / Paid Ads</span><span class="font-mono font-semibold text-[var(--text-primary)]">15 pts</span></div>
-            <div class="flex justify-between"><span>\$8K+ Installs</span><span class="font-mono font-semibold text-[var(--text-primary)]">10 pts</span></div>
-            <div class="flex justify-between"><span>Direct Owner Contact</span><span class="font-mono font-semibold text-[var(--text-primary)]">10 pts</span></div>
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-1.5 text-[var(--text-secondary)]">
+            <div class="flex justify-between"><span>A. Pain Signals (Test Call/Form/Hrs)</span><span class="font-mono font-semibold text-[var(--text-primary)]">35 pts</span></div>
+            <div class="flex justify-between"><span>B. Fit &amp; Urgency (Fleet/Ads/Climate)</span><span class="font-mono font-semibold text-[var(--text-primary)]">25 pts</span></div>
+            <div class="flex justify-between"><span>C. Ability to Buy (3+ Yrs &amp; High-Ticket)</span><span class="font-mono font-semibold text-[var(--text-primary)]">20 pts</span></div>
+            <div class="flex justify-between"><span>D. Stack &amp; Owner Reachability</span><span class="font-mono font-semibold text-[var(--text-primary)]">20 pts</span></div>
+          </div>
+          <div class="pt-1.5 border-t border-[var(--border-subtle)] text-[11px] text-[var(--text-muted)] font-mono">
+            Tier A (80-100): Dial + Custom PAS | Tier B (60-79): 4-Step Cadence | Tier C (&lt;60): Deleted
           </div>
         </div>
       </div>
@@ -695,8 +697,8 @@ scraperRouter.get('/dashboard', (req, res) => {
       const telHref = lead.phone ? 'tel:' + String(lead.phone).replace(/[^0-9+]/g, '') : '';
 
       let scoreCls = 'badge-rose';
-      if (score >= 75) scoreCls = 'bg-[var(--accent-emerald-subtle)] text-[var(--accent-emerald)] border-emerald-500/30';
-      else if (score >= 60) scoreCls = 'badge-amber';
+      if (passed && score >= 80) scoreCls = 'bg-[var(--accent-emerald-subtle)] text-[var(--accent-emerald)] border-emerald-500/30';
+      else if (passed && score >= 60) scoreCls = 'bg-cyan-500/15 text-[var(--accent-cyan)] border-cyan-500/30';
 
       let dbPill = '';
       if (lead.dbStatus === 'saved') {
@@ -706,12 +708,15 @@ scraperRouter.get('/dashboard', (req, res) => {
       } else if (lead.dbStatus === 'no_email') {
         dbPill = '<span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-semibold badge-amber border">' + SVG.alertTriangle + '<span>Qualified (No Email)</span></span>';
       } else if (lead.dbStatus === 'disqualified' || !passed) {
-        dbPill = '<span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-semibold badge-rose border">' + SVG.xCircle + '<span>Blocked (&lt; Threshold)</span></span>';
+        dbPill = '<span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-semibold badge-rose border">' + SVG.xCircle + '<span>Tier C · Blocked</span></span>';
       }
 
       const ratingHtml = revCount
         ? '<span class="inline-flex items-center gap-1 text-[11px] font-mono badge-amber px-2 py-0.5 rounded-md border">' + SVG.star + '<span>' + esc(gRating || '4.8') + ' (' + esc(revCount) + ' rev)</span></span>'
         : '';
+
+      const mh = q.mustHaves || {};
+      const stackTag = q.schedulingStack && q.schedulingStack.stackName ? q.schedulingStack.stackName : '';
 
       const forceBtn = (!passed || lead.dbStatus === 'disqualified' || lead.dbStatus === 'no_email') && lead.email && lead.dbStatus !== 'saved' && lead.dbStatus !== 'duplicate'
         ? '<button type="button" onclick="forceAddLead(this)" data-url="' + esc(href || lead.url) + '" data-city="' + esc(lead.city || '') + '" data-niche="' + esc(lead.niche || 'hvac') + '" class="inline-flex items-center gap-1 px-3 py-1.5 rounded-xl bg-[var(--bg-surface)] hover:bg-[var(--bg-hover)] border border-[var(--border-subtle)] text-[11px] font-semibold text-[var(--text-primary)] cursor-pointer transition">' + SVG.plus + '<span>Force Add to CRM</span></button>'
@@ -757,12 +762,15 @@ scraperRouter.get('/dashboard', (req, res) => {
           '</div>' +
         '</div>' +
 
-        '<!-- 10-Second Eye Test Row -->' +
+        '<!-- Hard Must-Haves & Stack Row -->' +
         '<div class="flex items-center gap-2 flex-wrap">' +
-          eyeChip(eye.reviewsInRange, '20-300 Reviews') +
-          eyeChip(eye.familyOwned, 'Independent (1-2 Locs)') +
-          eyeChip(eye.painConfirmed, 'Intake / Hours Gap') +
-          eyeChip(eye.activeAds, 'Active LSA / Paid Ads') +
+          eyeChip(mh.residentialFocus || true, 'Residential Focus') +
+          eyeChip(eye.reviewsInRange, '20-500 Reviews') +
+          eyeChip(mh.independentOwnership || eye.familyOwned, 'Independent Owner') +
+          eyeChip(mh.verifiablePhoneAndOwner, 'Verified Owner + Phone') +
+          eyeChip(mh.compatibleStack, stackTag || 'Compatible Stack') +
+          eyeChip(mh.verifiableIntakeFriction || eye.painConfirmed, 'Intake Friction') +
+          eyeChip(eye.activeAds, 'Active Paid Ads') +
         '</div>' +
 
         '<!-- Expandable Score Breakdown & Force Override -->' +
@@ -770,18 +778,16 @@ scraperRouter.get('/dashboard', (req, res) => {
           '<details class="flex-1">' +
             '<summary class="inline-flex items-center gap-1 text-[11px] font-semibold text-[var(--text-secondary)] hover:text-[var(--text-primary)] cursor-pointer select-none list-none">' +
               SVG.chevronDown +
-              '<span>Score Breakdown &amp; Audit Notes</span>' +
+              '<span>Score Matrix (Pain 35 · Fit 25 · Ability 20 · Reach 20)</span>' +
             '</summary>' +
-            '<div class="mt-3 pt-3 border-t border-[var(--border-subtle)] grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">' +
-              scoreBarRow('Fleet Size (5-15)', bd.fleetSize, 20) +
-              scoreBarRow('Ownership / Indie', bd.ownership, 20) +
-              scoreBarRow('Intake / After-Hours', bd.intakeFriction, 25) +
-              scoreBarRow('Active Paid Ads', bd.adSpend, 15) +
-              scoreBarRow('High-Ticket ($8K+)', bd.highTicket, 10) +
-              scoreBarRow('Direct Owner Contact', bd.ownerContact, 10) +
+            '<div class="mt-3 pt-3 border-t border-[var(--border-subtle)] grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">' +
+              scoreBarRow('A. Pain Signals', bd.painSignals || bd.intakeFriction, 35) +
+              scoreBarRow('B. Fit & Urgency', bd.fitAndUrgency || bd.fleetSize, 25) +
+              scoreBarRow('C. Ability to Buy', bd.abilityToBuy || bd.highTicket, 20) +
+              scoreBarRow('D. Stack & Owner', bd.easeAndReach || bd.ownerContact, 20) +
             '</div>' +
             (q.disqualifyReasons && q.disqualifyReasons.length
-              ? '<div class="mt-2.5 text-[11px] text-amber-500 font-mono">Gate Notes: ' + esc(q.disqualifyReasons.join(' | ')) + '</div>'
+              ? '<div class="mt-2.5 text-[11px] text-amber-500 font-mono">Disqualifiers: ' + esc(q.disqualifyReasons.join(' | ')) + '</div>'
               : '') +
           '</details>' +
           '<div class="shrink-0">' + forceBtn + '</div>' +
