@@ -107,6 +107,8 @@ const PE_CHAIN_PATTERNS = [
   /\bbakerbrothersplumbing\.com\b/i,
   /\bgeorgebrazilhvac\.com\b/i,
   /\bchampionair\.com\b/i,
+  /\bairtron\b/i,
+  /\bsierraairconditioning\.com\b/i,
 ];
 
 /**
@@ -217,15 +219,20 @@ export function extractVisibleText(html) {
     .slice(0, MAX_VISIBLE_CHARS);
 }
 
+const ASSET_EXTENSION_RE = /\.(png|jpe?g|gif|svg|webp|avif|ico|bmp|tiff?|heic|mp4|mov|webm|css|js|mjs|map|json|xml|woff2?|ttf|otf|eot|pdf)$/i;
+
 function sanitizeEmail(email) {
   if (!email) return null;
   const clean = email.trim().toLowerCase().replace(/[^\w.@+-]/g, '');
   if (!clean.includes('@') || !clean.includes('.') || clean.length > 80) return null;
-  if (/\.(png|jpg|jpeg|gif|svg|webp|css|js|woff|woff2|pdf)$/i.test(clean)) return null;
+  if (ASSET_EXTENSION_RE.test(clean)) return null;
   const [local, domain] = clean.split('@');
   if (!local || !domain || domain.length < 4) return null;
+  // Block retina asset filenames such as hero@2x.avif or sprite@3x.png
+  if (/^[1-4]x\./i.test(domain) || /^\d+x\d+$/i.test(local)) return null;
+  const tld = domain.split('.').pop() || '';
+  if (!/^[a-z]{2,12}$/.test(tld)) return null;
   if (JUNK_EMAIL_DOMAINS.some((d) => domain.includes(d))) return null;
-  if (/^\d+x\d+$/i.test(local)) return null;
   return clean;
 }
 
@@ -472,13 +479,35 @@ function parseDomSnapshot(html, activeUrl) {
   };
 }
 
+function isValidBusinessName(raw) {
+  const s = String(raw || '')
+    .replace(/&amp;/gi, '&')
+    .replace(/&#039;|&#8217;|&rsquo;|&apos;/gi, "'")
+    .replace(/&quot;/gi, '"')
+    .replace(/\s+/g, ' ')
+    .trim();
+  if (s.length < 3 || s.length > 85) return false;
+  if (/^(default|home|homepage|welcome|index|untitled|wordpress|website|main|blog|about|contact|menu|search)$/i.test(s)) {
+    return false;
+  }
+  // Reject City, ST [ZIP] or pure street-number addresses mistaken for company names
+  if (/^[A-Za-z\s.'-]+,\s*[A-Z]{2}(?:\s+\d{5}(?:-\d{4})?)?$/.test(s)) return false;
+  if (/^\d{1,6}\s+[A-Za-z0-9\s.'-]+$/.test(s) && !/(24|365|1st|24\/7|air|hvac|plumb|roof|electric|heat|cool)/i.test(s)) {
+    return false;
+  }
+  return true;
+}
+
 function pickTitleBrand(rawTitle) {
   if (!rawTitle) return '';
   const parts = rawTitle.split(/[-|•–]/).map((s) => s.trim()).filter(Boolean);
-  if (parts.length > 1 && /^(home|welcome|heating,\s*air\s*conditioning|air\s*conditioning,\s*heating|hvac\s*services|services)\b/i.test(parts[0])) {
-    return parts[1];
+  for (const part of parts) {
+    if (/^(home|welcome|heating,\s*air\s*conditioning|air\s*conditioning,\s*heating|hvac\s*services|services|about\s*us|contact\s*us)$/i.test(part)) {
+      continue;
+    }
+    if (isValidBusinessName(part)) return part;
   }
-  return parts[0] || '';
+  return '';
 }
 
 /**
@@ -522,17 +551,19 @@ export async function scrapeClinicWebsite(inputUrl, options = {}) {
   const visibleHomeText = homepageHtml ? extractVisibleText(homepageHtml) : jinaMarkdown.slice(0, MAX_VISIBLE_CHARS);
   const jsonLd = snap ? snap.jsonLd : { reviewCount: null, ratingValue: null, telephone: null, email: null, founderName: null, openingHours: [], name: null };
 
-  // Business name
+  // Business name (filter CMS defaults like "default" and street addresses like "Delaware, OH 43015")
   let clinicName = '';
   if (snap) {
-    clinicName = jsonLd.name || snap.ogSiteName || pickTitleBrand(snap.titleText) || snap.h1Text || '';
+    const candidates = [jsonLd.name, snap.ogSiteName, pickTitleBrand(snap.titleText), snap.h1Text];
+    clinicName = candidates.find((c) => isValidBusinessName(c)) || '';
   } else if (jinaMarkdown) {
     const titleLine = jinaMarkdown.match(/^Title:\s*(.+)$/m);
     if (titleLine) clinicName = pickTitleBrand(titleLine[1]);
   }
   if (!clinicName) {
     try {
-      clinicName = new URL(activeUrl).hostname.replace(/^www\./, '').split('.')[0];
+      const rawHost = new URL(activeUrl).hostname.replace(/^www\./, '').split('.')[0];
+      clinicName = rawHost ? rawHost.charAt(0).toUpperCase() + rawHost.slice(1) : 'Local Service Contractor';
     } catch (e) {
       clinicName = 'Local Service Contractor';
     }
