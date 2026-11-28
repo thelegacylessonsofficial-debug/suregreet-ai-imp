@@ -1,4 +1,6 @@
 import { Router } from 'express';
+import fs from 'fs';
+import path from 'path';
 import {
   getProspects,
   getProspectById,
@@ -23,7 +25,7 @@ import {
   getUnsubscribeUrl,
   getShortBusinessName,
 } from '../templates/outreachTemplates.js';
-import { sendEmail, getMailerStatus } from '../services/mailer.js';
+import { sendEmail, getMailerStatus, verifyMailerConnection } from '../services/mailer.js';
 import { getSheetsStatus, syncAllProspectsToSheet, appendProspectToSheet, formatProspectsTsv, formatProspectsCsv } from '../services/googleSheets.js';
 import { runHarveyAutonomousPipeline, diagnoseAndGenerateFullSequence } from '../services/harveyService.js';
 import { huntAndEnrichLead } from '../services/leadHunterService.js';
@@ -68,6 +70,7 @@ function formatUsPhone(raw) {
 }
 
 function renderProspectsHtml(list, authKey = '') {
+  const mailerState = getMailerStatus();
   const total = list.length;
   const hvacTradeCount = list.filter((p) => p.niche !== 'medspa').length;
   const medspaCount = total - hvacTradeCount;
@@ -159,12 +162,19 @@ function renderProspectsHtml(list, authKey = '') {
             ${getSvgIcon('bolt', 'w-5 h-5')}
           </div>
           <div>
-            <div class="flex items-center gap-2">
-              <h3 class="text-xs font-bold text-[var(--text-primary)] uppercase tracking-wider">Outreach & Follow-Up Engine</h3>
-              <span class="text-[10px] px-2 py-0.5 rounded font-mono font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">Active Cadence</span>
+            <div class="flex items-center gap-2 flex-wrap">
+              <h3 class="text-xs font-bold text-[var(--text-primary)] uppercase tracking-wider">Outreach &amp; Follow-Up Engine</h3>
+              <button type="button" onclick="openEmailSetupModal()" class="text-[10px] px-2 py-0.5 rounded font-mono font-bold inline-flex items-center gap-1 cursor-pointer transition border ${
+                mailerState.port443Ready
+                  ? 'bg-emerald-500/10 text-[var(--accent-emerald)] border-emerald-500/25 hover:bg-emerald-500/20'
+                  : 'bg-amber-500/10 text-amber-500 border-amber-500/30 hover:bg-amber-500/20'
+              }" title="Inspect email delivery status &amp; run live test">
+                ${getSvgIcon(mailerState.port443Ready ? 'checkCircle' : 'alertTriangle', 'w-3 h-3')}
+                <span>${mailerState.port443Ready ? escapeHtml(mailerState.provider) : 'Email Setup Required'}</span>
+              </button>
             </div>
             <p class="text-[11px] text-[var(--text-secondary)] mt-0.5">
-              4-Step Threading • Dual-Inbox Rotation • 24/7 Call Leak Hooks. Auto-freezes on reply.
+              Sender: <span class="font-mono text-[var(--text-primary)]">${escapeHtml(mailerState.currentSender)}</span> • 4-Step Threading &amp; Reply Auto-Freeze.
             </p>
           </div>
         </div>
@@ -185,6 +195,10 @@ function renderProspectsHtml(list, authKey = '') {
           <button onclick="triggerOutreachWorker(true)" id="btnTriggerWorker" class="px-3 py-2 rounded-xl bg-[var(--bg-surface)] hover:bg-[var(--bg-hover)] border border-[var(--border-subtle)] text-xs font-semibold text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition flex items-center gap-1.5 cursor-pointer active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500">
             ${getSvgIcon('play', 'w-3.5 h-3.5 text-cyan-500')}
             <span>Run Cadence</span>
+          </button>
+          <button type="button" onclick="openEmailSetupModal()" class="px-3 py-2 rounded-xl bg-[var(--bg-surface)] hover:bg-[var(--bg-hover)] border border-[var(--border-subtle)] text-xs font-semibold text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition flex items-center gap-1.5 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500" title="Test &amp; Configure Outbound Email">
+            ${getSvgIcon('sliders', 'w-3.5 h-3.5 text-[var(--accent-cyan)]')}
+            <span>Email Setup</span>
           </button>
           <a href="/outreach/preview" class="px-3 py-2 rounded-xl bg-[var(--bg-surface)] hover:bg-[var(--bg-hover)] border border-[var(--border-subtle)] text-xs font-semibold text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition flex items-center gap-1.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500" title="View email scripts">
             ${getSvgIcon('mail', 'w-3.5 h-3.5 text-cyan-500')}
@@ -1242,7 +1256,132 @@ function renderProspectsHtml(list, authKey = '') {
           }
         }
       }
+
+      function openEmailSetupModal() {
+        const modal = document.getElementById('emailSetupModal');
+        if (modal) {
+          modal.classList.remove('hidden');
+          runEmailConnectionCheck();
+        }
+      }
+
+      function closeEmailSetupModal() {
+        const modal = document.getElementById('emailSetupModal');
+        if (modal) modal.classList.add('hidden');
+      }
+
+      async function runEmailConnectionCheck() {
+        const box = document.getElementById('emailCheckOutput');
+        const badge = document.getElementById('emailCheckStatusBadge');
+        if (box) box.textContent = 'Running live transport check from Render...';
+        try {
+          const res = await fetch(getAuthUrl('/outreach/mailer/verify'), {
+            method: 'POST',
+            credentials: 'include',
+            headers: getAuthHeaders()
+          });
+          const data = await res.json();
+          if (badge) {
+            badge.className = data.ready
+              ? 'px-2.5 py-0.5 rounded-full text-[10px] font-bold font-mono bg-emerald-500/15 text-[var(--accent-emerald)] border border-emerald-500/30'
+              : 'px-2.5 py-0.5 rounded-full text-[10px] font-bold font-mono bg-rose-500/15 text-rose-500 border border-rose-500/30';
+            badge.textContent = data.ready ? 'READY' : 'BLOCKED';
+          }
+          const lines = (data.checks || []).map((c) => '[' + c.provider + '] ' + (c.reachable ? 'PASS' : 'FAIL') + ' - ' + c.note);
+          if (!lines.length) lines.push('No email transports configured in Render env vars.');
+          if (box) box.textContent = lines.join('\\n');
+        } catch (e) {
+          if (box) box.textContent = 'Check failed: ' + e.message;
+        }
+      }
+
+      async function sendDiagnosticTestEmail() {
+        const btn = document.getElementById('btnSendDiagEmail');
+        const box = document.getElementById('emailCheckOutput');
+        const toInput = document.getElementById('diagRecipientInput');
+        const recipient = toInput ? toInput.value.trim() : '';
+        if (btn) {
+          btn.disabled = true;
+          btn.textContent = 'Sending...';
+        }
+        try {
+          const res = await fetch(getAuthUrl('/outreach/mailer/test-email'), {
+            method: 'POST',
+            credentials: 'include',
+            headers: getAuthHeaders(),
+            body: JSON.stringify({ to: recipient || undefined })
+          });
+          const data = await res.json();
+          if (data.success) {
+            showToast('Email Sent!', 'Delivered to ' + data.recipient + ' via ' + (data.provider || 'mailer'), 'success');
+            if (box) box.textContent = 'DELIVERED -> To: ' + data.recipient + ' | Provider: ' + data.provider + ' | From: ' + data.from;
+          } else {
+            showToast('Delivery Blocked', data.error || 'Email send failed', 'error');
+            if (box) box.textContent = 'FAILED -> ' + (data.error || 'Unknown error');
+          }
+        } catch (e) {
+          if (box) box.textContent = 'Request error: ' + e.message;
+          showToast('Error', e.message, 'error');
+        } finally {
+          if (btn) {
+            btn.disabled = false;
+            btn.textContent = 'Send Test Email';
+          }
+        }
+      }
+
+      async function copyAppsScriptBridge() {
+        try {
+          const res = await fetch(getAuthUrl('/outreach/mailer/bridge-script'), { headers: getAuthHeaders() });
+          const code = await res.text();
+          await copyToClipboard(code, 'Google Apps Script copied. Paste into script.google.com under architd062@gmail.com.');
+        } catch (e) {
+          showToast('Copy Failed', e.message, 'error');
+        }
+      }
     </script>
+
+    <!-- Email Transport Diagnostics & Connection Modal -->
+    <div id="emailSetupModal" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
+      <div class="bg-[var(--bg-card)] border border-[var(--border-strong)] rounded-2xl max-w-2xl w-full p-6 space-y-4 shadow-2xl max-h-[90vh] overflow-y-auto text-xs">
+        <div class="flex items-start justify-between border-b border-[var(--border-subtle)] pb-3">
+          <div class="space-y-0.5">
+            <div class="flex items-center gap-2">
+              <h3 class="text-sm font-bold text-[var(--text-primary)]">Outbound Email Connection &amp; Diagnostics</h3>
+              <span id="emailCheckStatusBadge" class="px-2.5 py-0.5 rounded-full text-[10px] font-bold font-mono border border-[var(--border-subtle)] text-[var(--text-muted)]">CHECKING</span>
+            </div>
+            <p class="text-[var(--text-secondary)]">Active Sender: <span class="font-mono text-[var(--text-primary)]">${escapeHtml(mailerState.currentSender)}</span></p>
+          </div>
+          <button type="button" onclick="closeEmailSetupModal()" aria-label="Close email modal" class="p-1.5 rounded-lg text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)] cursor-pointer">${getSvgIcon('close', 'w-4 h-4')}</button>
+        </div>
+
+        <div class="space-y-2">
+          <div class="flex items-center justify-between">
+            <span class="font-semibold text-[var(--text-primary)]">Live Render Server Diagnostic</span>
+            <button type="button" onclick="runEmailConnectionCheck()" class="text-[11px] font-semibold text-[var(--accent-cyan)] hover:underline cursor-pointer inline-flex items-center gap-1">${getSvgIcon('refresh', 'w-3 h-3')}<span>Re-Check</span></button>
+          </div>
+          <pre id="emailCheckOutput" class="p-3 rounded-xl bg-[var(--bg-surface)] border border-[var(--border-subtle)] font-mono text-[11px] text-[var(--text-secondary)] whitespace-pre-wrap leading-relaxed">Click Re-Check to test active Render email transports.</pre>
+        </div>
+
+        <div class="flex flex-col sm:flex-row gap-2 items-stretch sm:items-center bg-[var(--bg-surface)] border border-[var(--border-subtle)] rounded-xl p-3">
+          <input id="diagRecipientInput" type="email" value="${escapeHtml(config.ownerEmail || 'architd062@gmail.com')}" placeholder="architd062@gmail.com" class="flex-1 bg-[var(--bg-card)] border border-[var(--border-subtle)] rounded-xl px-3 py-2 text-xs font-mono text-[var(--text-primary)] focus:outline-none focus:border-cyan-500">
+          <button type="button" id="btnSendDiagEmail" onclick="sendDiagnosticTestEmail()" class="px-4 py-2 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-bold text-xs transition cursor-pointer shrink-0">Send Test Email</button>
+        </div>
+
+        <div class="bg-[var(--bg-surface)] border border-[var(--border-subtle)] rounded-xl p-4 space-y-3">
+          <div class="flex items-center justify-between gap-2">
+            <h4 class="font-bold text-[var(--text-primary)]">Free Port 443 Setup (Gmail Apps Script Bridge)</h4>
+            <button type="button" onclick="copyAppsScriptBridge()" class="px-3 py-1.5 rounded-lg bg-emerald-500/15 hover:bg-emerald-500/25 text-[var(--accent-emerald)] border border-emerald-500/30 font-semibold text-[11px] inline-flex items-center gap-1.5 cursor-pointer">${getSvgIcon('copy', 'w-3 h-3')}<span>Copy Apps Script</span></button>
+          </div>
+          <ol class="list-decimal list-inside space-y-1 text-[var(--text-secondary)] leading-relaxed">
+            <li>Open <span class="font-mono text-[var(--text-primary)]">script.google.com</span> under <span class="font-mono text-[var(--text-primary)]">${escapeHtml(config.ownerEmail)}</span> and paste the copied script into <span class="font-mono">Code.gs</span>.</li>
+            <li>Deploy as <strong class="text-[var(--text-primary)]">Web app</strong> (Execute as: <strong class="text-[var(--text-primary)]">Me</strong>, Who has access: <strong class="text-[var(--text-primary)]">Anyone</strong>) and copy the <span class="font-mono">/exec</span> URL.</li>
+            <li>Add <span class="font-mono text-[var(--text-primary)]">GMAIL_WEBHOOK_URL</span> in Render Env Vars, then click <strong class="text-[var(--text-primary)]">Send Test Email</strong> above.</li>
+          </ol>
+          <p class="text-[11px] text-[var(--text-muted)]">Scaling option: add <span class="font-mono">RESEND_API_KEY</span> + verified custom domain DNS in Resend for multi-inbox cold campaigns.</p>
+        </div>
+      </div>
+    </div>
   `;
 
   return renderSaasShell({
@@ -2742,9 +2881,58 @@ outreachRouter.get('/sheets-status', (req, res) => {
   res.json({ success: true, ...getSheetsStatus() });
 });
 
-// 2.6f Mailer & Inboxes Status Endpoint
+// 2.6f Mailer & Inboxes Status, Live Connection Verifier & Gmail Bridge Script
 outreachRouter.get('/mailer-status', (req, res) => {
   res.json({ success: true, ...getMailerStatus() });
+});
+
+outreachRouter.all('/mailer/verify', async (req, res) => {
+  try {
+    const diagnostics = await verifyMailerConnection();
+    res.json({ success: diagnostics.ready, ...diagnostics });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+outreachRouter.post('/mailer/test-email', async (req, res) => {
+  const { to, subject, text } = req.body || {};
+  const recipient = (to || config.ownerEmail || 'architd062@gmail.com').trim();
+  const msgText =
+    text ||
+    `SureGreet AI live email transport check from ${config.ownerEmail}.\n\nActive provider: ${getMailerStatus().provider}\nTimestamp: ${new Date().toISOString()}`;
+  try {
+    const result = await sendEmail({
+      to: recipient,
+      subject: subject || '[SureGreet AI] Live Email Connection Verified',
+      text: msgText,
+      html: `<div style="font-family: -apple-system, sans-serif; font-size: 14px; line-height: 1.6; color: #111827; max-width: 540px; padding: 16px; border: 1px solid #e5e7eb; border-radius: 12px; background: #ffffff;">
+        <div style="font-size: 11px; font-weight: bold; color: #059669; text-transform: uppercase; margin-bottom: 8px; border-bottom: 1px solid #f1f5f9; padding-bottom: 4px;">
+          SureGreet AI - Mailer Verification Test
+        </div>
+        <div style="white-space: pre-line;">${escapeHtml(msgText)}</div>
+      </div>`,
+    });
+    res.json({
+      status: result.success ? 'success' : 'error',
+      recipient,
+      ...result,
+      mailerStatus: getMailerStatus(),
+    });
+  } catch (err) {
+    res.status(500).json({ status: 'error', success: false, error: err.message, mailerStatus: getMailerStatus() });
+  }
+});
+
+outreachRouter.get('/mailer/bridge-script', (req, res) => {
+  try {
+    const gsPath = path.join(process.cwd(), 'scripts', 'google_apps_script_gmail_bridge.gs');
+    const code = fs.readFileSync(gsPath, 'utf-8');
+    res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+    res.send(code);
+  } catch (err) {
+    res.status(500).send(`// Failed to load bridge script: ${err.message}`);
+  }
 });
 
 // 2.7 Save / Stage Prospect from Studio into CRM
