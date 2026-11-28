@@ -469,6 +469,63 @@ export async function huntAndEnrichLead({
 
 export async function commitLeadToSupabase(enrichedLead, existingProspectsMap) {
   const qual = enrichedLead?.qualification;
+  const rawEmail = String(enrichedLead?.email || '').trim().toLowerCase();
+  const cleanEmailMatch = rawEmail.match(/[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}/);
+  const normalizedEmail = cleanEmailMatch ? cleanEmailMatch[0] : '';
+
+  let existing = null;
+  if (existingProspectsMap) {
+    if (normalizedEmail) existing = existingProspectsMap.get(normalizedEmail) || null;
+    if (!existing && enrichedLead?.url) {
+      let targetHost = '';
+      try {
+        targetHost = new URL(enrichedLead.url).hostname.replace(/^www\./i, '').toLowerCase();
+      } catch (_) {}
+      if (targetHost) {
+        for (const p of existingProspectsMap.values()) {
+          if (!p?.website_url) continue;
+          try {
+            const h = new URL(p.website_url).hostname.replace(/^www\./i, '').toLowerCase();
+            if (h && h === targetHost) {
+              existing = p;
+              break;
+            }
+          } catch (_) {}
+        }
+      }
+    }
+  } else if (normalizedEmail) {
+    existing = await getProspectById(normalizedEmail);
+  }
+
+  if (existing) {
+    const patch = {};
+    if (!existing.specific_observation && enrichedLead.specificObservation) {
+      patch.specific_observation = enrichedLead.specificObservation;
+      patch.recommended_angle = enrichedLead.recommendedAngle;
+    }
+    if (!existing.phone && enrichedLead.phone) patch.phone = enrichedLead.phone;
+    if (!existing.website_url && enrichedLead.url) patch.website_url = enrichedLead.url;
+    if (qual && (existing.qual_score === null || existing.qual_score === undefined)) {
+      patch.qual_score = qual.score;
+      patch.qual_grade = qual.grade;
+      patch.qual_status = qual.qualified ? 'qualified' : 'manual_override';
+      patch.qual_breakdown = qual;
+      patch.review_count = qual.reviewCount;
+      patch.google_rating = qual.googleRating;
+      patch.fleet_size = qual.fleetSize;
+    }
+    if (Object.keys(patch).length > 0) await updateProspect(existing.id, patch);
+
+    return {
+      success: false,
+      alreadyExists: true,
+      disqualified: !qual || !qual.qualified,
+      message: `Prospect ${existing.email || normalizedEmail} already exists in CRM.`,
+      prospect: existing,
+    };
+  }
+
   if (!qual || !qual.qualified) {
     return {
       success: false,
@@ -480,37 +537,8 @@ export async function commitLeadToSupabase(enrichedLead, existingProspectsMap) {
     };
   }
 
-  if (!enrichedLead.email) {
+  if (!normalizedEmail) {
     return { success: false, message: 'No email found to store in CRM.', lead: enrichedLead };
-  }
-
-  const normalizedEmail = enrichedLead.email.toLowerCase().trim();
-  const existing = existingProspectsMap ? existingProspectsMap.get(normalizedEmail) : await getProspectById(normalizedEmail);
-  if (existing) {
-    const patch = {};
-    if (!existing.specific_observation && enrichedLead.specificObservation) {
-      patch.specific_observation = enrichedLead.specificObservation;
-      patch.recommended_angle = enrichedLead.recommendedAngle;
-    }
-    if (!existing.phone && enrichedLead.phone) patch.phone = enrichedLead.phone;
-    if (!existing.website_url && enrichedLead.url) patch.website_url = enrichedLead.url;
-    if (existing.qual_score === null || existing.qual_score === undefined) {
-      patch.qual_score = qual.score;
-      patch.qual_grade = qual.grade;
-      patch.qual_status = 'qualified';
-      patch.qual_breakdown = qual;
-      patch.review_count = qual.reviewCount;
-      patch.google_rating = qual.googleRating;
-      patch.fleet_size = qual.fleetSize;
-    }
-    if (Object.keys(patch).length > 0) await updateProspect(existing.id, patch);
-
-    return {
-      success: false,
-      alreadyExists: true,
-      message: `Prospect ${normalizedEmail} already exists in CRM.`,
-      prospect: existing,
-    };
   }
 
   const chainTag = qual.isFamilyOwned ? 'Family-Owned' : 'Single-Location';

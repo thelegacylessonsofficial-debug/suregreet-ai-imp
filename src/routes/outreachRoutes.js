@@ -334,7 +334,7 @@ function renderProspectsHtml(list, authKey = '') {
                   const hasMysteryFail = Boolean(p.qual_breakdown?.breakdown?.painSignals?.subScores?.mysteryCall > 0);
 
                   return `
-                  <tr class="hover:bg-[var(--bg-hover)] transition prospect-row" data-id="${p.id}" data-status="${p.status}" data-istrade="${isTrade ? 'true' : 'false'}" data-qual="${qScore ?? -1}" data-search="${(p.clinic_name + ' ' + (p.doctor_name || '') + ' ' + (p.city || '') + ' ' + (p.treatment || '') + ' ' + p.email + ' ' + (p.phone || '') + ' ' + (p.niche || '')).toLowerCase()}">
+                  <tr class="hover:bg-[var(--bg-hover)] transition prospect-row" data-id="${p.id}" data-status="${p.status}" data-istrade="${isTrade ? 'true' : 'false'}" data-qual="${qScore ?? -1}" data-search="${String((p.clinic_name || '') + ' ' + (p.doctor_name || '') + ' ' + (p.city || '') + ' ' + (p.treatment || '') + ' ' + (p.email || '') + ' ' + (p.phone || '') + ' ' + (p.niche || '')).toLowerCase().replace(/"/g, '&quot;')}">
                     
                     <!-- Owner / Decision Maker -->
                     <td class="py-3.5 px-4">
@@ -1066,13 +1066,41 @@ function renderProspectsHtml(list, authKey = '') {
         });
       }
 
+      function focusHighlightedProspect() {
+        const highlightId = new URLSearchParams(window.location.search).get('highlight');
+        if (!highlightId) return;
+        const rows = document.querySelectorAll('.prospect-row');
+        let row = null;
+        for (const r of rows) {
+          if (r.getAttribute('data-id') === highlightId) {
+            row = r;
+            break;
+          }
+        }
+        if (!row) return;
+        if (row.style.display === 'none') {
+          filterNiche('all');
+          filterStatus('all');
+        }
+        row.classList.add('ring-2', 'ring-cyan-400', 'bg-cyan-500/10');
+        setTimeout(() => row.scrollIntoView({ behavior: 'smooth', block: 'center' }), 100);
+        setTimeout(() => row.classList.remove('ring-2', 'ring-cyan-400', 'bg-cyan-500/10'), 4500);
+      }
+
       // Initialize filter on page load so trades are selected by default
       if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', applyCombinedFilter);
+        document.addEventListener('DOMContentLoaded', () => {
+          applyCombinedFilter();
+          focusHighlightedProspect();
+        });
       } else {
         applyCombinedFilter();
+        focusHighlightedProspect();
       }
-      setTimeout(applyCombinedFilter, 50);
+      setTimeout(() => {
+        applyCombinedFilter();
+        focusHighlightedProspect();
+      }, 60);
       window.addEventListener('pageshow', (event) => {
         if (event.persisted) window.location.reload();
       });

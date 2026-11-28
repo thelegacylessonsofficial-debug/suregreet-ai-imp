@@ -154,7 +154,8 @@ scraperRouter.post('/ingest', async (req, res) => {
         hostname = new URL(normalizedUrl).hostname.replace(/^www\./, '');
       } catch (_) {}
 
-      const finalEmail = email && String(email).includes('@') ? String(email).trim().toLowerCase() : `info@${hostname}`;
+      const emailMatch = email ? String(email).trim().toLowerCase().match(/[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}/) : null;
+      const finalEmail = emailMatch ? emailMatch[0] : `info@${hostname}`;
       const qualObj = preQualification && typeof preQualification === 'object' ? preQualification : {};
       const qualScore = Number.isFinite(Number(qualObj.score)) ? Number(qualObj.score) : null;
       const qualGrade = qualObj.grade || (qualScore != null ? (qualScore >= 80 ? 'A' : qualScore >= 60 ? 'B' : 'C') : 'C');
@@ -181,8 +182,10 @@ scraperRouter.post('/ingest', async (req, res) => {
         const updatedRow = Object.keys(patch).length ? await updateProspect(existing.id, patch) : existing;
         if (!updatedRow) {
           const errMsg = 'Failed to sync existing prospect in CRM';
+          console.error('[ScraperIngest] Force sync error:', finalEmail, errMsg);
           return res.status(500).json({ status: 'failed', error: errMsg, message: errMsg });
         }
+        console.log(`[ScraperIngest] Force Add synced existing CRM prospect ${finalEmail} (ID: ${updatedRow.id})`);
         return res.json({
           status: 'success',
           alreadyExists: true,
@@ -216,9 +219,11 @@ scraperRouter.post('/ingest', async (req, res) => {
 
       if (!addRes || !addRes.success) {
         const errMsg = (addRes && (addRes.error || addRes.message)) || 'Failed to save lead into Pipeline CRM';
+        console.error('[ScraperIngest] Force Add insert failed:', finalEmail, errMsg);
         return res.status(500).json({ status: 'failed', error: errMsg, message: errMsg });
       }
 
+      console.log(`[ScraperIngest] Force Add created prospect ${finalEmail} (ID: ${addRes.prospect?.id})`);
       return res.json({
         status: 'success',
         message: 'Lead force-added to Pipeline CRM',
@@ -299,6 +304,7 @@ scraperRouter.post('/hunt/start', (req, res) => {
 
 // 4b. Poll Live Hunt Job Progress + Incremental Streamed Leads
 scraperRouter.get('/hunt/status/:jobId', (req, res) => {
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
   const job = getHuntJob(req.params.jobId);
   if (!job) {
     return res.status(404).json({ success: false, error: 'Hunt job not found or expired' });
@@ -816,14 +822,21 @@ scraperRouter.get('/dashboard', (req, res) => {
 
       window.__suregreetLeadMap = window.__suregreetLeadMap || {};
       window.__suregreetForceSavedUrls = window.__suregreetForceSavedUrls || {};
+      window.__suregreetForceSavedHrefs = window.__suregreetForceSavedHrefs || {};
       const leadKey = String(href || lead.url || '').toLowerCase();
       if (leadKey) window.__suregreetLeadMap[leadKey] = lead;
-      const isLocallyForced = Boolean(leadKey && window.__suregreetForceSavedUrls[leadKey]);
+      const forceState = leadKey ? window.__suregreetForceSavedUrls[leadKey] : null;
+      const forcedHref = (leadKey && window.__suregreetForceSavedHrefs[leadKey]) || getAuthUrl('/outreach/prospects');
 
-      const forceBtn = isLocallyForced
-        ? '<span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-semibold bg-[var(--accent-emerald-subtle)] text-[var(--accent-emerald)] border border-emerald-500/30">Added to CRM</span>'
+      const forceBtn = forceState === 'saved' || forceState === 'synced'
+        ? '<div data-force-key="' + esc(leadKey) + '" class="inline-flex items-center gap-1.5 flex-wrap">' +
+            '<span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-semibold bg-[var(--accent-emerald-subtle)] text-[var(--accent-emerald)] border border-emerald-500/30">' + (forceState === 'synced' ? 'Synced in CRM' : 'Added to CRM') + '</span>' +
+            '<a href="' + esc(forcedHref) + '" class="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-semibold bg-cyan-500/15 text-[var(--accent-cyan)] border border-cyan-500/30 hover:bg-cyan-500/25 transition">Open CRM</a>' +
+          '</div>'
+        : forceState === 'saving'
+        ? '<button type="button" disabled data-force-key="' + esc(leadKey) + '" data-url="' + esc(href || lead.url) + '" data-city="' + esc(lead.city || '') + '" data-niche="' + esc(lead.niche || 'hvac') + '" class="inline-flex items-center gap-1 px-3 py-1.5 rounded-xl bg-[var(--bg-surface)] border border-[var(--border-subtle)] text-[11px] font-semibold text-[var(--text-secondary)] opacity-75">Saving...</button>'
         : (!passed || lead.dbStatus === 'disqualified' || lead.dbStatus === 'no_email') && (lead.email || href || lead.url) && lead.dbStatus !== 'saved' && lead.dbStatus !== 'duplicate'
-        ? '<button type="button" onclick="forceAddLead(this)" data-url="' + esc(href || lead.url) + '" data-city="' + esc(lead.city || '') + '" data-niche="' + esc(lead.niche || 'hvac') + '" class="inline-flex items-center gap-1 px-3 py-1.5 rounded-xl bg-[var(--bg-surface)] hover:bg-[var(--bg-hover)] border border-[var(--border-subtle)] text-[11px] font-semibold text-[var(--text-primary)] cursor-pointer transition">' + SVG.plus + '<span>Force Add to CRM</span></button>'
+        ? '<button type="button" onclick="forceAddLead(this)" data-force-key="' + esc(leadKey) + '" data-url="' + esc(href || lead.url) + '" data-city="' + esc(lead.city || '') + '" data-niche="' + esc(lead.niche || 'hvac') + '" class="inline-flex items-center gap-1 px-3 py-1.5 rounded-xl bg-[var(--bg-surface)] hover:bg-[var(--bg-hover)] border border-[var(--border-subtle)] text-[11px] font-semibold text-[var(--text-primary)] cursor-pointer transition">' + SVG.plus + '<span>Force Add to CRM</span></button>'
         : '';
 
       const headerTag = isSinglePreview
@@ -1002,6 +1015,7 @@ scraperRouter.get('/dashboard', (req, res) => {
       try {
         const res = await fetch(getAuthUrl('/scraper/hunt/start'), {
           method: 'POST',
+          credentials: 'include',
           headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
           body: JSON.stringify({ city, niche, limit, minScore, notifyTelegram: true }),
         });
@@ -1028,6 +1042,7 @@ scraperRouter.get('/dashboard', (req, res) => {
       if (!activeJobId) return;
       try {
         const res = await fetch(getAuthUrl('/scraper/hunt/status/' + encodeURIComponent(activeJobId)), {
+          credentials: 'include',
           headers: getAuthHeaders(),
         });
         const data = await res.json();
@@ -1117,6 +1132,7 @@ scraperRouter.get('/dashboard', (req, res) => {
       try {
         const res = await fetch(getAuthUrl('/scraper/qualify'), {
           method: 'POST',
+          credentials: 'include',
           headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
           body: JSON.stringify({ url: rawUrl, city, niche, minScore, autoCommit }),
         });
@@ -1144,18 +1160,31 @@ scraperRouter.get('/dashboard', (req, res) => {
 
     async function forceAddLead(btn) {
       const url = btn.dataset.url;
+      const forceKey = (btn.dataset.forceKey || url || '').toLowerCase();
       const city = btn.dataset.city || '';
       const niche = btn.dataset.niche || 'hvac';
       if (!url) return;
 
       const leadMap = window.__suregreetLeadMap || {};
       const cachedLead =
+        leadMap[forceKey] ||
         leadMap[String(url).toLowerCase()] ||
         currentLeads.find((l) => l.url === url || safeUrl(l.url) === url) ||
         null;
 
+      window.__suregreetForceSavedUrls = window.__suregreetForceSavedUrls || {};
+      window.__suregreetForceSavedUrls[forceKey] = 'saving';
       btn.disabled = true;
       btn.textContent = 'Saving...';
+
+      const findActiveTarget = () => {
+        if (btn && btn.isConnected) return btn;
+        const nodes = document.querySelectorAll('[data-force-key]');
+        for (const el of nodes) {
+          if (el.getAttribute('data-force-key') === forceKey) return el;
+        }
+        return btn;
+      };
 
       try {
         const payload = {
@@ -1165,48 +1194,66 @@ scraperRouter.get('/dashboard', (req, res) => {
           force: true,
         };
         if (cachedLead) {
-          if (cachedLead.clinicName) payload.clinicName = cachedLead.clinicName;
-          if (cachedLead.doctorName) payload.doctorName = cachedLead.doctorName;
+          if (cachedLead.clinicName || cachedLead.businessName) payload.clinicName = cachedLead.clinicName || cachedLead.businessName;
+          if (cachedLead.doctorName || cachedLead.ownerName) payload.doctorName = cachedLead.doctorName || cachedLead.ownerName;
           if (cachedLead.email) payload.email = cachedLead.email;
           if (cachedLead.phone) payload.phone = cachedLead.phone;
           if (cachedLead.treatment) payload.treatment = cachedLead.treatment;
-          if (cachedLead.specificObservation) payload.specificObservation = cachedLead.specificObservation;
+          if (cachedLead.specificObservation || cachedLead.hook) payload.specificObservation = cachedLead.specificObservation || cachedLead.hook;
           if (cachedLead.recommendedAngle) payload.recommendedAngle = cachedLead.recommendedAngle;
           if (cachedLead.qualification) payload.qualification = cachedLead.qualification;
         }
 
         const res = await fetch(getAuthUrl('/scraper/ingest'), {
           method: 'POST',
+          credentials: 'include',
           headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
           body: JSON.stringify(payload),
         });
         const data = await res.json();
-        if (data.status === 'success') {
+        if (res.ok && data.status === 'success') {
           const crmBase = getAuthUrl('/outreach/prospects');
-          const crmHref = crmBase + (crmBase.includes('?') ? '&' : '?') + 't=' + Date.now();
+          const pid = data.prospect && data.prospect.id ? '&highlight=' + encodeURIComponent(data.prospect.id) : '';
+          const crmHref = crmBase + (crmBase.includes('?') ? '&' : '?') + 't=' + Date.now() + pid;
           const badgeLabel = data.alreadyExists ? 'Synced in CRM' : 'Added to CRM';
-          const leadTitle = (data.prospect && data.prospect.clinic_name) || (cachedLead && cachedLead.clinicName) || url;
-          showToast(badgeLabel, leadTitle + ' saved to Pipeline CRM.', 'success');
+          const leadTitle = (data.prospect && data.prospect.clinic_name) || (cachedLead && (cachedLead.clinicName || cachedLead.businessName)) || url;
+          showToast(badgeLabel, leadTitle + (data.alreadyExists ? ' synced cleanly in Pipeline CRM.' : ' added to Pipeline CRM.'), 'success');
           if (cachedLead) cachedLead.dbStatus = 'saved';
-          window.__suregreetForceSavedUrls = window.__suregreetForceSavedUrls || {};
-          window.__suregreetForceSavedUrls[String(url).toLowerCase()] = true;
-          btn.outerHTML =
-            '<div class="inline-flex items-center gap-1.5 flex-wrap">' +
-              '<span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-semibold bg-[var(--accent-emerald-subtle)] text-[var(--accent-emerald)] border border-emerald-500/30">' + badgeLabel + '</span>' +
-              '<a href="' + crmHref + '" class="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-semibold bg-cyan-500/15 text-[var(--accent-cyan)] border border-cyan-500/30 hover:bg-cyan-500/25 transition">Open CRM</a>' +
-            '</div>';
+          window.__suregreetForceSavedUrls[forceKey] = data.alreadyExists ? 'synced' : 'saved';
+          window.__suregreetForceSavedHrefs = window.__suregreetForceSavedHrefs || {};
+          window.__suregreetForceSavedHrefs[forceKey] = crmHref;
+          const targetEl = findActiveTarget();
+          if (targetEl) {
+            targetEl.outerHTML =
+              '<div data-force-key="' + esc(forceKey) + '" class="inline-flex items-center gap-1.5 flex-wrap">' +
+                '<span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-semibold bg-[var(--accent-emerald-subtle)] text-[var(--accent-emerald)] border border-emerald-500/30">' + badgeLabel + '</span>' +
+                '<a href="' + esc(crmHref) + '" class="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-semibold bg-cyan-500/15 text-[var(--accent-cyan)] border border-cyan-500/30 hover:bg-cyan-500/25 transition">Open CRM</a>' +
+              '</div>';
+          }
         } else {
-          throw new Error(data.message || data.error || 'Unable to force add');
+          throw new Error((data && (data.message || data.error)) || 'Unable to force add (HTTP ' + res.status + ')');
         }
       } catch (err) {
-        btn.disabled = false;
-        btn.innerHTML = SVG.plus + '<span>Force Add to CRM</span>';
+        if (window.__suregreetForceSavedUrls) delete window.__suregreetForceSavedUrls[forceKey];
+        const targetEl = findActiveTarget();
+        if (targetEl) {
+          targetEl.disabled = false;
+          targetEl.innerHTML = SVG.plus + '<span>Force Add to CRM</span>';
+        }
         showToast('Save Failed', err.message, 'error');
       }
     }
+
+    window.addEventListener('pageshow', (event) => {
+      if (event.persisted) window.location.reload();
+    });
   </script>
   `;
 
+  res.setHeader('Content-Type', 'text/html; charset=utf-8');
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+  res.setHeader('Pragma', 'no-cache');
+  res.setHeader('Expires', '0');
   res.send(
     renderSaasShell({
       title: 'Lead Hunter Studio — SureGreet AI',
