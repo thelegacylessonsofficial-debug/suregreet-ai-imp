@@ -207,11 +207,11 @@ export async function createNoteAndAssociate({ contactId, noteHtml }) {
   }
 }
 
-export async function createLeadFromCallback({ fullName, email, phoneE164, industry, bottleneckNotes }) {
-  if (!config.hubspot.accessToken) {
-    return { ok: false, skipped: true, error: 'HUBSPOT_ACCESS_TOKEN not configured' };
-  }
-  const nameParts = (fullName || '').trim().split(/\s+/);
+/**
+ * Builds HubSpot-schema-valid contact properties for inbound callback leads.
+ */
+export function buildCallbackContactProperties({ fullName, companyName, email, phoneE164, industry, bottleneckNotes } = {}) {
+  const nameParts = String(fullName || '').trim().split(/\s+/);
   const firstname = nameParts[0] || 'Lead';
   const lastname = nameParts.slice(1).join(' ') || '';
 
@@ -220,19 +220,52 @@ export async function createLeadFromCallback({ fullName, email, phoneE164, indus
     lastname,
     phone: phoneE164,
     lifecyclestage: 'lead',
+    hs_lead_status: 'NEW',
     industry: industry || '',
-    message: `Bottleneck: ${bottleneckNotes || 'N/A'}`,
-    lead_source: 'SureGreet Website Strategy Call Modal',
+    message: `Source: SureGreet Website Strategy Call Modal | Bottleneck: ${bottleneckNotes || 'N/A'}`,
   };
+  if (companyName) {
+    properties.company = String(companyName).trim();
+  }
   const cleanEmail = String(email || '').trim().toLowerCase();
   if (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)) {
     properties.email = cleanEmail;
   }
+  return properties;
+}
+
+export async function createLeadFromCallback({ fullName, companyName, email, phoneE164, industry, bottleneckNotes }) {
+  if (!config.hubspot.accessToken) {
+    return { ok: false, skipped: true, error: 'HUBSPOT_ACCESS_TOKEN not configured' };
+  }
+
+  const properties = buildCallbackContactProperties({
+    fullName,
+    companyName,
+    email,
+    phoneE164,
+    industry,
+    bottleneckNotes,
+  });
 
   try {
+    const existing =
+      (properties.email ? await searchContactByEmail(properties.email) : null) ||
+      (phoneE164 ? await searchContactByPhone(phoneE164) : null);
+
+    if (existing?.id) {
+      const updateProps = { ...properties };
+      delete updateProps.email;
+      const res = await hubspotClient.patch(`/crm/v3/objects/contacts/${existing.id}`, {
+        properties: updateProps,
+      });
+      console.log(`[HubSpot] Callback lead updated existing contact (ID: ${res.data.id})`);
+      return { ok: true, id: res.data.id, updated: true, data: res.data, error: null };
+    }
+
     const res = await hubspotClient.post('/crm/v3/objects/contacts', { properties });
     console.log(`[HubSpot] Callback lead created (ID: ${res.data.id})`);
-    return { ok: true, id: res.data.id, data: res.data, error: null };
+    return { ok: true, id: res.data.id, updated: false, data: res.data, error: null };
   } catch (err) {
     const errMsg =
       (err.response?.data && (err.response.data.message || JSON.stringify(err.response.data))) ||

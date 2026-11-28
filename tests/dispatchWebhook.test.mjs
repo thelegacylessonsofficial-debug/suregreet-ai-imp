@@ -7,6 +7,7 @@ import {
 } from '../src/routes/leadCallbackWebhook.js';
 import { config } from '../src/config.js';
 import { dispatchRetellCall, sendSlackAlert } from '../src/services/retell.js';
+import { buildCallbackContactProperties } from '../src/services/hubspot.js';
 import { getCalAcceptedBookings } from '../src/services/calcom.js';
 import { normalizeCalBooking } from '../src/cron/reminderCron.js';
 import { formatBookingDateTime } from '../src/routes/calcomWebhook.js';
@@ -96,7 +97,10 @@ test('leadCallback handler orchestrates live dispatch, Supabase, HubSpot, Telegr
       assert.equal(args.companyName, 'Cool Air LLC');
       return { ok: true, dispatched: true, mock: false, callId: 'call_live_123' };
     },
-    createLeadFromCallback: async () => ({ ok: true, id: 'hs_999' }),
+    createLeadFromCallback: async (args) => {
+      assert.equal(args.companyName, 'Cool Air LLC');
+      return { ok: true, id: 'hs_999' };
+    },
     supabaseFetch: async (ep, opts) => {
       dbWrites.push({ ep, body: JSON.parse(opts.body) });
       return { ok: true, status: 201, data: [{ id: 'sb_1' }] };
@@ -125,6 +129,7 @@ test('leadCallback handler orchestrates live dispatch, Supabase, HubSpot, Telegr
   assert.equal(res1.body.dispatch_mode, 'live');
   assert.equal(res1.body.call_dispatched, true);
   assert.equal(res1.body.crm_synced, true);
+  assert.equal(res1.body.hubspot_contact_id, 'hs_999');
   assert.equal(res1.body.supabase_logged, true);
   assert.equal(res1.body.telegram_notified, true);
   assert.equal(res1.body.call_id, 'call_live_123');
@@ -238,4 +243,23 @@ test('normalizeCalBooking extracts Cal.com v2 start, end, meetingUrl, and attend
 test('getCalAcceptedBookings hits Cal.com API v2 upcoming endpoint without BadRequestException', async () => {
   const bookings = await getCalAcceptedBookings();
   assert.ok(Array.isArray(bookings), 'Expected array from Cal.com v2 upcoming bookings');
+});
+
+test('buildCallbackContactProperties omits invalid lead_source/blank email and sets standard HubSpot fields', () => {
+  const props = buildCallbackContactProperties({
+    fullName: 'Randy Vance',
+    companyName: 'Vance Air Conditioning',
+    email: 'not-an-email',
+    phoneE164: '+17137024721',
+    industry: 'HVAC',
+    bottleneckNotes: 'Missed evening calls',
+  });
+  assert.equal(props.firstname, 'Randy');
+  assert.equal(props.lastname, 'Vance');
+  assert.equal(props.company, 'Vance Air Conditioning');
+  assert.equal(props.hs_lead_status, 'NEW');
+  assert.equal(props.lifecyclestage, 'lead');
+  assert.equal('lead_source' in props, false);
+  assert.equal('email' in props, false);
+  assert.ok(props.message.includes('Missed evening calls'));
 });

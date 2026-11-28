@@ -156,6 +156,7 @@ export function createLeadCallbackHandler(deps = {}) {
       // 5. Sync lead to HubSpot CRM
       const crmResult = await syncHubspotLead({
         fullName: parsed.fullName,
+        companyName: parsed.companyName,
         email: parsed.email,
         phoneE164: parsed.phoneE164,
         industry: parsed.industry,
@@ -206,6 +207,7 @@ export function createLeadCallbackHandler(deps = {}) {
         dispatch_mode: isLiveCall ? 'live' : isMockCall ? 'mock' : 'fallback',
         call_dispatched: isLiveCall,
         crm_synced: crmSynced,
+        hubspot_contact_id: crmResult?.id || null,
         supabase_logged: supabaseLogged,
         telegram_notified: telegramNotified,
         lead_name: parsed.fullName,
