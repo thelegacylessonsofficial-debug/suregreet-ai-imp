@@ -815,10 +815,14 @@ scraperRouter.get('/dashboard', (req, res) => {
       const stackTag = q.schedulingStack && q.schedulingStack.stackName ? q.schedulingStack.stackName : '';
 
       window.__suregreetLeadMap = window.__suregreetLeadMap || {};
+      window.__suregreetForceSavedUrls = window.__suregreetForceSavedUrls || {};
       const leadKey = String(href || lead.url || '').toLowerCase();
       if (leadKey) window.__suregreetLeadMap[leadKey] = lead;
+      const isLocallyForced = Boolean(leadKey && window.__suregreetForceSavedUrls[leadKey]);
 
-      const forceBtn = (!passed || lead.dbStatus === 'disqualified' || lead.dbStatus === 'no_email') && (lead.email || href || lead.url) && lead.dbStatus !== 'saved' && lead.dbStatus !== 'duplicate'
+      const forceBtn = isLocallyForced
+        ? '<span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-semibold bg-[var(--accent-emerald-subtle)] text-[var(--accent-emerald)] border border-emerald-500/30">Added to CRM</span>'
+        : (!passed || lead.dbStatus === 'disqualified' || lead.dbStatus === 'no_email') && (lead.email || href || lead.url) && lead.dbStatus !== 'saved' && lead.dbStatus !== 'duplicate'
         ? '<button type="button" onclick="forceAddLead(this)" data-url="' + esc(href || lead.url) + '" data-city="' + esc(lead.city || '') + '" data-niche="' + esc(lead.niche || 'hvac') + '" class="inline-flex items-center gap-1 px-3 py-1.5 rounded-xl bg-[var(--bg-surface)] hover:bg-[var(--bg-hover)] border border-[var(--border-subtle)] text-[11px] font-semibold text-[var(--text-primary)] cursor-pointer transition">' + SVG.plus + '<span>Force Add to CRM</span></button>'
         : '';
 
@@ -1184,6 +1188,8 @@ scraperRouter.get('/dashboard', (req, res) => {
           const leadTitle = (data.prospect && data.prospect.clinic_name) || (cachedLead && cachedLead.clinicName) || url;
           showToast(badgeLabel, leadTitle + ' saved to Pipeline CRM.', 'success');
           if (cachedLead) cachedLead.dbStatus = 'saved';
+          window.__suregreetForceSavedUrls = window.__suregreetForceSavedUrls || {};
+          window.__suregreetForceSavedUrls[String(url).toLowerCase()] = true;
           btn.outerHTML =
             '<div class="inline-flex items-center gap-1.5 flex-wrap">' +
               '<span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-semibold bg-[var(--accent-emerald-subtle)] text-[var(--accent-emerald)] border border-emerald-500/30">' + badgeLabel + '</span>' +
