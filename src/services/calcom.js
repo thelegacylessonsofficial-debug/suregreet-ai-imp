@@ -8,18 +8,23 @@ export async function getCalAcceptedBookings() {
   }
 
   try {
-    const res = await axios.get('https://api.cal.com/v2/bookings?status=accepted', {
+    // Cal.com API v2 accepts status=upcoming|recurring|past|cancelled|unconfirmed (v1 used 'accepted')
+    const res = await axios.get('https://api.cal.com/v2/bookings?status=upcoming', {
       headers: {
         Authorization: `Bearer ${config.calcom.apiKey}`,
         'cal-api-version': config.calcom.apiVersion,
+        'User-Agent': 'SureGreetAutomation/1.0',
       },
+      timeout: 8000,
     });
 
-    const data = res.data.data || res.data;
-    const bookingList = Array.isArray(data) ? data : data.bookings || [data];
-    return bookingList.filter(Boolean);
+    const data = res.data?.data ?? res.data;
+    const bookingList = Array.isArray(data) ? data : data?.bookings || (data ? [data] : []);
+    return bookingList.filter(
+      (b) => b && b.status !== 'cancelled' && b.status !== 'rejected'
+    );
   } catch (err) {
-    console.error('[Cal.com] Error fetching bookings:', err.response?.data || err.message);
+    console.error('[Cal.com] Error fetching upcoming bookings:', err.response?.data || err.message);
     return [];
   }
 }
@@ -74,6 +79,7 @@ export async function getCalAvailableSlots({ dateStr, eventTypeId = 7509658, tar
       headers: {
         Authorization: `Bearer ${config.calcom.apiKey}`,
         'cal-api-version': config.calcom.apiVersion,
+        'User-Agent': 'SureGreetAutomation/1.0',
       },
       timeout: 4000,
     });

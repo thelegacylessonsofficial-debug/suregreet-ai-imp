@@ -183,6 +183,13 @@ retellRouter.post('/', async (req, res) => {
 
       if (sendRes && !sendRes.success) {
         console.warn('[Retell Webhook] Email delivery flagged error:', sendRes.error);
+        await sendAutomationAlert({
+          automationName: 'Email Notification (Retell AI Call)',
+          action: 'sendOwnerCallSummaryEmail',
+          error: new Error(sendRes.error || 'Owner summary email failed'),
+          payload: { callId, callerPhone, callOutcome },
+          severity: 'MEDIUM',
+        });
       }
     } catch (mailErr) {
       console.error('[Retell Webhook] Email error:', mailErr.message);
@@ -218,7 +225,7 @@ retellRouter.post('/', async (req, res) => {
             html: callerFollowUpDemoTemplate({
               callerPhone,
               demoVideoUrl: 'https://suregreet.ai',
-              bookingUrl: 'https://suregreet-automation.onrender.com/webhook/calcom-booking-webhook',
+              bookingUrl: 'https://suregreet-automation.onrender.com/agency',
               clinicName: 'SureGreet AI',
             }),
           });

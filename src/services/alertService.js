@@ -42,6 +42,13 @@ export function deriveSuggestedFix(automationName, error) {
   return `Investigate the failure payload and stack trace. Check service credentials and ensure the incoming webhook schema has not changed.`;
 }
 
+function escapeTelegramHtml(str) {
+  return String(str ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+}
+
 /**
  * Dispatches real-time multi-channel incident notifications (Email + Telegram)
  */
@@ -88,22 +95,22 @@ export async function sendAutomationAlert({
   // 1. Deliver to Telegram (Instant, never blocked by cloud firewall)
   let telegramResult = null;
   try {
-    const tgHtml = `🚨 <b>[SUREGREET AI ALERT] ${automationName}</b>
+    const tgHtml = `🚨 <b>[SUREGREET AI ALERT] ${escapeTelegramHtml(automationName)}</b>
 ━━━━━━━━━━━━━━━━━━━━
-⚠️ <b>Status:</b> FAILED (${severity} Severity)
-⚙️ <b>Action:</b> <code>${action}</code>
-🕒 <b>Time:</b> ${timeIST}
+⚠️ <b>Status:</b> FAILED (${escapeTelegramHtml(severity)} Severity)
+⚙️ <b>Action:</b> <code>${escapeTelegramHtml(action)}</code>
+🕒 <b>Time:</b> ${escapeTelegramHtml(timeIST)}
 
 ❌ <b>Reason:</b>
-<code>${errorMsg.substring(0, 400)}</code>
+<code>${escapeTelegramHtml(errorMsg.substring(0, 400))}</code>
 
 💡 <b>Recommended Fix:</b>
-${resolvedFix}
+${escapeTelegramHtml(resolvedFix)}
 
 📋 <b>Payload Context:</b>
-<pre>${JSON.stringify(payload, null, 2).substring(0, 350)}</pre>
+<pre>${escapeTelegramHtml(JSON.stringify(payload, null, 2).substring(0, 350))}</pre>
 ━━━━━━━━━━━━━━━━━━━━
-📧 <i>Full diagnostic report dispatched to architd062@gmail.com</i>`;
+📧 <i>Full diagnostic report dispatched to ${escapeTelegramHtml(config.ownerEmail)}</i>`;
 
     telegramResult = await sendTelegramHtml(tgHtml);
   } catch (tgErr) {

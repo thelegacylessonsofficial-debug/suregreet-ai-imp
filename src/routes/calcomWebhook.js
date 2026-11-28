@@ -4,7 +4,7 @@ import { config } from '../config.js';
 import { sendEmail } from '../services/mailer.js';
 import { sendTelegramHtml } from '../services/telegram.js';
 import { createOrUpdateContactFromBooking, createDealForBooking } from '../services/hubspot.js';
-import { autoFreezeBookedProspect, recordSupabaseBooking } from '../services/outreachService.js';
+import { autoFreezeBookedProspect, recordSupabaseBooking, supabaseFetch } from '../services/outreachService.js';
 import { sendAutomationAlert } from '../services/alertService.js';
 import {
   ownerBookingCreatedTemplate,
@@ -16,6 +16,16 @@ import {
 } from '../templates/emailTemplates.js';
 
 export const calcomRouter = Router();
+
+/**
+ * Format an ISO timestamp in configured US Eastern timezone instead of server UTC.
+ */
+export function formatBookingDateTime(iso, timezone = config.timezone) {
+  if (!iso) return '';
+  const dt = DateTime.fromISO(iso);
+  if (!dt.isValid) return String(iso);
+  return dt.setZone(timezone).toFormat('dd MMM yyyy, hh:mm a');
+}
 
 calcomRouter.post('/', async (req, res) => {
   const body = req.body || {};
@@ -31,15 +41,15 @@ calcomRouter.post('/', async (req, res) => {
   const attendee = payload.attendees?.[0] || {};
   const customerName = attendee.name || 'Client';
   const customerEmail = attendee.email || '';
-  const responses = payload.responses || payload.customInputs || {};
+  const responses = payload.responses || payload.customInputs || payload.bookingFieldsResponses || {};
   const companyName = responses.company_name || responses['Company Name'] || responses['Clinic Name'] || responses.clinic || '';
   const bottleneckNotes = responses.bottleneck || responses['What is your primary bottleneck?'] || responses.notes || payload.additionalNotes || 'None noted';
   const customerPhone = attendee.phone || responses.phone || 'Not provided';
   const eventTitle = payload.title || payload.eventType?.title || '15-Min Strategy Session';
-  const bookingId = payload.bookingId || payload.id;
-  const meetingUrl = payload.metadata?.videoCallUrl || payload.location || 'https://meet.google.com/sg-vip-' + Date.now().toString(36);
+  const bookingId = payload.bookingId || payload.id || payload.uid;
+  const meetingUrl = payload.meetingUrl || payload.metadata?.videoCallUrl || payload.location || 'https://meet.google.com/sg-vip-' + Date.now().toString(36);
 
-  const formatDateTime = (iso) => (iso ? DateTime.fromISO(iso).toFormat('dd MMM yyyy, hh:mm a') : '');
+  const formatDateTime = (iso) => formatBookingDateTime(iso, config.timezone);
 
   try {
     if (triggerEvent === 'BOOKING_CREATED') {
@@ -48,7 +58,7 @@ calcomRouter.post('/', async (req, res) => {
       const additionalNotes = bottleneckNotes || payload.additionalNotes || 'None';
 
       // 1. Email Owner
-      await sendEmail({
+      const ownerMail = await sendEmail({
         to: config.ownerEmail,
         subject: `🗓️ New Booking: ${customerName} (${companyName || 'Lead'}) — ${eventTitle}`,
         html: ownerBookingCreatedTemplate({
@@ -63,10 +73,19 @@ calcomRouter.post('/', async (req, res) => {
           bookingId,
         }),
       });
+      if (!ownerMail?.success) {
+        await sendAutomationAlert({
+          automationName: 'Cal.com Owner Email Notification',
+          action: 'sendEmail_BOOKING_CREATED',
+          error: new Error(ownerMail?.error || 'Owner booking email dispatch failed'),
+          payload: { bookingId, customerEmail },
+          severity: 'HIGH',
+        });
+      }
 
       // 2. Email Customer
       if (customerEmail) {
-        await sendEmail({
+        const custMail = await sendEmail({
           to: customerEmail,
           subject: `✅ Your Appointment is Confirmed — ${eventTitle}`,
           html: customerBookingConfirmedTemplate({
@@ -80,6 +99,9 @@ calcomRouter.post('/', async (req, res) => {
             endTimeISO: payload.endTime || payload.end,
           }),
         });
+        if (!custMail?.success) {
+          console.warn('[Cal.com Webhook] Customer confirmation email failed:', custMail?.error);
+        }
       }
 
       // 3. Instant VIP Telegram Push Notification
@@ -163,8 +185,19 @@ calcomRouter.post('/', async (req, res) => {
       const startTime = formatDateTime(payload.startTime || payload.start);
       const cancellationReason = payload.cancellationReason || 'No reason provided';
 
+      if (bookingId) {
+        try {
+          await supabaseFetch(`/bookings?cal_booking_id=eq.${encodeURIComponent(String(bookingId))}`, {
+            method: 'PATCH',
+            body: JSON.stringify({ status: 'cancelled', notes: `Cancelled: ${cancellationReason}` }),
+          });
+        } catch (dbErr) {
+          console.warn('[Cal.com Webhook] Cancel Supabase sync warning:', dbErr.message);
+        }
+      }
+
       // 1. Email Owner
-      await sendEmail({
+      const cancelOwnerMail = await sendEmail({
         to: config.ownerEmail,
         subject: `❌ Booking Cancelled: ${customerName} — ${eventTitle}`,
         html: ownerBookingCancelledTemplate({
@@ -176,10 +209,13 @@ calcomRouter.post('/', async (req, res) => {
           bookingId,
         }),
       });
+      if (!cancelOwnerMail?.success) {
+        console.warn('[Cal.com Webhook] Cancellation owner email failed:', cancelOwnerMail?.error);
+      }
 
       // 2. Email Customer
       if (customerEmail) {
-        await sendEmail({
+        const cancelCustMail = await sendEmail({
           to: customerEmail,
           subject: `Booking Cancelled — ${eventTitle}`,
           html: customerBookingCancelledTemplate({
@@ -188,6 +224,9 @@ calcomRouter.post('/', async (req, res) => {
             startTime,
           }),
         });
+        if (!cancelCustMail?.success) {
+          console.warn('[Cal.com Webhook] Cancellation customer email failed:', cancelCustMail?.error);
+        }
       }
 
       // 3. Telegram Alert to Founder
@@ -209,8 +248,24 @@ calcomRouter.post('/', async (req, res) => {
       const newEndTime = formatDateTime(payload.endTime || payload.end);
       const rescheduleReason = payload.rescheduleReason || 'No reason provided';
 
+      if (bookingId) {
+        try {
+          await supabaseFetch(`/bookings?cal_booking_id=eq.${encodeURIComponent(String(bookingId))}`, {
+            method: 'PATCH',
+            body: JSON.stringify({
+              status: 'rescheduled',
+              start_time: newStartTime,
+              end_time: newEndTime,
+              notes: `Rescheduled: ${rescheduleReason}`,
+            }),
+          });
+        } catch (dbErr) {
+          console.warn('[Cal.com Webhook] Reschedule Supabase sync warning:', dbErr.message);
+        }
+      }
+
       // 1. Email Owner
-      await sendEmail({
+      const reschedOwnerMail = await sendEmail({
         to: config.ownerEmail,
         subject: `🔄 Booking Rescheduled: ${customerName} — ${eventTitle}`,
         html: ownerBookingRescheduledTemplate({
@@ -224,10 +279,13 @@ calcomRouter.post('/', async (req, res) => {
           bookingId,
         }),
       });
+      if (!reschedOwnerMail?.success) {
+        console.warn('[Cal.com Webhook] Reschedule owner email failed:', reschedOwnerMail?.error);
+      }
 
       // 2. Email Customer
       if (customerEmail) {
-        await sendEmail({
+        const reschedCustMail = await sendEmail({
           to: customerEmail,
           subject: `Your Appointment Has Been Rescheduled — ${eventTitle}`,
           html: customerBookingRescheduledTemplate({
@@ -240,6 +298,9 @@ calcomRouter.post('/', async (req, res) => {
             endTimeISO: payload.endTime || payload.end,
           }),
         });
+        if (!reschedCustMail?.success) {
+          console.warn('[Cal.com Webhook] Reschedule customer email failed:', reschedCustMail?.error);
+        }
       }
 
       // 3. Telegram Alert to Founder

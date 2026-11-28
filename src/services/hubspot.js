@@ -208,28 +208,37 @@ export async function createNoteAndAssociate({ contactId, noteHtml }) {
 }
 
 export async function createLeadFromCallback({ fullName, email, phoneE164, industry, bottleneckNotes }) {
-  if (!config.hubspot.accessToken) return null;
-  const nameParts = (fullName || '').trim().split(' ');
+  if (!config.hubspot.accessToken) {
+    return { ok: false, skipped: true, error: 'HUBSPOT_ACCESS_TOKEN not configured' };
+  }
+  const nameParts = (fullName || '').trim().split(/\s+/);
   const firstname = nameParts[0] || 'Lead';
   const lastname = nameParts.slice(1).join(' ') || '';
 
+  const properties = {
+    firstname,
+    lastname,
+    phone: phoneE164,
+    lifecyclestage: 'lead',
+    industry: industry || '',
+    message: `Bottleneck: ${bottleneckNotes || 'N/A'}`,
+    lead_source: 'SureGreet Website Strategy Call Modal',
+  };
+  const cleanEmail = String(email || '').trim().toLowerCase();
+  if (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)) {
+    properties.email = cleanEmail;
+  }
+
   try {
-    const res = await hubspotClient.post('/crm/v3/objects/contacts', {
-      properties: {
-        email: email || '',
-        firstname,
-        lastname,
-        phone: phoneE164,
-        lifecyclestage: 'lead',
-        industry: industry || '',
-        message: `Bottleneck: ${bottleneckNotes || 'N/A'}`,
-        lead_source: 'SureGreet Website Strategy Call Modal',
-      },
-    });
+    const res = await hubspotClient.post('/crm/v3/objects/contacts', { properties });
     console.log(`[HubSpot] Callback lead created (ID: ${res.data.id})`);
-    return res.data;
+    return { ok: true, id: res.data.id, data: res.data, error: null };
   } catch (err) {
-    console.error('[HubSpot] Error creating callback lead:', err.response?.data || err.message);
-    return null;
+    const errMsg =
+      (err.response?.data && (err.response.data.message || JSON.stringify(err.response.data))) ||
+      err.message ||
+      'HubSpot callback lead error';
+    console.error('[HubSpot] Error creating callback lead:', errMsg);
+    return { ok: false, skipped: false, id: null, error: errMsg };
   }
 }

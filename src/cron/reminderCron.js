@@ -13,6 +13,39 @@ import {
 // Cache to prevent duplicate 1-hour reminders
 const sentOneHourCache = new Set();
 
+/**
+ * Normalize Cal.com v1/v2 booking fields safely for reminders.
+ */
+export function normalizeCalBooking(b, usZone = config.timezone) {
+  if (!b) return null;
+  const rawStart = b.start || b.startTime;
+  if (!rawStart) return null;
+
+  const startDT = DateTime.fromISO(rawStart);
+  if (!startDT.isValid) return null;
+
+  const rawEnd = b.end || b.endTime;
+  const endDT = rawEnd ? DateTime.fromISO(rawEnd) : startDT.plus({ minutes: 15 });
+  const bookingStartUS = startDT.setZone(usZone);
+  const bookingEndUS = (endDT.isValid ? endDT : startDT.plus({ minutes: 15 })).setZone(usZone);
+  const attendee = b.attendees?.[0] || {};
+
+  return {
+    bookingId: b.id || b.bookingId || b.uid,
+    title: b.title || b.eventType?.title || 'Discovery Call',
+    rawStart,
+    rawEnd: rawEnd || endDT.toISO(),
+    startUTC: startDT.toUTC(),
+    bookingStartUS,
+    startTime: bookingStartUS.toFormat('dd LLL yyyy, hh:mm a') + ' EST/EDT',
+    endTime: bookingEndUS.toFormat('hh:mm a') + ' EST/EDT',
+    shortStartTime: bookingStartUS.toFormat('hh:mm a') + ' EST/EDT',
+    attendeeName: attendee.name || 'Client',
+    attendeeEmail: attendee.email || '',
+    meetingUrl: b.meetingUrl || b.metadata?.videoCallUrl || b.location || 'Video Call Link will be provided',
+  };
+}
+
 export async function runDailyReminders() {
   console.log('[Cron] Running Daily 24h Reminders check...');
   const usZone = config.timezone;
@@ -26,25 +59,20 @@ export async function runDailyReminders() {
   const tomorrowBookings = [];
 
   for (const b of bookings) {
-    if (!b || (!b.startTime && !b.start)) continue;
+    const norm = normalizeCalBooking(b, usZone);
+    if (!norm) continue;
 
-    const rawStart = b.startTime || b.start;
-    const rawEnd = b.endTime || b.end;
-    const bookingStartUS = DateTime.fromISO(rawStart).setZone(usZone);
-    const bookingEndUS = DateTime.fromISO(rawEnd).setZone(usZone);
-
-    if (bookingStartUS.toFormat('yyyy-MM-dd') === tomorrowDateStr) {
-      const attendee = b.attendees?.[0] || {};
+    if (norm.bookingStartUS.toFormat('yyyy-MM-dd') === tomorrowDateStr) {
       tomorrowBookings.push({
-        bookingId: b.id || b.bookingId,
-        title: b.title || b.eventType?.title || 'Discovery Call',
-        startTime: bookingStartUS.toFormat('dd LLL yyyy, hh:mm a') + ' EST/EDT',
-        endTime: bookingEndUS.toFormat('hh:mm a') + ' EST/EDT',
-        attendeeName: attendee.name || 'Client',
-        attendeeEmail: attendee.email || '',
-        meetingUrl: b.metadata?.videoCallUrl || b.location || 'Video Call Link will be provided',
-        startTimeISO: rawStart,
-        endTimeISO: rawEnd,
+        bookingId: norm.bookingId,
+        title: norm.title,
+        startTime: norm.startTime,
+        endTime: norm.endTime,
+        attendeeName: norm.attendeeName,
+        attendeeEmail: norm.attendeeEmail,
+        meetingUrl: norm.meetingUrl,
+        startTimeISO: norm.rawStart,
+        endTimeISO: norm.rawEnd,
       });
     }
   }
@@ -59,16 +87,19 @@ export async function runDailyReminders() {
   // 1. Send individual reminders to clients
   for (const item of tomorrowBookings) {
     if (item.attendeeEmail) {
-      await sendEmail({
+      const cRes = await sendEmail({
         to: item.attendeeEmail,
         subject: `⏰ Reminder: Your appointment tomorrow — ${item.title}`,
         html: customerReminderTemplate(item),
       });
+      if (!cRes?.success) {
+        console.warn(`[Cron:24h] Failed sending reminder to ${item.attendeeEmail}:`, cRes?.error);
+      }
     }
   }
 
   // 2. Send agenda summary email to owner
-  await sendEmail({
+  const ownerRes = await sendEmail({
     to: config.ownerEmail,
     subject: `📋 Tomorrow's Schedule (US Clients) — ${tomorrowBookings.length} appointment(s)`,
     html: ownerDailySummaryTemplate({
@@ -76,6 +107,9 @@ export async function runDailyReminders() {
       bookings: tomorrowBookings,
     }),
   });
+  if (!ownerRes?.success) {
+    console.warn('[Cron:24h] Failed sending owner summary email:', ownerRes?.error);
+  }
 
   console.log(`[Cron] Sent ${tomorrowBookings.length} client reminder(s) and owner summary email.`);
   return { count: tomorrowBookings.length };
@@ -89,13 +123,11 @@ export async function runHourlyOneHourReminders() {
   let sentCount = 0;
 
   for (const b of bookings) {
-    if (!b || (!b.startTime && !b.start)) continue;
+    const norm = normalizeCalBooking(b, config.timezone);
+    if (!norm) continue;
 
-    const rawStart = b.startTime || b.start;
-    const bookingStart = DateTime.fromISO(rawStart).toUTC();
-    const minutesUntilStart = bookingStart.diff(now, 'minutes').minutes;
-
-    const bookingId = String(b.id || b.bookingId);
+    const minutesUntilStart = norm.startUTC.diff(now, 'minutes').minutes;
+    const bookingId = String(norm.bookingId);
 
     // Target meetings starting between 45 and 75 minutes from now
     if (minutesUntilStart >= 45 && minutesUntilStart <= 75) {
@@ -103,28 +135,25 @@ export async function runHourlyOneHourReminders() {
         continue;
       }
 
-      const attendee = b.attendees?.[0] || {};
-      const attendeeEmail = attendee.email || '';
-      const attendeeName = attendee.name || 'Client';
-      const title = b.title || b.eventType?.title || 'Discovery Call';
-      const meetingUrl = b.metadata?.videoCallUrl || b.location || 'Video Call Link will be provided';
-      const formattedTime = DateTime.fromISO(rawStart).setZone(config.timezone).toFormat('hh:mm a') + ' EST';
-
-      if (attendeeEmail) {
-        await sendEmail({
-          to: attendeeEmail,
-          subject: `🔔 Starting in 60 Minutes: ${title}`,
+      if (norm.attendeeEmail) {
+        const mailRes = await sendEmail({
+          to: norm.attendeeEmail,
+          subject: `🔔 Starting in 60 Minutes: ${norm.title}`,
           html: customerOneHourReminderTemplate({
-            attendeeName,
-            title,
-            meetingUrl,
-            startTime: formattedTime,
+            attendeeName: norm.attendeeName,
+            title: norm.title,
+            meetingUrl: norm.meetingUrl,
+            startTime: norm.shortStartTime,
           }),
         });
 
-        sentOneHourCache.add(bookingId);
-        sentCount++;
-        console.log(`[Cron:1h] Dispatched 60-min reminder to ${attendeeEmail} for booking #${bookingId}`);
+        if (mailRes?.success) {
+          sentOneHourCache.add(bookingId);
+          sentCount++;
+          console.log(`[Cron:1h] Dispatched 60-min reminder to ${norm.attendeeEmail} for booking #${bookingId}`);
+        } else {
+          console.warn(`[Cron:1h] Failed 60-min reminder to ${norm.attendeeEmail}:`, mailRes?.error);
+        }
       }
     }
   }

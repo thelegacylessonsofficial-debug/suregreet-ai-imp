@@ -133,7 +133,7 @@ calendarFirstRouter.post('/', async (req, res) => {
     }
 
     // 5. Send Email to Founder (Archit)
-    await sendEmail({
+    const ownerEmailRes = await sendEmail({
       to: config.ownerEmail,
       subject: `🗓️ New Strategy Booking: ${fullName} (${clinicName}) — ${displaySlot}`,
       html: ownerBookingCreatedTemplate({
@@ -148,9 +148,18 @@ calendarFirstRouter.post('/', async (req, res) => {
         bookingId,
       }),
     });
+    if (!ownerEmailRes?.success) {
+      await sendAutomationAlert({
+        automationName: 'Calendar-First Owner Email Notification',
+        action: 'sendOwnerBookingEmail',
+        error: new Error(ownerEmailRes?.error || 'Owner booking email failed'),
+        payload: { fullName, email, bookingId, displaySlot },
+        severity: 'HIGH',
+      });
+    }
 
     // 6. Send Customer Confirmation Email with Calendar Buttons
-    await sendEmail({
+    const custEmailRes = await sendEmail({
       to: email,
       subject: `✅ Confirmed: Your SureGreet AI Strategy Session — ${displaySlot}`,
       html: customerBookingConfirmedTemplate({
@@ -164,6 +173,15 @@ calendarFirstRouter.post('/', async (req, res) => {
         endTimeISO: endISO,
       }),
     });
+    if (!custEmailRes?.success) {
+      await sendAutomationAlert({
+        automationName: 'Calendar-First Customer Confirmation Email',
+        action: 'sendCustomerBookingEmail',
+        error: new Error(custEmailRes?.error || 'Customer confirmation email failed'),
+        payload: { fullName, email, bookingId, displaySlot },
+        severity: 'MEDIUM',
+      });
+    }
 
     // 7. Sync with HubSpot CRM (Contact + $1,000 Deal)
     try {
