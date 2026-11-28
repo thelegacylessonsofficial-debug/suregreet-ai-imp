@@ -155,6 +155,21 @@ export async function getProspects({ status, limit = 100 } = {}) {
 }
 
 /**
+ * Lightweight deduplication index for Lead Hunter (avoids loading heavy prompt/HTML blobs into heap)
+ */
+export async function getProspectDedupeIndex(limit = 1000) {
+  const query = `/prospects?select=id,email,specific_observation,phone,website_url,qual_score&limit=${Number(limit)}`;
+  const res = await supabaseFetch(query);
+  const map = new Map();
+  if (res.ok && Array.isArray(res.data)) {
+    for (const p of res.data) {
+      if (p.email) map.set(p.email.toLowerCase().trim(), p);
+    }
+  }
+  return map;
+}
+
+/**
  * Fetch a single prospect by ID or Email
  */
 export async function getProspectById(idOrEmail) {

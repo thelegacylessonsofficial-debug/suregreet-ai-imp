@@ -1,30 +1,14 @@
 import * as cheerio from 'cheerio';
-import { addProspect, getProspectById, updateProspect } from './outreachService.js';
-import { qualifyLead, getQualificationBadge } from './qualifierService.js';
+import { addProspect, getProspectById } from './outreachService.js';
+import { qualifyLead } from './qualifierService.js';
 import { getShortBusinessName, formatSalutation } from '../templates/outreachTemplates.js';
 
 const USER_AGENT =
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36';
 
-const AESTHETIC_TREATMENTS = [
-  'Morpheus8',
-  'Botox',
-  'Semaglutide',
-  'BodyTite',
-  'CoolSculpting',
-  'InMode',
-  'Dermal Fillers',
-  'Juvederm',
-  'Restylane',
-  'Sculptra',
-  'Emsculpt',
-  'Kybella',
-  'Microneedling',
-  'Hydrafacial',
-  'Laser Skin Resurfacing',
-  'PRP Hair Restoration',
-  'IPL Photofacial',
-];
+const MAX_HTML_BYTES = 380_000;
+const MAX_SUB_HTML_BYTES = 220_000;
+const MAX_VISIBLE_CHARS = 42_000;
 
 const TRADE_SERVICES = [
   'Emergency AC Repair',
@@ -51,6 +35,19 @@ const TRADE_SERVICES = [
   'Flood Extraction & Drying',
 ];
 
+const AESTHETIC_TREATMENTS = [
+  'Morpheus8',
+  'Botox',
+  'Semaglutide',
+  'BodyTite',
+  'CoolSculpting',
+  'InMode',
+  'Dermal Fillers',
+  'Juvederm',
+  'Hydrafacial',
+  'Microneedling',
+];
+
 const JUNK_EMAIL_DOMAINS = [
   'sentry.io',
   'wixpress.com',
@@ -70,50 +67,15 @@ const JUNK_EMAIL_DOMAINS = [
 ];
 
 const GENERIC_EMAIL_LOCALS = new Set([
-  'info',
-  'service',
-  'services',
-  'sales',
-  'office',
-  'support',
-  'contact',
-  'admin',
-  'help',
-  'hello',
-  'dispatch',
-  'billing',
-  'jobs',
-  'careers',
-  'team',
-  'general',
-  'mail',
-  'enquiries',
-  'inquiry',
-  'inquiries',
-  'appointment',
-  'appointments',
-  'estimating',
-  'webmaster',
-  'noreply',
-  'no-reply',
-  'customerservice',
-  'customercare',
-  'marketing',
-  'privacy',
-  'hvac',
-  'plumbing',
-  'roofing',
-  'electrical',
-  'schedule',
-  'quotes',
-  'quote',
-  'estimates',
-  'estimate',
-  'frontdesk',
-  'reception',
+  'info', 'service', 'services', 'sales', 'office', 'support', 'contact', 'admin',
+  'help', 'hello', 'dispatch', 'billing', 'jobs', 'careers', 'team', 'general',
+  'mail', 'enquiries', 'inquiry', 'inquiries', 'appointment', 'appointments',
+  'estimating', 'webmaster', 'noreply', 'no-reply', 'customerservice', 'customercare',
+  'marketing', 'privacy', 'hvac', 'plumbing', 'roofing', 'electrical', 'schedule',
+  'quotes', 'quote', 'estimates', 'estimate', 'frontdesk', 'reception',
 ]);
 
-// Known national PE mega-chains & franchises (Eye Test #2 filters these out automatically)
+// National PE mega-chains & franchises filtered by the Ownership Gate
 const PE_CHAIN_PATTERNS = [
   /\bars\.com\b/i,
   /\bars\s*\/?\s*rescue\s*rooter\b/i,
@@ -148,9 +110,39 @@ const PE_CHAIN_PATTERNS = [
 ];
 
 /**
- * Fetches page HTML with browser headers and timeout
+ * Stream HTTP body up to `maxBytes` so bloated CMS pages cannot OOM the worker heap.
  */
-async function fetchHtml(url, timeoutMs = 5000) {
+async function readBodyCapped(res, maxBytes) {
+  if (!res.body || typeof res.body.getReader !== 'function') {
+    const text = await res.text();
+    return text.length > maxBytes ? text.slice(0, maxBytes) : text;
+  }
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder('utf-8', { fatal: false });
+  let totalBytes = 0;
+  let out = '';
+
+  try {
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      if (value) {
+        totalBytes += value.byteLength;
+        out += decoder.decode(value, { stream: true });
+        if (totalBytes >= maxBytes) {
+          await reader.cancel().catch(() => {});
+          break;
+        }
+      }
+    }
+    out += decoder.decode();
+  } catch (e) {
+    await reader.cancel().catch(() => {});
+  }
+  return out;
+}
+
+async function fetchHtml(url, timeoutMs = 4500, maxBytes = MAX_HTML_BYTES) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
@@ -163,8 +155,7 @@ async function fetchHtml(url, timeoutMs = 5000) {
       },
       redirect: 'follow',
     });
-
-    if (res.ok) return await res.text();
+    if (res.ok) return await readBodyCapped(res, maxBytes);
   } catch (err) {
     return null;
   } finally {
@@ -173,10 +164,7 @@ async function fetchHtml(url, timeoutMs = 5000) {
   return null;
 }
 
-/**
- * Fetches markdown fallback via Jina AI Reader when direct HTTP is blocked (403/Cloudflare)
- */
-async function fetchJinaFallback(url, timeoutMs = 7000) {
+async function fetchJinaFallback(url, timeoutMs = 6000) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
@@ -188,7 +176,7 @@ async function fetchJinaFallback(url, timeoutMs = 7000) {
       },
     });
     if (res.ok) {
-      const txt = await res.text();
+      const txt = await readBodyCapped(res, MAX_SUB_HTML_BYTES);
       return txt && txt.length > 120 ? txt : null;
     }
   } catch (err) {
@@ -199,15 +187,10 @@ async function fetchJinaFallback(url, timeoutMs = 7000) {
   return null;
 }
 
-/**
- * Normalizes input URL into a valid HTTPS format
- */
 export function normalizeUrl(inputUrl) {
   if (!inputUrl) return '';
   let url = inputUrl.trim();
-  if (!/^https?:\/\//i.test(url)) {
-    url = `https://${url}`;
-  }
+  if (!/^https?:\/\//i.test(url)) url = `https://${url}`;
   try {
     const parsed = new URL(url);
     return `${parsed.protocol}//${parsed.hostname}`;
@@ -216,9 +199,6 @@ export function normalizeUrl(inputUrl) {
   }
 }
 
-/**
- * Strip script/style/svg tags so regex matches ONLY visible copy, never timestamps or CSS!
- */
 export function extractVisibleText(html) {
   if (!html) return '';
   return html
@@ -230,65 +210,41 @@ export function extractVisibleText(html) {
     .replace(/<[^>]+>/g, ' ')
     .replace(/&nbsp;/gi, ' ')
     .replace(/&amp;/gi, '&')
-    .replace(/&#8217;|&rsquo;/gi, "'")
+    .replace(/&#8217;|&rsquo;|&#039;|&apos;/gi, "'")
     .replace(/&quot;/gi, '"')
     .replace(/\s+/g, ' ')
-    .trim();
+    .trim()
+    .slice(0, MAX_VISIBLE_CHARS);
 }
 
-/**
- * Clean and filter email addresses
- */
 function sanitizeEmail(email) {
   if (!email) return null;
   const clean = email.trim().toLowerCase().replace(/[^\w.@+-]/g, '');
-  if (!clean.includes('@') || !clean.includes('.')) return null;
-  if (clean.length > 80) return null;
-
+  if (!clean.includes('@') || !clean.includes('.') || clean.length > 80) return null;
   if (/\.(png|jpg|jpeg|gif|svg|webp|css|js|woff|woff2|pdf)$/i.test(clean)) return null;
-
   const [local, domain] = clean.split('@');
   if (!local || !domain || domain.length < 4) return null;
   if (JUNK_EMAIL_DOMAINS.some((d) => domain.includes(d))) return null;
   if (/^\d+x\d+$/i.test(local)) return null;
-
   return clean;
 }
 
-/**
- * Prioritize founder/direct emails over generic mailboxes
- */
 function pickBestEmail(emailSet) {
   const arr = Array.from(emailSet);
   if (arr.length === 0) return null;
-  const personal = arr.find((e) => {
-    const local = e.split('@')[0];
-    return !GENERIC_EMAIL_LOCALS.has(local);
-  });
-  return personal || arr[0];
+  return arr.find((e) => !GENERIC_EMAIL_LOCALS.has(e.split('@')[0])) || arr[0];
 }
 
-/**
- * Validate US phone numbers (rejects 555 fake numbers & epoch timestamps)
- */
 function cleanPhone(raw) {
   if (!raw) return null;
   const digits = String(raw).replace(/\D/g, '');
-  let ten = digits;
-  if (digits.length === 11 && digits.startsWith('1')) {
-    ten = digits.slice(1);
-  }
+  const ten = digits.length === 11 && digits.startsWith('1') ? digits.slice(1) : digits;
   if (ten.length !== 10) return null;
-  // US NPA/NXX rules + reject 555-xxxx test numbers and repeating patterns
   if (!/^[2-9][0-9]{2}[2-9][0-9]{6}$/.test(ten)) return null;
-  if (ten.slice(3, 6) === '555') return null;
-  if (/^(\d)\1{9}$/.test(ten)) return null;
+  if (ten.slice(3, 6) === '555' || /^(\d)\1{9}$/.test(ten)) return null;
   return `(${ten.slice(0, 3)}) ${ten.slice(3, 6)}-${ten.slice(6)}`;
 }
 
-/**
- * Parse Schema.org JSON-LD blocks for ratings, review counts, hours, phone, founder
- */
 function extractJsonLdSignals($) {
   const result = {
     reviewCount: null,
@@ -307,24 +263,16 @@ function extractJsonLdSignals($) {
       node.forEach(inspectNode);
       return;
     }
-    if (Array.isArray(node['@graph'])) {
-      inspectNode(node['@graph']);
-    }
+    if (Array.isArray(node['@graph'])) inspectNode(node['@graph']);
 
     if (!result.name && typeof node.name === 'string' && /LocalBusiness|HVAC|Plumb|Roof|Electr|Contractor|Organization/i.test(String(node['@type'] || ''))) {
       result.name = node.name.trim();
     }
-    if (!result.telephone && typeof node.telephone === 'string') {
-      result.telephone = cleanPhone(node.telephone);
-    }
-    if (!result.email && typeof node.email === 'string') {
-      result.email = sanitizeEmail(node.email.replace(/^mailto:/i, ''));
-    }
+    if (!result.telephone && typeof node.telephone === 'string') result.telephone = cleanPhone(node.telephone);
+    if (!result.email && typeof node.email === 'string') result.email = sanitizeEmail(node.email.replace(/^mailto:/i, ''));
     if (!result.founderName && node.founder) {
       const fName = typeof node.founder === 'string' ? node.founder : node.founder.name;
-      if (fName && typeof fName === 'string' && fName.length < 40) {
-        result.founderName = fName.trim();
-      }
+      if (fName && typeof fName === 'string' && fName.length < 40) result.founderName = fName.trim();
     }
     if (node.aggregateRating && typeof node.aggregateRating === 'object') {
       const rc = parseInt(String(node.aggregateRating.reviewCount || node.aggregateRating.ratingCount || '').replace(/,/g, ''), 10);
@@ -349,256 +297,210 @@ function extractJsonLdSignals($) {
   $('script[type="application/ld+json"]').each((_, el) => {
     try {
       const raw = $(el).html();
-      if (raw) inspectNode(JSON.parse(raw));
+      if (raw && raw.length < 50_000) inspectNode(JSON.parse(raw));
     } catch (e) {}
   });
-
   return result;
 }
 
-/**
- * Extract doctor name (MedSpa niche)
- */
+function extractTradeOwnerName(visibleText, primaryEmail, jsonLdFounder = null) {
+  if (jsonLdFounder) return `${jsonLdFounder} (Founder)`;
+
+  if (visibleText) {
+    const stopWords = /^(of|the|our|and|company|business|service|services|team|board|group|management|homes|homeowners|rapid|family|operated|operators|operator|owned|owner|founder|today|since|local|customers|clients|warranty|repair|hvac|heating|cooling|air|plumbing|roofing|electric|electrical|mechanical|veteran|staff|technicians|precision|quality|comfort|premier|elite)$/i;
+    const labeled = /\b(?:Owner|President|Founder|CEO|Founded\s+by|Owned\s+(?:and\s+operated\s+)?by|Operated\s+by|Started\s+by)\s*(?:[:\-–,]|\bis\b)?\s*([A-Z][a-z]{2,15}(?:\s+[A-Z][a-z]{2,15})?)\b/g;
+    let m;
+    while ((m = labeled.exec(visibleText)) !== null) {
+      const candidate = m[1].trim();
+      if (!candidate.split(/\s+/).some((w) => stopWords.test(w)) && candidate.length >= 3) {
+        return `${candidate} (Owner)`;
+      }
+    }
+  }
+
+  if (primaryEmail) {
+    const local = primaryEmail.split('@')[0].toLowerCase().replace(/[^a-z]/g, '');
+    if (local.length >= 3 && local.length <= 16 && !GENERIC_EMAIL_LOCALS.has(local)) {
+      if (visibleText) {
+        const prefix = local.slice(0, Math.min(local.length, 6));
+        const nameMatch = visibleText.match(new RegExp(`\\b(${prefix}[a-z]{0,10})\\s+([A-Z][a-z]{2,15})\\b`, 'i'));
+        if (nameMatch && /^[A-Z]/.test(nameMatch[2])) {
+          const fn = nameMatch[1][0].toUpperCase() + nameMatch[1].slice(1).toLowerCase();
+          return `${fn} ${nameMatch[2]} (Owner)`;
+        }
+      }
+      return `${local[0].toUpperCase() + local.slice(1)} (Owner Contact)`;
+    }
+  }
+  return null;
+}
+
 function extractDoctorName(visibleText) {
   if (!visibleText) return null;
   const drRegex = /\bDr\.?\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)\b/g;
   let match;
   while ((match = drRegex.exec(visibleText)) !== null) {
     const candidate = match[0].trim();
-    if (!/recommended|approved|tested|designed|formulated/i.test(candidate)) {
-      return candidate;
-    }
+    if (!/recommended|approved|tested|designed|formulated/i.test(candidate)) return candidate;
   }
-
-  const mdRegex = /\b([A-Z][a-z]+\s+[A-Z][a-z]+),\s*(?:MD|M\.D\.|DO|D\.O\.|FACS)\b/;
-  const mdMatch = visibleText.match(mdRegex);
-  if (mdMatch) return `Dr. ${mdMatch[1]}`;
-
-  return null;
+  const mdMatch = visibleText.match(/\b([A-Z][a-z]+\s+[A-Z][a-z]+),\s*(?:MD|M\.D\.|DO|D\.O\.|FACS)\b/);
+  return mdMatch ? `Dr. ${mdMatch[1]}` : null;
 }
 
-/**
- * Extract real founder / owner name for trade contractors
- */
-function extractTradeOwnerName(visibleText, primaryEmail, jsonLdFounder = null) {
-  if (jsonLdFounder) return `${jsonLdFounder} (Founder)`;
-
-  if (visibleText) {
-    const stopWords = /^(of|the|our|and|company|business|service|services|team|board|group|management|homes|homeowners|rapid|family|operated|operators|operator|owned|owner|founder|today|since|local|customers|clients|warranty|repair|hvac|heating|cooling|air|plumbing|roofing|electric|electrical|mechanical|veteran|staff|technicians|precision|quality|comfort|premier|elite)$/i;
-
-    // 1. Strict labeled format: "Owner: John Smith" / "Founder - Mike Jones"
-    const labeled = /\b(?:Owner|President|Founder|CEO|Founded\s+by|Owned\s+(?:and\s+operated\s+)?by|Operated\s+by|Started\s+by)\s*(?:[:\-–,]|\bis\b)?\s*([A-Z][a-z]{2,15}(?:\s+[A-Z][a-z]{2,15})?)\b/g;
-    let m;
-    while ((m = labeled.exec(visibleText)) !== null) {
-      const candidate = m[1].trim();
-      const words = candidate.split(/\s+/);
-      if (!words.some((w) => stopWords.test(w)) && candidate.length >= 3) {
-        return `${candidate} (Owner)`;
-      }
-    }
-  }
-
-  // 2. Named email fallback (e.g. jack@rapidhvactn.com or randy@vanceac.com -> look up full name in text or use FirstName)
-  if (primaryEmail) {
-    const local = primaryEmail.split('@')[0].toLowerCase().replace(/[^a-z]/g, '');
-    if (local.length >= 3 && local.length <= 16 && !GENERIC_EMAIL_LOCALS.has(local)) {
-      if (visibleText) {
-        const firstPart = local.slice(0, Math.min(local.length, 6));
-        const nameMatch = visibleText.match(new RegExp(`\\b(${firstPart}[a-z]{0,10})\\s+([A-Z][a-z]{2,15})\\b`, 'i'));
-        if (nameMatch && /^[A-Z]/.test(nameMatch[2])) {
-          const fn = nameMatch[1][0].toUpperCase() + nameMatch[1].slice(1).toLowerCase();
-          return `${fn} ${nameMatch[2]} (Owner)`;
-        }
-      }
-      const cap = local[0].toUpperCase() + local.slice(1);
-      return `${cap} (Owner Contact)`;
-    }
-  }
-
-  return null;
-}
-
-/**
- * Detect active ad tracking pixels & marketing stack (LSA / Google Ads / CallRail / Meta / GTM)
- */
 function detectAdPixels(rawHtml, visibleText = '') {
   const html = rawHtml || '';
   const combined = html + ' ' + visibleText;
-
-  const hasLsa =
-    /google\s+screened/i.test(combined) ||
-    /google\s+guaranteed/i.test(combined) ||
-    /local\s+services?\s+ads?/i.test(combined) ||
-    /localservices\.google\.com/i.test(html);
-
-  const hasConfirmedGoogleAds =
-    /AW-\d{6,}/i.test(html) ||
-    html.includes('googleadservices.com') ||
-    html.includes('doubleclick.net') ||
-    html.includes('callrail.com') ||
-    html.includes('whatconverts.com') ||
-    html.includes('calltrackingmetrics') ||
-    html.includes('gclid');
-
-  const hasGtmOrGtag =
-    html.includes('googletagmanager.com/gtag') ||
-    html.includes('googletagmanager.com/gtm.js') ||
-    html.includes('gtag(');
-
-  const hasMetaPixel =
-    html.includes('fbevents.js') ||
-    html.includes('connect.facebook.net') ||
-    html.includes('fbq(') ||
-    html.includes('_fbq');
-
-  const hasTikTokPixel =
-    html.includes('analytics.tiktok.com') ||
-    html.includes('ttq.load');
+  const lsaVerified = /google\s+screened|google\s+guaranteed|local\s+services?\s+ads?|localservices\.google\.com/i.test(combined);
+  const confirmedGoogleAds = /AW-\d{6,}|googleadservices\.com|doubleclick\.net|gclid|callrail\.com|whatconverts\.com|calltrackingmetrics|marchex|invoca/i.test(html);
+  const gtmOrGtag = html.includes('googletagmanager.com/gtag') || html.includes('googletagmanager.com/gtm.js') || html.includes('gtag(');
+  const metaPixel = html.includes('fbevents.js') || html.includes('connect.facebook.net') || html.includes('fbq(') || html.includes('_fbq');
+  const tikTokPixel = html.includes('analytics.tiktok.com') || html.includes('ttq.load');
 
   return {
-    hasPaidAds: hasLsa || hasConfirmedGoogleAds || hasMetaPixel || hasTikTokPixel || hasGtmOrGtag,
-    lsaVerified: hasLsa,
-    confirmedGoogleAds: hasConfirmedGoogleAds,
-    googleAds: hasLsa || hasConfirmedGoogleAds || hasGtmOrGtag,
-    metaPixel: hasMetaPixel,
-    tikTokPixel: hasTikTokPixel,
-    gtmOrGtag: hasGtmOrGtag,
+    hasPaidAds: lsaVerified || confirmedGoogleAds || metaPixel || tikTokPixel || gtmOrGtag,
+    lsaVerified,
+    confirmedGoogleAds,
+    googleAds: lsaVerified || confirmedGoogleAds || gtmOrGtag,
+    metaPixel,
+    tikTokPixel,
+    gtmOrGtag,
   };
 }
 
-/**
- * Detect if a business is a multi-location PE chain/franchise vs family-owned 1–2 location shop
- */
-export function detectMultiLocation(htmlOrText, $, url = '', companyName = '') {
-  const lower = (htmlOrText || '').toLowerCase();
+export function detectMultiLocation(textOrHtml, locLinkCount = 0, url = '', companyName = '') {
+  const lower = (textOrHtml || '').toLowerCase();
   const targetStr = `${url} ${companyName}`.toLowerCase();
 
   for (const pat of PE_CHAIN_PATTERNS) {
     if (pat.test(targetStr) || pat.test(lower.slice(0, 4000))) {
-      return {
-        isMultiLocation: true,
-        isFamilyOwned: false,
-        reason: `Matched PE / multi-state chain pattern (${pat.source})`,
-      };
+      return { isMultiLocation: true, isFamilyOwned: false, reason: 'Matched national PE / franchise chain' };
     }
   }
 
-  const multiLocationPhrases = [
-    'our locations',
-    'all locations',
-    'multiple locations',
-    'find a location',
-    'view locations',
-    'select a location',
-    'choose a location',
-    'see all locations',
-    'franchise opportunities',
-    'franchise information',
-    'corporate headquarters',
-    'find your nearest',
+  const chainPhrases = [
+    'our locations', 'all locations', 'multiple locations', 'find a location',
+    'view locations', 'select a location', 'choose a location', 'see all locations',
+    'franchise opportunities', 'franchise information', 'corporate headquarters', 'find your nearest',
   ];
-
-  for (const phrase of multiLocationPhrases) {
+  for (const phrase of chainPhrases) {
     if (lower.includes(phrase)) {
-      return {
-        isMultiLocation: true,
-        isFamilyOwned: false,
-        reason: `Matched chain indicator: "${phrase}"`,
-      };
+      return { isMultiLocation: true, isFamilyOwned: false, reason: `Multi-location indicator: "${phrase}"` };
     }
   }
 
-  if ($) {
-    const locLinks = $('a[href*="/locations/"], a[href*="/our-locations"], a[href*="/branches/"], a[href*="/offices/"]');
-    if (locLinks.length >= 3) {
-      return {
-        isMultiLocation: true,
-        isFamilyOwned: false,
-        reason: `Found ${locLinks.length} branch/location directory links`,
-      };
-    }
+  if (locLinkCount >= 3) {
+    return { isMultiLocation: true, isFamilyOwned: false, reason: `Found ${locLinkCount} branch directory links` };
   }
 
-  const hasFamilySignal = /family[- ]owned|family[- ]operated|locally owned|veteran[- ]owned|father and son|generations/i.test(lower);
-
+  const isFamilyOwned = /family[- ]owned|family[- ]operated|locally owned|veteran[- ]owned|father and son|generations/i.test(lower);
   return {
     isMultiLocation: false,
-    isFamilyOwned: hasFamilySignal,
-    reason: hasFamilySignal ? 'Family-owned local operator' : 'Single-location independent operator',
+    isFamilyOwned,
+    reason: isFamilyOwned ? 'Family-owned local operator' : 'Single-location independent operator',
   };
 }
 
 /**
- * Detect presence of Google My Business (GMB), Instagram & Facebook organic profiles
+ * Extract all signals inside a tightly scoped function so the Cheerio DOM tree is GC'd immediately!
  */
-export function detectSocialAndGmb(html, $) {
+function parseDomSnapshot(html, activeUrl) {
+  const $ = cheerio.load(html);
+  const jsonLd = extractJsonLdSignals($);
+  const ogSiteName = $('meta[property="og:site_name"]').attr('content') || '';
+  const titleText = $('title').text() || '';
+  const h1Text = $('h1').first().text() || '';
+
+  const emails = [];
+  const phones = [];
+  $('a[href^="mailto:"]').each((_, el) => {
+    const c = sanitizeEmail($(el).attr('href')?.replace(/^mailto:/i, '').split('?')[0]);
+    if (c) emails.push(c);
+  });
+  $('a[href^="tel:"]').each((_, el) => {
+    const c = cleanPhone($(el).attr('href')?.replace(/^tel:/i, ''));
+    if (c) phones.push(c);
+  });
+
   let hasGmb = false;
   let hasInstagram = false;
   let hasFacebook = false;
   let gmbUrl = null;
   let igUrl = null;
   let fbUrl = null;
+  const subUrls = new Set();
 
-  if ($) {
-    $('a[href]').each((_, el) => {
-      const href = $(el).attr('href') || '';
-      if (!hasGmb && /(maps\.google\.com|google\.com\/maps|goo\.gl\/maps|g\.page\/|search\.google\.com\/local)/i.test(href)) {
-        hasGmb = true;
-        gmbUrl = href;
-      }
-      if (!hasInstagram && /instagram\.com\/[a-zA-Z0-9._-]+/i.test(href) && !/instagram\.com\/(p\/|explore|share)/i.test(href)) {
-        hasInstagram = true;
-        igUrl = href;
-      }
-      if (!hasFacebook && /facebook\.com\/[a-zA-Z0-9._-]+/i.test(href) && !/(sharer|tr\?|facebook\.com\/share)/i.test(href)) {
-        hasFacebook = true;
-        fbUrl = href;
-      }
-    });
-  } else if (html) {
-    const gmbM = html.match(/https?:\/\/(?:www\.)?(?:maps\.google\.com|google\.com\/maps|g\.page|goo\.gl\/maps)[^\s)"']+/i);
-    if (gmbM) { hasGmb = true; gmbUrl = gmbM[0]; }
-    const igM = html.match(/https?:\/\/(?:www\.)?instagram\.com\/[a-zA-Z0-9._-]+/i);
-    if (igM) { hasInstagram = true; igUrl = igM[0]; }
-    const fbM = html.match(/https?:\/\/(?:www\.)?facebook\.com\/[a-zA-Z0-9._-]+/i);
-    if (fbM) { hasFacebook = true; fbUrl = fbM[0]; }
-  }
+  $('a[href]').each((_, el) => {
+    const href = $(el).attr('href') || '';
+    if (!href) return;
+    if (!hasGmb && /(maps\.google\.com|google\.com\/maps|goo\.gl\/maps|g\.page\/|search\.google\.com\/local)/i.test(href)) {
+      hasGmb = true;
+      gmbUrl = href;
+    } else if (!hasInstagram && /instagram\.com\/[a-zA-Z0-9._-]+/i.test(href) && !/instagram\.com\/(p\/|explore|share)/i.test(href)) {
+      hasInstagram = true;
+      igUrl = href;
+    } else if (!hasFacebook && /facebook\.com\/[a-zA-Z0-9._-]+/i.test(href) && !/(sharer|tr\?|facebook\.com\/share)/i.test(href)) {
+      hasFacebook = true;
+      fbUrl = href;
+    }
+    if (subUrls.size < 4 && /\b(about|about-us|our-team|team|leadership|contact|contact-us)\b/i.test(href)) {
+      try {
+        const fullUrl = new URL(href, activeUrl).href;
+        if (fullUrl.startsWith(activeUrl) && fullUrl !== activeUrl && fullUrl !== `${activeUrl}/`) {
+          subUrls.add(fullUrl);
+        }
+      } catch (e) {}
+    }
+  });
+
+  const locLinkCount = $('a[href*="/locations/"], a[href*="/our-locations"], a[href*="/branches/"], a[href*="/offices/"]').length;
+  const hasHtmlFormTag = $('form').length > 0;
 
   return {
-    hasGmb,
-    gmbUrl,
-    hasInstagram,
-    igUrl,
-    hasFacebook,
-    fbUrl,
-    summary: hasGmb ? 'GMB Verified' : hasInstagram || hasFacebook ? 'Social Active' : 'Organic Direct',
+    jsonLd,
+    ogSiteName,
+    titleText,
+    h1Text,
+    emails,
+    phones,
+    social: {
+      hasGmb, gmbUrl, hasInstagram, igUrl, hasFacebook, fbUrl,
+      summary: hasGmb ? 'GMB Verified' : hasInstagram || hasFacebook ? 'Social Active' : 'Organic Direct',
+    },
+    locLinkCount,
+    hasHtmlFormTag,
+    subUrls: Array.from(subUrls),
   };
 }
 
+function pickTitleBrand(rawTitle) {
+  if (!rawTitle) return '';
+  const parts = rawTitle.split(/[-|•–]/).map((s) => s.trim()).filter(Boolean);
+  if (parts.length > 1 && /^(home|welcome|heating,\s*air\s*conditioning|air\s*conditioning,\s*heating|hvac\s*services|services)\b/i.test(parts[0])) {
+    return parts[1];
+  }
+  return parts[0] || '';
+}
+
 /**
- * Scrape a contractor/clinic website:
- * 1) Tries direct HTTP (+ auto-swaps www/bare domain if DNS fails)
- * 2) Falls back cleanly to Jina AI Reader if blocked by Cloudflare/403
- * 3) Optionally crawls /about or /contact concurrently to capture founder, email, fleet & reviews
+ * Lean, memory-bounded scraper:
+ * 1) Fetches capped homepage HTML (auto-tries www/bare host swap) -> falls back to Jina Reader on 403
+ * 2) Extracts DOM snapshot synchronously so Cheerio AST is freed immediately
+ * 3) Optionally crawls up to 1 /about or /contact subpage only when key fields are missing
  */
 export async function scrapeClinicWebsite(inputUrl, options = {}) {
   const baseUrl = normalizeUrl(inputUrl);
-  if (!baseUrl) {
-    return { success: false, error: 'Invalid URL provided' };
-  }
+  if (!baseUrl) return { success: false, error: 'Invalid URL provided' };
 
-  console.log(`[Lead Scraper] Crawling domain: ${baseUrl}...`);
   let activeUrl = baseUrl;
-  let homepageHtml = await fetchHtml(baseUrl, 5500);
+  let homepageHtml = await fetchHtml(baseUrl, 4500, MAX_HTML_BYTES);
   let dataSource = 'direct_html';
 
-  // Auto-retry swapping www. prefix if initial fetch failed (fixes www.accomfort.us vs accomfort.us)
   if (!homepageHtml) {
     try {
       const u = new URL(baseUrl);
       const altHost = u.hostname.startsWith('www.') ? u.hostname.replace(/^www\./, '') : `www.${u.hostname}`;
       const altUrl = `${u.protocol}//${altHost}`;
-      const altHtml = await fetchHtml(altUrl, 4500);
+      const altHtml = await fetchHtml(altUrl, 4000, MAX_HTML_BYTES);
       if (altHtml) {
         homepageHtml = altHtml;
         activeUrl = altUrl;
@@ -606,42 +508,24 @@ export async function scrapeClinicWebsite(inputUrl, options = {}) {
     } catch (e) {}
   }
 
-  // Fallback to Jina AI Reader if blocked by Cloudflare/403
   let jinaMarkdown = null;
   if (!homepageHtml) {
-    console.log(`[Lead Scraper] Direct HTTP blocked/failed on ${baseUrl}, using Jina AI fallback...`);
-    jinaMarkdown = await fetchJinaFallback(baseUrl, 6500);
-    if (jinaMarkdown) {
-      dataSource = 'jina_fallback';
-    }
+    jinaMarkdown = await fetchJinaFallback(baseUrl, 6000);
+    if (jinaMarkdown) dataSource = 'jina_fallback';
   }
 
   if (!homepageHtml && !jinaMarkdown) {
-    return { success: false, error: `Failed to retrieve content from ${baseUrl}` };
+    return { success: false, error: `Unreachable domain: ${baseUrl}` };
   }
 
-  const $home = homepageHtml ? cheerio.load(homepageHtml) : null;
-  const visibleHomeText = homepageHtml ? extractVisibleText(homepageHtml) : jinaMarkdown;
-  const jsonLd = extractJsonLdSignals($home);
+  const snap = homepageHtml ? parseDomSnapshot(homepageHtml, activeUrl) : null;
+  const visibleHomeText = homepageHtml ? extractVisibleText(homepageHtml) : jinaMarkdown.slice(0, MAX_VISIBLE_CHARS);
+  const jsonLd = snap ? snap.jsonLd : { reviewCount: null, ratingValue: null, telephone: null, email: null, founderName: null, openingHours: [], name: null };
 
-  // 1. Extract Business Name & decode HTML entities cleanly
+  // Business name
   let clinicName = '';
-  const pickTitleBrand = (rawTitle) => {
-    if (!rawTitle) return '';
-    const parts = rawTitle.split(/[-|•–]/).map((s) => s.trim()).filter(Boolean);
-    if (parts.length > 1 && /^(home|welcome|heating,\s*air\s*conditioning|air\s*conditioning,\s*heating|hvac\s*services|services)\b/i.test(parts[0])) {
-      return parts[1];
-    }
-    return parts[0] || '';
-  };
-
-  if ($home) {
-    clinicName =
-      jsonLd.name ||
-      $home('meta[property="og:site_name"]').attr('content') ||
-      pickTitleBrand($home('title').text()) ||
-      $home('h1').first().text()?.trim() ||
-      '';
+  if (snap) {
+    clinicName = jsonLd.name || snap.ogSiteName || pickTitleBrand(snap.titleText) || snap.h1Text || '';
   } else if (jinaMarkdown) {
     const titleLine = jinaMarkdown.match(/^Title:\s*(.+)$/m);
     if (titleLine) clinicName = pickTitleBrand(titleLine[1]);
@@ -650,7 +534,7 @@ export async function scrapeClinicWebsite(inputUrl, options = {}) {
     try {
       clinicName = new URL(activeUrl).hostname.replace(/^www\./, '').split('.')[0];
     } catch (e) {
-      clinicName = 'Local Service Business';
+      clinicName = 'Local Service Contractor';
     }
   }
   clinicName = clinicName
@@ -660,47 +544,18 @@ export async function scrapeClinicWebsite(inputUrl, options = {}) {
     .replace(/\s+/g, ' ')
     .trim();
 
-  // 2. Ad Spend & Booking Friction Signals
+  // Ad pixels & form detection BEFORE freeing homepageHtml
   const adSignals = detectAdPixels(homepageHtml || '', visibleHomeText);
+  const hasHtmlForm = Boolean(snap?.hasHtmlFormTag) || /wpcf7|wpforms|gform|gravityforms|elementor-form|hubspot-form|<form\b/i.test(homepageHtml || '');
+  const hasLiveSchedulerHome = /calendly\.com|acuityscheduling\.com|cal\.com|scheduleengine|servicetitan\.com\/web|housecallpro\.com\/book|jobber\.com/i.test(
+    (homepageHtml || '') + ' ' + visibleHomeText
+  );
 
-  const niche = options.niche || 'hvac';
-  const isTradeSite =
-    niche !== 'medspa' ||
-    /hvac|air conditioning|heating|plumbing|furnace|duct|refrigeration|roofing|electrician|electrical|contractor|restoration/i.test(
-      visibleHomeText + ' ' + clinicName
-    );
-
-  // 3. Extract Services
-  const detectedTreatments = [];
-  const searchPool = isTradeSite ? TRADE_SERVICES : AESTHETIC_TREATMENTS;
-  for (const s of searchPool) {
-    if (new RegExp(`\\b${s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i').test(visibleHomeText)) {
-      detectedTreatments.push(s);
-    }
-  }
-  const primaryTreatment = detectedTreatments[0] || (isTradeSite ? 'Emergency AC & Heating Repair' : 'Morpheus8 & Injectables');
-
-  // 4. Extract Clean Emails & Phones (Strict Priority: mailto/tel -> JSON-LD -> separated visible-text regex)
-  const rawEmails = new Set();
-  const rawPhones = new Set();
-
+  const rawEmails = new Set(snap?.emails || []);
+  const rawPhones = new Set(snap?.phones || []);
   if (jsonLd.email) rawEmails.add(jsonLd.email);
   if (jsonLd.telephone) rawPhones.add(jsonLd.telephone);
 
-  if ($home) {
-    $home('a[href^="mailto:"]').each((_, el) => {
-      const raw = $home(el).attr('href')?.replace(/^mailto:/i, '').split('?')[0];
-      const cleaned = sanitizeEmail(raw);
-      if (cleaned) rawEmails.add(cleaned);
-    });
-
-    $home('a[href^="tel:"]').each((_, el) => {
-      const c = cleanPhone($home(el).attr('href')?.replace(/^tel:/i, ''));
-      if (c) rawPhones.add(c);
-    });
-  }
-
-  // Extract formatted phones from visible text (REQUIRES separators so raw timestamps never match)
   const visiblePhones = visibleHomeText.match(/(?:\+?1[-.\s])?\(?[2-9][0-9]{2}\)?[-.\s][2-9][0-9]{2}[-.\s][0-9]{4}\b/g);
   if (visiblePhones) {
     for (const p of visiblePhones.slice(0, 4)) {
@@ -709,120 +564,86 @@ export async function scrapeClinicWebsite(inputUrl, options = {}) {
     }
   }
 
-  const emailSourceText = (homepageHtml || '') + ' ' + visibleHomeText;
-  const emailMatches = emailSourceText.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g);
+  const emailMatches = ((homepageHtml || '') + ' ' + visibleHomeText).match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g);
   if (emailMatches) {
     for (const em of emailMatches) {
-      const cleaned = sanitizeEmail(em);
-      if (cleaned) rawEmails.add(cleaned);
+      const c = sanitizeEmail(em);
+      if (c) rawEmails.add(c);
     }
   }
 
-  // 5. Crawl /about or /contact subpage concurrently when helpful (owner, email, fleet, reviews)
+  const locLinkCount = snap?.locLinkCount || 0;
+  const chainMatchHomepage = /our locations|all locations|multiple locations|find a location|franchise/i.test(homepageHtml || '');
+  const socialSignals = snap
+    ? snap.social
+    : {
+        hasGmb: /maps\.google\.com|google\.com\/maps|g\.page/i.test(jinaMarkdown || ''),
+        hasInstagram: /instagram\.com\/[a-zA-Z0-9._-]+/i.test(jinaMarkdown || ''),
+        hasFacebook: /facebook\.com\/[a-zA-Z0-9._-]+/i.test(jinaMarkdown || ''),
+        summary: 'Proxy Verified',
+      };
+
+  const subTargets = (snap?.subUrls?.length ? snap.subUrls : [`${activeUrl}/about/`]).slice(0, options.fast ? 1 : 2);
+  homepageHtml = null; // Explicitly release large homepage string for GC!
+
+  // Subpage crawl ONLY if founder/email/reviews still missing
   let subVisibleText = '';
-  let subRawHtml = '';
-  const candidateSubUrls = new Set();
-
-  if ($home) {
-    $home('a[href]').each((_, el) => {
-      const href = $home(el).attr('href');
-      if (!href) return;
-      if (/\b(about|about-us|our-team|team|leadership|contact|contact-us)\b/i.test(href)) {
-        try {
-          const fullUrl = new URL(href, activeUrl).href;
-          if (fullUrl.startsWith(activeUrl) && fullUrl !== activeUrl && fullUrl !== `${activeUrl}/`) {
-            candidateSubUrls.add(fullUrl);
-          }
-        } catch (e) {}
-      }
-    });
-  }
-  // Always probe /about/ or /contact/ fallback if nav wasn't found cleanly
-  if (candidateSubUrls.size === 0 && dataSource === 'direct_html') {
-    candidateSubUrls.add(`${activeUrl}/about/`);
-    candidateSubUrls.add(`${activeUrl}/contact/`);
-  }
-
-  const needSubCrawl = rawEmails.size === 0 || !jsonLd.founderName || !jsonLd.reviewCount;
-  if (needSubCrawl && candidateSubUrls.size > 0 && !options.skipSubCrawl) {
-    const subTargets = Array.from(candidateSubUrls).slice(0, 2);
-    const subResults = await Promise.all(
-      subTargets.map((su) => fetchHtml(su, 3000))
-    );
+  const needSubCrawl = (rawEmails.size === 0 || !jsonLd.founderName || !jsonLd.reviewCount) && dataSource === 'direct_html';
+  if (needSubCrawl && !options.skipSubCrawl && subTargets.length > 0) {
+    const subResults = await Promise.all(subTargets.map((su) => fetchHtml(su, 2800, MAX_SUB_HTML_BYTES)));
     for (const subHtml of subResults) {
       if (!subHtml) continue;
-      subRawHtml += ' ' + subHtml;
-      const $sub = cheerio.load(subHtml);
-      const subText = extractVisibleText(subHtml);
-      subVisibleText += ' ' + subText;
-
-      $sub('a[href^="mailto:"]').each((_, el) => {
-        const cleaned = sanitizeEmail($sub(el).attr('href')?.replace(/^mailto:/i, '').split('?')[0]);
-        if (cleaned) rawEmails.add(cleaned);
-      });
-      $sub('a[href^="tel:"]').each((_, el) => {
-        const c = cleanPhone($sub(el).attr('href')?.replace(/^tel:/i, ''));
-        if (c) rawPhones.add(c);
-      });
+      const subSnap = parseDomSnapshot(subHtml, activeUrl);
+      subSnap.emails.forEach((e) => rawEmails.add(e));
+      subSnap.phones.forEach((p) => rawPhones.add(p));
+      if (subSnap.jsonLd.reviewCount && !jsonLd.reviewCount) jsonLd.reviewCount = subSnap.jsonLd.reviewCount;
+      if (subSnap.jsonLd.ratingValue && !jsonLd.ratingValue) jsonLd.ratingValue = subSnap.jsonLd.ratingValue;
+      if (subSnap.jsonLd.founderName && !jsonLd.founderName) jsonLd.founderName = subSnap.jsonLd.founderName;
       const subEm = subHtml.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g);
-      if (subEm) {
-        subEm.forEach((em) => {
-          const cleaned = sanitizeEmail(em);
-          if (cleaned) rawEmails.add(cleaned);
-        });
-      }
-      const subJson = extractJsonLdSignals($sub);
-      if (subJson.reviewCount && !jsonLd.reviewCount) jsonLd.reviewCount = subJson.reviewCount;
-      if (subJson.ratingValue && !jsonLd.ratingValue) jsonLd.ratingValue = subJson.ratingValue;
-      if (subJson.founderName && !jsonLd.founderName) jsonLd.founderName = subJson.founderName;
+      if (subEm) subEm.forEach((em) => { const c = sanitizeEmail(em); if (c) rawEmails.add(c); });
+      subVisibleText += ' ' + extractVisibleText(subHtml).slice(0, 12_000);
     }
   }
 
-  const combinedVisibleText = `${visibleHomeText} ${subVisibleText}`.trim();
-  const combinedRawHtml = `${homepageHtml || ''} ${subRawHtml}`.trim();
+  const visibleText = `${visibleHomeText} ${subVisibleText}`.trim().slice(0, MAX_VISIBLE_CHARS);
+  const niche = options.niche || 'hvac';
+  const isTradeSite =
+    niche !== 'medspa' ||
+    /hvac|air conditioning|heating|plumbing|furnace|duct|roofing|electrician|electrical|contractor|restoration/i.test(
+      visibleText + ' ' + clinicName
+    );
+
+  const searchPool = isTradeSite ? TRADE_SERVICES : AESTHETIC_TREATMENTS;
+  const detectedTreatments = searchPool.filter((s) =>
+    new RegExp(`\\b${s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i').test(visibleText)
+  );
+  const primaryTreatment = detectedTreatments[0] || (isTradeSite ? 'Emergency AC & Heating Repair' : 'Morpheus8');
 
   const primaryEmail = pickBestEmail(rawEmails);
   const primaryPhone = Array.from(rawPhones)[0] || null;
+  const doctorName = isTradeSite
+    ? extractTradeOwnerName(visibleText, primaryEmail, jsonLd.founderName) || `Owner / Operations Lead at ${clinicName}`
+    : extractDoctorName(visibleText);
 
-  // 6. Decision Maker Extraction (fixed isTradeSite!)
-  let doctorName = null;
-  if (isTradeSite) {
-    doctorName =
-      extractTradeOwnerName(combinedVisibleText, primaryEmail, jsonLd.founderName) ||
-      (clinicName ? `Owner / Operations Lead at ${clinicName}` : 'Owner / Operations Lead');
-  } else {
-    doctorName = extractDoctorName(combinedVisibleText);
-  }
-
-  // 7. Extract City / State
   let city = null;
-  const locationMatch = combinedVisibleText.match(
+  const locationMatch = visibleText.match(
     /\b([A-Z][a-zA-Z\s]{2,20}),\s*(AL|AK|AZ|AR|CA|CO|CT|DE|FL|GA|HI|ID|IL|IN|IA|KS|KY|LA|ME|MD|MA|MI|MN|MS|MO|MT|NE|NV|NH|NJ|NM|NY|NC|ND|OH|OK|OR|PA|RI|SC|SD|TN|TX|UT|VT|VA|WA|WV|WI|WY)\b/
   );
-  if (locationMatch) {
-    city = `${locationMatch[1].trim()}, ${locationMatch[2]}`;
-  }
+  if (locationMatch) city = `${locationMatch[1].trim()}, ${locationMatch[2]}`;
 
-  const multiLocation = detectMultiLocation(combinedRawHtml || combinedVisibleText, $home, activeUrl, clinicName);
-  const socialSignals = detectSocialAndGmb(combinedRawHtml || combinedVisibleText, $home);
-  const shortClinic = getShortBusinessName(clinicName);
-
-  // Detect HTML <form> tags vs live calendar scheduling
-  const hasLiveScheduler = /calendly\.com|acuityscheduling\.com|cal\.com|scheduleengine|servicetitan\.com\/web|housecallpro\.com\/book|jobber\.com/i.test(
-    combinedRawHtml + ' ' + combinedVisibleText
-  );
-  const hasHtmlForm = /<form\b|wpcf7|wpforms|gform|gravityforms|elementor-form|hubspot-form/i.test(combinedRawHtml);
+  const multiLocation = detectMultiLocation(chainMatchHomepage ? 'our locations ' + visibleText : visibleText, locLinkCount, activeUrl, clinicName);
+  const hasLiveScheduler = hasLiveSchedulerHome || /calendly|acuityscheduling|cal\.com|servicetitan|housecallpro|jobber/i.test(visibleText);
 
   return {
     success: true,
     url: activeUrl,
     dataSource,
     clinicName,
-    shortClinicName: shortClinic,
+    shortClinicName: getShortBusinessName(clinicName),
     doctorName: doctorName || null,
     salutation: formatSalutation(doctorName, clinicName, isTradeSite ? 'hvac' : 'medspa'),
     email: primaryEmail,
-    allEmails: Array.from(rawEmails),
+    allEmails: Array.from(rawEmails).slice(0, 6),
     phone: primaryPhone,
     city: city || 'US',
     treatment: primaryTreatment,
@@ -833,14 +654,13 @@ export async function scrapeClinicWebsite(inputUrl, options = {}) {
     jsonLd,
     hasHtmlForm,
     hasLiveScheduler,
-    visibleText: combinedVisibleText,
-    rawHtml: combinedRawHtml || null,
+    visibleText,
     scrapedAt: new Date().toISOString(),
   };
 }
 
 /**
- * Scrape a single website, run the 100-pt Qualifier Gate, and push qualified leads into Supabase
+ * Scrape a single website, run Qualifier Gate, and push qualified leads to Pipeline CRM
  */
 export async function scrapeAndIngestLead({
   url,
@@ -852,16 +672,12 @@ export async function scrapeAndIngestLead({
   force = false,
 }) {
   const result = await scrapeClinicWebsite(url, { niche: nicheOverride || 'hvac' });
-  if (!result.success) {
-    return { success: false, error: result.error };
-  }
+  if (!result.success) return { success: false, error: result.error };
 
-  // Ensure email fallback only if phone or email exists
   let finalEmail = result.email;
   if (!finalEmail && result.phone && result.url) {
     try {
-      const hostname = new URL(result.url).hostname.replace(/^www\./, '');
-      finalEmail = `info@${hostname}`;
+      finalEmail = `info@${new URL(result.url).hostname.replace(/^www\./, '')}`;
     } catch (e) {}
   }
 
@@ -873,16 +689,9 @@ export async function scrapeAndIngestLead({
     };
   }
 
-  // Run Qualifier Gate
   const qualification = qualifyLead(
-    {
-      ...result,
-      email: finalEmail,
-      doctorName: doctorOverride || result.doctorName,
-    },
-    {
-      hasStaticForm: result.hasHtmlForm && !result.hasLiveScheduler,
-    },
+    { ...result, email: finalEmail, doctorName: doctorOverride || result.doctorName },
+    { hasStaticForm: result.hasHtmlForm && !result.hasLiveScheduler },
     Number(minScore) || 60
   );
 
@@ -890,13 +699,12 @@ export async function scrapeAndIngestLead({
     return {
       success: false,
       disqualified: true,
-      message: `Lead REJECTED (${qualification.score}/100 ${qualification.grade}): ${qualification.disqualifyReasons.join('; ')}`,
+      message: `Lead rejected (${qualification.score}/100 ${qualification.grade}): ${qualification.disqualifyReasons.join('; ')}`,
       qualification,
       scrapedData: result,
     };
   }
 
-  // Check if already in Supabase
   const existing = await getProspectById(finalEmail);
   if (existing) {
     return {
@@ -909,7 +717,6 @@ export async function scrapeAndIngestLead({
     };
   }
 
-  // Push to Supabase public.prospects with full qualification telemetry
   const addRes = await addProspect({
     doctorName: doctorOverride || result.doctorName,
     clinicName: result.clinicName,
@@ -919,7 +726,7 @@ export async function scrapeAndIngestLead({
     phone: result.phone,
     website_url: result.url,
     niche: nicheOverride || 'hvac',
-    notes: `Scraped from ${result.url} | Qual: ${qualification.score}/100 (${qualification.grade}) | Eye Test: ${qualification.eyePassCount}/4 | Ads: ${
+    notes: `Hunter: ${result.url} | Qual: ${qualification.score}/100 (${qualification.grade}) | Eye Test: ${qualification.eyePassCount}/4 | Ads: ${
       result.adSignals.hasPaidAds ? 'ACTIVE' : 'Organic'
     } | Phone: ${result.phone || 'N/A'}`,
     qual_score: qualification.score,
@@ -939,26 +746,15 @@ export async function scrapeAndIngestLead({
   };
 }
 
-/**
- * Bulk scrape a list of URLs with qualification gate and rate limiting
- */
 export async function scrapeBulkLeads(urlList, options = {}) {
   const results = [];
-  console.log(`[Lead Scraper] Starting qualified bulk scrape for ${urlList.length} domains...`);
-
   for (let i = 0; i < urlList.length; i++) {
     const rawUrl = urlList[i];
     if (!rawUrl || !rawUrl.trim()) continue;
-
-    console.log(`[Lead Scraper] Processing ${i + 1}/${urlList.length}: ${rawUrl}`);
     const res = await scrapeAndIngestLead({ url: rawUrl, ...options });
     results.push({ url: rawUrl, ...res });
-
-    if (i < urlList.length - 1) {
-      await new Promise((r) => setTimeout(r, 900));
-    }
+    if (i < urlList.length - 1) await new Promise((r) => setTimeout(r, 700));
   }
-
   return {
     total: urlList.length,
     ingestedCount: results.filter((r) => r.success).length,

@@ -1,13 +1,66 @@
 import { Router } from 'express';
 import { scrapeClinicWebsite, scrapeAndIngestLead, scrapeBulkLeads } from '../services/scraperService.js';
-import { runAutonomousHunt, huntAndEnrichLead, commitLeadToSupabase, TERRITORY_CASCADE, ORDERED_CASCADE_CITIES, getNextCascadeCity } from '../services/leadHunterService.js';
-import { qualifyLead, DEFAULT_QUALIFY_THRESHOLD } from '../services/qualifierService.js';
+import {
+  runAutonomousHunt,
+  startHuntJob,
+  getHuntJob,
+  cancelHuntJob,
+  huntAndEnrichLead,
+  commitLeadToSupabase,
+  TERRITORY_CASCADE,
+  ORDERED_CASCADE_CITIES,
+  getNextCascadeCity,
+} from '../services/leadHunterService.js';
+import { DEFAULT_QUALIFY_THRESHOLD } from '../services/qualifierService.js';
 import { runDigitalAudit, auditAndSaveProspect } from '../services/auditorService.js';
-import { getProspects, deleteProspect } from '../services/outreachService.js';
+import { deleteProspect } from '../services/outreachService.js';
 import { renderSaasShell, getSvgIcon } from '../views/saasLayout.js';
-import { getShortBusinessName, formatSalutation } from '../templates/outreachTemplates.js';
 
 export const scraperRouter = Router();
+
+const FEATURED_SUBURBS = [
+  'Carmel, IN',
+  'Zionsville, IN',
+  'Dublin, OH',
+  'Prosper, TX',
+  'Celina, TX',
+  'Brentwood, TN',
+  'Fulshear, TX',
+];
+
+function escapeHtmlAttr(str) {
+  return String(str ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/"/g, '&quot;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+}
+
+function buildTerritoryOptionsHtml() {
+  const groups = [];
+
+  groups.push(
+    '<optgroup label="Affluent Suburbs (High-Ticket Owner-Operators)">' +
+      FEATURED_SUBURBS.map((c) => '<option value="' + escapeHtmlAttr(c) + '">' + escapeHtmlAttr(c) + '</option>').join('') +
+      '</optgroup>'
+  );
+
+  for (const tz of Object.values(TERRITORY_CASCADE)) {
+    for (const st of Object.values(tz.states || {})) {
+      const cities = [...(st.topTier || []), ...(st.secondaryTier || [])];
+      if (!cities.length) continue;
+      groups.push(
+        '<optgroup label="' +
+          escapeHtmlAttr(tz.name + ' - ' + st.name) +
+          '">' +
+          cities.map((c) => '<option value="' + escapeHtmlAttr(c) + '">' + escapeHtmlAttr(c) + '</option>').join('') +
+          '</optgroup>'
+      );
+    }
+  }
+
+  return groups.join('\n');
+}
 
 // 1. Inspect a contractor website without saving (dry run)
 scraperRouter.post('/inspect', async (req, res) => {
@@ -35,7 +88,8 @@ scraperRouter.post('/qualify', async (req, res) => {
   }
 
   try {
-    const threshold = Math.min(Math.max(Number(minScore) || DEFAULT_QUALIFY_THRESHOLD, 0), 100);
+    const parsedScore = minScore !== undefined && minScore !== '' ? Number(minScore) : DEFAULT_QUALIFY_THRESHOLD;
+    const threshold = Math.min(Math.max(Number.isFinite(parsedScore) ? parsedScore : DEFAULT_QUALIFY_THRESHOLD, 0), 100);
     const enriched = await huntAndEnrichLead({
       url,
       city: city || '',
@@ -128,22 +182,67 @@ scraperRouter.post('/bulk', async (req, res) => {
   }
 });
 
-// 4. Autonomous Lead Hunter (Search + Enrich + Audit + 100-Pt Qualification Gate + CRM Sync)
+// 4a. Async Non-Blocking Hunt Starter (Prevents Reverse Proxy 502 Timeouts)
+scraperRouter.post('/hunt/start', (req, res) => {
+  const { city, niche, query, limit, minScore, notifyTelegram } = req.body || {};
+  try {
+    const parsedMin = minScore !== undefined && minScore !== '' ? Number(minScore) : DEFAULT_QUALIFY_THRESHOLD;
+    const job = startHuntJob({
+      city: (city || 'Los Angeles, CA').trim(),
+      niche: niche || 'hvac',
+      query,
+      limit: Math.min(Math.max(Number(limit) || 10, 1), 40),
+      minScore: Math.min(Math.max(Number.isFinite(parsedMin) ? parsedMin : DEFAULT_QUALIFY_THRESHOLD, 0), 100),
+      notifyTelegram: notifyTelegram !== false,
+    });
+    res.status(202).json({ success: true, job });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// 4b. Poll Live Hunt Job Progress + Incremental Streamed Leads
+scraperRouter.get('/hunt/status/:jobId', (req, res) => {
+  const job = getHuntJob(req.params.jobId);
+  if (!job) {
+    return res.status(404).json({ success: false, error: 'Hunt job not found or expired' });
+  }
+  res.json({ success: true, job });
+});
+
+// 4c. Cancel Active Hunt Job
+scraperRouter.post('/hunt/cancel/:jobId', (req, res) => {
+  const cancelled = cancelHuntJob(req.params.jobId);
+  res.json({ success: true, cancelled });
+});
+
+// 4d. Synchronous Autonomous Lead Hunter (kept for direct REST callers; capped safely inside service)
 scraperRouter.post('/hunt', async (req, res) => {
   const { city, niche, query, limit, minScore, notifyTelegram } = req.body || {};
   try {
+    const parsedMin = minScore !== undefined && minScore !== '' ? Number(minScore) : DEFAULT_QUALIFY_THRESHOLD;
     const result = await runAutonomousHunt({
-      city: city || 'Los Angeles, CA',
+      city: (city || 'Los Angeles, CA').trim(),
       niche: niche || 'hvac',
       query,
-      limit: Math.min(Math.max(Number(limit) || 5, 1), 40),
-      minScore: minScore !== undefined ? Number(minScore) : DEFAULT_QUALIFY_THRESHOLD,
+      limit: Math.min(Math.max(Number(limit) || 5, 1), 10),
+      minScore: Math.min(Math.max(Number.isFinite(parsedMin) ? parsedMin : DEFAULT_QUALIFY_THRESHOLD, 0), 100),
       notifyTelegram: notifyTelegram !== false,
     });
     res.json(result);
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }
+});
+
+// 4e. Territory Cascade lookup endpoint
+scraperRouter.get('/cascade', (req, res) => {
+  res.json({
+    success: true,
+    orderedCities: ORDERED_CASCADE_CITIES,
+    nextCity: getNextCascadeCity(String(req.query.current || '')),
+    territoryCascade: TERRITORY_CASCADE,
+  });
 });
 
 // 5. Digital Auditor (Run diagnostic audit on any URL or prospect)
@@ -159,7 +258,7 @@ scraperRouter.post('/audit', async (req, res) => {
       return res.status(400).json({ success: false, error: 'Provide "url" or "prospectId"' });
     }
 
-    const result = await runDigitalAudit({ url, niche: niche || 'medspa' });
+    const result = await runDigitalAudit({ url, niche: niche || 'hvac' });
     res.json(result);
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
@@ -186,735 +285,792 @@ scraperRouter.post(['/lead/delete', '/remove'], async (req, res) => {
   }
 });
 
-// 7. Standalone Web Dashboard for Lead Hunting, Scraping & Auditing
-scraperRouter.get('/dashboard', async (req, res) => {
+// 7. Standalone Web Dashboard for Lead Hunting, Qualification & Auditing
+scraperRouter.get('/dashboard', (req, res) => {
   const authKey = req.query.key || '';
   const keyParam = authKey ? '?key=' + encodeURIComponent(authKey) : '';
+  const cascadeOptionsHtml = buildTerritoryOptionsHtml();
+  const safeCascadeJson = JSON.stringify(ORDERED_CASCADE_CITIES).replace(/</g, '\\u003c');
 
   const bodyContent = `
-    <!-- Top Hero Header -->
+    <style>
+      .badge-amber { background: rgba(245, 158, 11, 0.14); color: #F59E0B; border-color: rgba(245, 158, 11, 0.30); }
+      .badge-rose { background: rgba(244, 63, 94, 0.14); color: #FB7185; border-color: rgba(244, 63, 94, 0.30); }
+      html.light .badge-amber { background: rgba(217, 119, 6, 0.10); color: #B45309; border-color: rgba(217, 119, 6, 0.30); }
+      html.light .badge-rose { background: rgba(225, 29, 72, 0.10); color: #BE123C; border-color: rgba(225, 29, 72, 0.28); }
+      details > summary::-webkit-details-marker { display: none; }
+    </style>
+
+    <!-- Studio Header -->
     <div class="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-[var(--border-subtle)] pb-5">
-      <div>
-        <div class="flex items-center space-x-2">
-          <h2 class="text-lg font-bold tracking-tight text-[var(--text-primary)] flex items-center gap-2">
-            <span>Lead Hunter & Diagnostic Auditor Studio</span>
-          </h2>
-          <span class="text-[11px] px-2.5 py-0.5 rounded-full font-semibold bg-cyan-500/10 text-cyan-400 border border-cyan-500/20 font-mono">
-            Pillars 1 & 2 Active
+      <div class="space-y-1">
+        <div class="flex items-center gap-2.5 flex-wrap">
+          <h2 class="text-xl font-bold tracking-tight text-[var(--text-primary)]">Lead Hunter</h2>
+          <span class="inline-flex items-center gap-1.5 text-[11px] px-2.5 py-0.5 rounded-full font-semibold bg-[var(--accent-emerald-subtle)] text-[var(--accent-emerald)] border border-emerald-500/25 font-mono">
+            ${getSvgIcon('shield', 'w-3 h-3')}
+            <span>100-Pt Eye Test Gate</span>
           </span>
         </div>
-        <p class="text-xs text-[var(--text-secondary)] mt-1">Autonomous Business Sourcing • Jina AI Digital Diagnostics • Meta Pixel Verification • Supabase Sync</p>
+        <p class="text-xs text-[var(--text-secondary)]">
+          Source local trade contractors, audit after-hours intake leaks, and auto-commit qualified owners to Pipeline CRM.
+        </p>
       </div>
 
-      <div class="flex items-center space-x-3">
-        <a href="https://www.facebook.com/ads/library/?active_status=active&ad_type=all&country=US&media_type=all&q=HVAC%20Los%20Angeles" id="topMetaAdsBtn" target="_blank" rel="noopener noreferrer" class="text-xs bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 px-3.5 py-2 rounded-xl transition flex items-center gap-1.5 font-semibold cursor-pointer" title="Direct Redirection to Live Active Meta Advertisers">
+      <div class="flex items-center gap-2.5 flex-wrap shrink-0">
+        <a href="https://www.facebook.com/ads/library/?active_status=active&ad_type=all&country=US&media_type=all&q=HVAC%20Los%20Angeles%2C%20CA" id="topMetaAdsBtn" target="_blank" rel="noopener noreferrer" class="px-3.5 py-2 rounded-xl bg-[var(--bg-surface)] hover:bg-[var(--bg-hover)] text-[var(--accent-cyan)] border border-[var(--border-subtle)] text-xs font-semibold transition flex items-center gap-1.5 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500" title="Open live Meta Ads Library for the active trade and city">
+          ${getSvgIcon('globe', 'w-3.5 h-3.5')}
           <span>Meta Ads Library</span>
-          ${getSvgIcon('external', 'w-3 h-3 text-cyan-400')}
+          ${getSvgIcon('external', 'w-3 h-3 opacity-75')}
         </a>
-        <a href="/outreach/prospects${keyParam}" class="text-xs bg-[var(--bg-card)] hover:bg-[var(--bg-hover)] text-[var(--text-primary)] border border-[var(--border-subtle)] px-4 py-2 rounded-xl transition flex items-center gap-1.5 font-semibold">
-          <span>View Pipeline CRM</span>
-          ${getSvgIcon('external', 'w-3 h-3 text-[var(--text-muted)]')}
+        <a href="/outreach/prospects${keyParam}" class="px-4 py-2 rounded-xl bg-[var(--bg-card)] hover:bg-[var(--bg-hover)] text-[var(--text-primary)] border border-[var(--border-subtle)] text-xs font-semibold transition flex items-center gap-1.5 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500">
+          ${getSvgIcon('pipeline', 'w-3.5 h-3.5 text-[var(--accent-emerald)]')}
+          <span>Pipeline CRM</span>
+          ${getSvgIcon('arrowRight', 'w-3 h-3 text-[var(--text-muted)]')}
         </a>
       </div>
     </div>
 
-    <!-- PILLAR 1 & 2: THE AUTONOMOUS LEAD HUNTER & AUDITOR -->
-    <div class="bg-[var(--bg-card)] rounded-2xl p-6 sm:p-7 space-y-6 shadow-2xl border border-[var(--border-subtle)] border-l-4 border-l-cyan-500">
-      <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-[var(--border-subtle)] pb-4">
+    <!-- Primary Hunt Control Deck -->
+    <section class="bg-[var(--bg-card)] rounded-2xl border border-[var(--border-subtle)] p-5 sm:p-6 space-y-5 shadow-sm">
+      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <div>
-          <span class="text-[10px] font-mono uppercase tracking-wider text-cyan-400 font-bold">Pillars 1 & 2 • Autonomous Sourcing</span>
-          <h3 class="text-base sm:text-lg font-bold text-[var(--text-primary)] flex items-center gap-2 mt-0.5">
-            <span>The Autonomous Lead Hunter & Diagnostic Auditor</span>
-          </h3>
-          <p class="text-xs text-[var(--text-secondary)] mt-0.5">Zero-cost search engine extraction + Jina AI Reader analysis for speed-to-lead and after-hours call leak gaps.</p>
+          <label for="huntNiche" class="block text-[11px] font-semibold uppercase tracking-wider text-[var(--text-muted)] mb-1.5">Trade Vertical</label>
+          <select id="huntNiche" onchange="syncMetaAdsLink()" class="w-full bg-[var(--bg-surface)] border border-[var(--border-subtle)] rounded-xl px-3 py-2.5 text-xs text-[var(--text-primary)] font-medium focus:outline-none focus:border-cyan-500 transition cursor-pointer">
+            <option value="hvac" selected>HVAC &amp; AC Repair Contractors</option>
+            <option value="plumbing">Plumbing &amp; Drain Service</option>
+            <option value="roofing">Roofing &amp; Storm Restoration</option>
+            <option value="electrical">Electrical &amp; Standby Generators</option>
+            <option value="water_damage">Water Damage &amp; Mitigation</option>
+          </select>
         </div>
-        <div class="flex items-center gap-2.5 text-xs flex-wrap">
-          <span class="px-2.5 py-1 rounded-lg bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-medium">
-            $0 / Month • Zero Scraper Subscriptions
-          </span>
+
+        <div>
+          <label for="huntCity" class="block text-[11px] font-semibold uppercase tracking-wider text-[var(--text-muted)] mb-1.5">Target US City / Suburb</label>
+          <div class="relative">
+            <span class="pointer-events-none absolute inset-y-0 left-3 flex items-center text-[var(--text-muted)]">
+              ${getSvgIcon('mapPin', 'w-3.5 h-3.5')}
+            </span>
+            <input id="huntCity" type="text" value="Carmel, IN" oninput="syncMetaAdsLink()" onkeydown="if(event.key==='Enter'){event.preventDefault();runAutonomousHuntClient();}" class="w-full bg-[var(--bg-surface)] border border-[var(--border-subtle)] rounded-xl pl-8 pr-3 py-2.5 text-xs text-[var(--text-primary)] font-medium focus:outline-none focus:border-cyan-500 transition" placeholder="e.g. Carmel, IN or Los Angeles, CA">
+          </div>
+        </div>
+
+        <div>
+          <label for="huntMinScore" class="block text-[11px] font-semibold uppercase tracking-wider text-[var(--text-muted)] mb-1.5">CRM Gate Threshold</label>
+          <select id="huntMinScore" class="w-full bg-[var(--bg-surface)] border border-[var(--border-subtle)] rounded-xl px-3 py-2.5 text-xs text-[var(--text-primary)] font-medium focus:outline-none focus:border-cyan-500 transition cursor-pointer">
+            <option value="50">50+ Pts (Broad Intake)</option>
+            <option value="60" selected>60+ Pts (Standard Gate)</option>
+            <option value="75">75+ Pts (Tier A Priority)</option>
+            <option value="85">85+ Pts (Elite ICP Only)</option>
+          </select>
+        </div>
+
+        <div>
+          <label for="huntLimit" class="block text-[11px] font-semibold uppercase tracking-wider text-[var(--text-muted)] mb-1.5">Target Qualified Batch</label>
+          <select id="huntLimit" class="w-full bg-[var(--bg-surface)] border border-[var(--border-subtle)] rounded-xl px-3 py-2.5 text-xs text-[var(--text-primary)] font-medium focus:outline-none focus:border-cyan-500 transition cursor-pointer">
+            <option value="5">5 Qualified Leads</option>
+            <option value="10" selected>10 Qualified Leads</option>
+            <option value="20">20 Qualified Leads</option>
+            <option value="30">30 Qualified Leads</option>
+            <option value="40">40 Qualified Leads</option>
+          </select>
         </div>
       </div>
 
-      <!-- Controls: Niche, City, Min Rate Gate & Batch Size -->
-      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <div>
-          <label class="block text-[11px] font-semibold uppercase tracking-wider text-[var(--text-muted)] mb-1.5">Target Trade Niche</label>
-          <select id="huntNiche" onchange="updateNicheDefaults()" class="w-full bg-[var(--bg-surface)] border border-[var(--border-subtle)] rounded-xl px-3.5 py-2.5 text-xs text-[var(--text-primary)] focus:outline-none focus:border-cyan-500 font-medium">
-            <option value="hvac" selected>⚡ Emergency HVAC & AC Repair Contractors (Primary)</option>
-            <option value="plumbing">⚡ 24/7 Emergency Plumbing & Drain Cleaning</option>
-            <option value="roofing">⚡ Roofing & Emergency Storm Damage Contractors</option>
-            <option value="electrical">⚡ 24/7 Emergency Electrician & Generators</option>
-            <option value="water_damage">⚡ Water Damage Restoration & Drying</option>
-          </select>
-        </div>
-
-        <div>
-          <label class="block text-[11px] font-semibold uppercase tracking-wider text-[var(--text-muted)] mb-1.5">Target US Metro / City</label>
-          <input id="huntCity" type="text" value="Los Angeles, CA" onkeydown="if(event.key==='Enter') runAutonomousHuntClient()" class="w-full bg-[var(--bg-surface)] border border-[var(--border-subtle)] rounded-xl px-3.5 py-2.5 text-xs text-[var(--text-primary)] focus:outline-none focus:border-cyan-500 font-medium" placeholder="e.g. Carmel, IN or Brentwood, TN">
-        </div>
-
-        <div>
-          <label class="block text-[11px] font-semibold uppercase tracking-wider text-[var(--text-muted)] mb-1.5">🎯 Qualifier Gate (Min Score)</label>
-          <select id="huntMinScore" class="w-full bg-[var(--bg-surface)] border border-emerald-500/30 rounded-xl px-3.5 py-2.5 text-xs text-emerald-300 focus:outline-none focus:border-emerald-500 font-mono font-bold">
-            <option value="50">50+ Pts (Broad)</option>
-            <option value="60" selected>60+ Pts (Standard Gate)</option>
-            <option value="75">75+ Pts (Strict A/B Tier)</option>
-            <option value="85">85+ Pts (Elite Only)</option>
-          </select>
-        </div>
-
-        <div>
-          <label class="block text-[11px] font-semibold uppercase tracking-wider text-[var(--text-muted)] mb-1.5">Qualified Leads Target</label>
-          <div class="flex gap-2">
-            <select id="huntLimit" class="flex-1 bg-[var(--bg-surface)] border border-[var(--border-subtle)] rounded-xl px-3.5 py-2.5 text-xs text-cyan-300 focus:outline-none focus:border-cyan-500 font-mono font-bold">
-              <option value="5" selected>5 Qualified</option>
-              <option value="10">10 Qualified</option>
-              <option value="20">20 Qualified</option>
-              <option value="30">30 Qualified (Daily)</option>
-              <option value="40">40 Qualified (Max)</option>
+      <!-- Territory Cascade & Action Row -->
+      <div class="flex flex-col lg:flex-row lg:items-center justify-between gap-3 pt-1">
+        <div class="flex flex-col sm:flex-row sm:items-center gap-2 flex-1 min-w-0">
+          <label for="cascadeCitySelect" class="text-[11px] font-semibold uppercase tracking-wider text-[var(--text-muted)] shrink-0">Territory Preset</label>
+          <div class="flex items-center gap-2 flex-1 max-w-md">
+            <select id="cascadeCitySelect" onchange="selectCascadeCity(this.value)" class="flex-1 min-w-0 bg-[var(--bg-surface)] border border-[var(--border-subtle)] rounded-xl px-3 py-2 text-xs text-[var(--text-primary)] focus:outline-none focus:border-cyan-500 cursor-pointer">
+              ${cascadeOptionsHtml}
             </select>
-            <button onclick="runAutonomousHuntClient()" id="btnLaunchHunter" type="button" class="bg-cyan-500 hover:opacity-90 text-black font-bold text-xs px-4 py-2.5 rounded-xl transition flex items-center gap-1.5 shadow-lg shadow-cyan-500/20 active:scale-95 cursor-pointer whitespace-nowrap">
-              ${getSvgIcon('bolt', 'w-4 h-4')}
-              <span>Launch Hunter</span>
+            <button type="button" onclick="nextTerritoryCity()" class="px-3 py-2 rounded-xl bg-[var(--bg-surface)] hover:bg-[var(--bg-hover)] border border-[var(--border-subtle)] text-xs font-semibold text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition inline-flex items-center gap-1.5 shrink-0 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500" title="Advance to the next city in the US territory cascade">
+              <span>Next City</span>
+              ${getSvgIcon('arrowRight', 'w-3 h-3')}
             </button>
           </div>
         </div>
-      </div>
 
-      <!-- 10-Second Eye Test & 100-Pt Rubric Panel + Single-Domain Qualifier -->
-      <div class="grid grid-cols-1 lg:grid-cols-12 gap-4">
-        <details class="lg:col-span-7 bg-[var(--bg-surface)] border border-[var(--border-subtle)] rounded-2xl p-4">
-          <summary class="cursor-pointer flex items-center justify-between text-xs font-bold text-emerald-400 select-none">
-            <span>🛡️ 10-Second Eye Test & 100-Point CRM Gate (Only Qualified Leads Enter CRM)</span>
-            <span class="text-[10px] font-mono text-[var(--text-muted)]">View Rubric ▼</span>
-          </summary>
-          <div class="mt-3 pt-3 border-t border-[var(--border-subtle)] grid grid-cols-1 sm:grid-cols-2 gap-3 text-[11px]">
-            <div class="space-y-1.5">
-              <div class="font-bold text-cyan-300 uppercase tracking-wider text-[10px]">[10-Second Eye Test]</div>
-              <div class="text-[var(--text-secondary)]">1. Reviews between <span class="text-white font-mono">20–300</span> (filters solo & PE chains)</div>
-              <div class="text-[var(--text-secondary)]">2. <span class="text-white">Family-owned / 1–2 locations</span> (blocks chains)</div>
-              <div class="text-[var(--text-secondary)]">3. <span class="text-white">Form leak or closed after 5 PM</span> (pain check)</div>
-              <div class="text-[var(--text-secondary)]">4. <span class="text-white">Active Google Screened / Ads</span> (values leads)</div>
-            </div>
-            <div class="space-y-1 font-mono text-[10px]">
-              <div class="font-bold text-emerald-300 uppercase tracking-wider mb-1">[100-Pt Rate Table]</div>
-              <div class="flex justify-between"><span>Intake Friction (form/5PM leak)</span><span class="text-cyan-300 font-bold">25 pts</span></div>
-              <div class="flex justify-between"><span>Fleet Size (5–15 trucks)</span><span class="text-cyan-300 font-bold">20 pts</span></div>
-              <div class="flex justify-between"><span>Ownership (single-location)</span><span class="text-cyan-300 font-bold">20 pts</span></div>
-              <div class="flex justify-between"><span>Ad Spend (LSA / Google Ads)</span><span class="text-cyan-300 font-bold">15 pts</span></div>
-              <div class="flex justify-between"><span>High Ticket ($8,000+ systems)</span><span class="text-cyan-300 font-bold">10 pts</span></div>
-              <div class="flex justify-between"><span>Owner Contact (named + direct)</span><span class="text-cyan-300 font-bold">10 pts</span></div>
-            </div>
-          </div>
-        </details>
-
-        <div class="lg:col-span-5 bg-[var(--bg-surface)] border border-[var(--border-subtle)] rounded-2xl p-4 flex flex-col justify-center gap-2">
-          <label class="text-[10px] font-bold uppercase tracking-wider text-cyan-400">🔍 Test & Qualify Any Single Contractor URL</label>
-          <div class="flex gap-2">
-            <input id="singleQualUrl" type="url" placeholder="https://vanceairandheat.com" onkeydown="if(event.key==='Enter') runSingleQualifyTest()" class="flex-1 bg-[var(--bg-card)] border border-[var(--border-subtle)] rounded-xl px-3 py-2 text-xs text-[var(--text-primary)] font-mono focus:outline-none focus:border-cyan-500">
-            <button onclick="runSingleQualifyTest(false)" id="btnTestSingleUrl" type="button" class="px-3.5 py-2 rounded-xl bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-300 border border-emerald-500/30 font-bold text-xs transition cursor-pointer whitespace-nowrap">Test Score</button>
-          </div>
+        <div class="flex items-center gap-2.5 shrink-0">
+          <button type="button" id="btnStopHunt" onclick="stopActiveHunt()" class="hidden px-4 py-2.5 rounded-xl badge-rose border text-xs font-bold transition items-center gap-1.5 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-500">
+            ${getSvgIcon('close', 'w-3.5 h-3.5')}
+            <span>Stop</span>
+          </button>
+          <button type="button" id="btnRunHunt" onclick="runAutonomousHuntClient()" class="px-5 py-2.5 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-bold text-xs transition shadow-md shadow-cyan-500/15 inline-flex items-center justify-center gap-2 cursor-pointer active:scale-[0.98] motion-reduce:transition-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500">
+            ${getSvgIcon('play', 'w-3.5 h-3.5')}
+            <span id="btnRunHuntLabel">Run Hunt</span>
+          </button>
         </div>
       </div>
 
-      <!-- Territory Cascade Selector (Minimal & Fast) -->
-      <div class="bg-[var(--bg-surface)] border border-[var(--border-subtle)] rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-        <div class="flex items-center gap-2.5">
-          <span class="text-xs font-bold text-cyan-400 font-mono uppercase tracking-wider">🎯 Territory Cascade:</span>
-          <select id="marketQuickPicker" onchange="setHuntPreset(this.value)" class="bg-[var(--bg-card)] border border-[var(--border-subtle)] text-xs font-semibold rounded-xl px-3.5 py-2 text-cyan-300 focus:outline-none focus:border-cyan-500 transition cursor-pointer">
-            <option value="" disabled>— Select Target Metro —</option>
-            <optgroup label="PACIFIC — CALIFORNIA (CA) TOP 5">
-              <option value="Los Angeles, CA" selected>Los Angeles, CA</option>
-              <option value="San Diego, CA">San Diego, CA</option>
-              <option value="San Jose, CA">San Jose, CA</option>
-              <option value="San Francisco, CA">San Francisco, CA</option>
-              <option value="Fresno, CA">Fresno, CA</option>
-            </optgroup>
-            <optgroup label="PACIFIC — WASHINGTON (WA) TOP 5">
-              <option value="Seattle, WA">Seattle, WA</option>
-              <option value="Spokane, WA">Spokane, WA</option>
-              <option value="Tacoma, WA">Tacoma, WA</option>
-              <option value="Vancouver, WA">Vancouver, WA</option>
-              <option value="Bellevue, WA">Bellevue, WA</option>
-            </optgroup>
-            <optgroup label="PACIFIC — OREGON (OR) TOP 5">
-              <option value="Portland, OR">Portland, OR</option>
-              <option value="Eugene, OR">Eugene, OR</option>
-              <option value="Salem, OR">Salem, OR</option>
-              <option value="Gresham, OR">Gresham, OR</option>
-              <option value="Hillsboro, OR">Hillsboro, OR</option>
-            </optgroup>
-            <optgroup label="PACIFIC — NEVADA (NV) TOP 5">
-              <option value="Las Vegas, NV">Las Vegas, NV</option>
-              <option value="Henderson, NV">Henderson, NV</option>
-              <option value="North Las Vegas, NV">North Las Vegas, NV</option>
-              <option value="Reno, NV">Reno, NV</option>
-              <option value="Sparks, NV">Sparks, NV</option>
-            </optgroup>
-            <optgroup label="EASTERN — FLORIDA (FL) TOP 5">
-              <option value="Jacksonville, FL">Jacksonville, FL</option>
-              <option value="Miami, FL">Miami, FL</option>
-              <option value="Tampa, FL">Tampa, FL</option>
-              <option value="Orlando, FL">Orlando, FL</option>
-              <option value="St. Petersburg, FL">St. Petersburg, FL</option>
-            </optgroup>
-            <optgroup label="EASTERN — NEW YORK (NY) TOP 5">
-              <option value="New York City, NY">New York City, NY</option>
-              <option value="Buffalo, NY">Buffalo, NY</option>
-              <option value="Rochester, NY">Rochester, NY</option>
-              <option value="Yonkers, NY">Yonkers, NY</option>
-              <option value="Syracuse, NY">Syracuse, NY</option>
-            </optgroup>
-            <optgroup label="EASTERN — GEORGIA (GA) TOP 5">
-              <option value="Atlanta, GA">Atlanta, GA</option>
-              <option value="Augusta, GA">Augusta, GA</option>
-              <option value="Columbus, GA">Columbus, GA</option>
-              <option value="Macon, GA">Macon, GA</option>
-              <option value="Savannah, GA">Savannah, GA</option>
-            </optgroup>
-            <optgroup label="🏆 HIGH-INCOME SUBURBS — INDIANA (IN)">
-              <option value="Carmel, IN">Carmel, IN</option>
-              <option value="Zionsville, IN">Zionsville, IN</option>
-            </optgroup>
-            <optgroup label="🏆 HIGH-INCOME SUBURBS — OHIO (OH)">
-              <option value="Dublin, OH">Dublin, OH</option>
-            </optgroup>
-            <optgroup label="🏆 HIGH-INCOME SUBURBS — TEXAS (TX)">
-              <option value="Prosper, TX">Prosper, TX</option>
-              <option value="Celina, TX">Celina, TX</option>
-              <option value="Fulshear, TX">Fulshear, TX</option>
-            </optgroup>
-            <optgroup label="🏆 HIGH-INCOME SUBURBS — TENNESSEE (TN)">
-              <option value="Brentwood, TN">Brentwood, TN</option>
-            </optgroup>
-          </select>
+      <!-- Divider: Single URL Qualifier + Collapsible Rubric -->
+      <div class="border-t border-[var(--border-subtle)] pt-4 flex flex-col lg:flex-row lg:items-center justify-between gap-3">
+        <div class="flex flex-col sm:flex-row sm:items-center gap-2.5 flex-1">
+          <div class="flex items-center gap-2 flex-1 max-w-lg">
+            <input id="singleUrlInput" type="url" onkeydown="if(event.key==='Enter'){event.preventDefault();runSingleUrlTest();}" class="flex-1 min-w-0 bg-[var(--bg-surface)] border border-[var(--border-subtle)] rounded-xl px-3 py-2 text-xs text-[var(--text-primary)] font-mono focus:outline-none focus:border-cyan-500" placeholder="Inspect a single domain (e.g. https://aroundtheclockair.com)">
+            <button type="button" id="btnTestSingle" onclick="runSingleUrlTest()" class="px-3.5 py-2 rounded-xl bg-[var(--bg-surface)] hover:bg-[var(--bg-hover)] border border-[var(--border-subtle)] text-xs font-semibold text-[var(--text-primary)] transition inline-flex items-center gap-1.5 shrink-0 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500">
+              ${getSvgIcon('sliders', 'w-3.5 h-3.5 text-[var(--accent-cyan)]')}
+              <span id="btnTestSingleLabel">Test URL</span>
+            </button>
+          </div>
+          <label class="inline-flex items-center gap-1.5 text-xs text-[var(--text-secondary)] cursor-pointer select-none">
+            <input type="checkbox" id="singleAutoCommit" checked class="rounded border-[var(--border-strong)] accent-cyan-500 cursor-pointer">
+            <span>Commit to CRM if passed</span>
+          </label>
         </div>
 
-        <button onclick="stepNextTerritoryCity()" id="btnNextTerritory" type="button" class="bg-[var(--bg-card)] hover:bg-[var(--bg-hover)] text-cyan-300 border border-cyan-500/30 font-bold text-xs px-3.5 py-2 rounded-xl transition flex items-center gap-1.5 shadow-sm cursor-pointer" title="Auto-advance to next territory in sequence">
-          <span>Next Cascade City ⏭</span>
+        <button type="button" id="btnToggleRubric" onclick="toggleRubricPanel()" aria-expanded="false" aria-controls="rubricPanel" class="self-start lg:self-auto px-3 py-1.5 rounded-xl bg-[var(--bg-surface)] hover:bg-[var(--bg-hover)] border border-[var(--border-subtle)] text-xs font-semibold text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition inline-flex items-center gap-1.5 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500">
+          <span>Scoring Rubric</span>
+          ${getSvgIcon('chevronDown', 'w-3.5 h-3.5 transition-transform duration-200')}
         </button>
       </div>
 
-      <!-- Live Hunting Status Console -->
-      <div id="huntConsole" class="hidden bg-[var(--bg-surface)] rounded-xl p-4 border border-[var(--border-subtle)] space-y-2">
-        <div class="flex items-center justify-between text-xs">
-          <span class="text-cyan-400 font-mono font-medium flex items-center gap-2">
-            <span class="w-2 h-2 rounded-full bg-cyan-400 pulse-dot"></span>
-            <span id="huntConsoleStatus">Searching local business registries...</span>
-          </span>
-          <span id="huntTimer" class="text-[var(--text-muted)] font-mono text-[11px]">0.0s</span>
+      <!-- Collapsible Qualification Rubric -->
+      <div id="rubricPanel" class="hidden border-t border-[var(--border-subtle)] pt-4 grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
+        <div class="bg-[var(--bg-card-subtle)] rounded-xl border border-[var(--border-subtle)] p-4 space-y-2.5">
+          <div class="flex items-center justify-between">
+            <h3 class="font-bold text-[var(--text-primary)]">10-Second Eye Test</h3>
+            <span class="text-[10px] font-mono text-[var(--text-muted)] uppercase">Binary Filters</span>
+          </div>
+          <ul class="space-y-1.5 text-[var(--text-secondary)]">
+            <li class="flex items-center justify-between gap-2"><span>1. Review Sweet Spot (20 - 300)</span><span class="font-mono text-[11px] text-[var(--accent-emerald)]">Anti-Chain</span></li>
+            <li class="flex items-center justify-between gap-2"><span>2. Family-Owned / 1-2 Locations</span><span class="font-mono text-[11px] text-[var(--accent-emerald)]">PE Blocked</span></li>
+            <li class="flex items-center justify-between gap-2"><span>3. Form Leak / After-Hours Gap</span><span class="font-mono text-[11px] text-[var(--accent-emerald)]">Core Pain</span></li>
+            <li class="flex items-center justify-between gap-2"><span>4. Active Google Screened / Meta Ads</span><span class="font-mono text-[11px] text-[var(--accent-emerald)]">Ad Buyer</span></li>
+          </ul>
         </div>
-        <div class="w-full bg-[var(--bg-card)] rounded-full h-1.5 overflow-hidden">
-          <div id="huntProgressBar" class="bg-cyan-500 h-1.5 transition-all duration-500 rounded-full" style="width: 15%"></div>
+        <div class="bg-[var(--bg-card-subtle)] rounded-xl border border-[var(--border-subtle)] p-4 space-y-2.5">
+          <div class="flex items-center justify-between">
+            <h3 class="font-bold text-[var(--text-primary)]">100-Point Rate Breakdown</h3>
+            <span class="text-[10px] font-mono text-[var(--accent-cyan)]">CRM Gate Default: 60</span>
+          </div>
+          <div class="grid grid-cols-2 gap-x-4 gap-y-1.5 text-[var(--text-secondary)]">
+            <div class="flex justify-between"><span>Fleet (5-15 trucks)</span><span class="font-mono font-semibold text-[var(--text-primary)]">20 pts</span></div>
+            <div class="flex justify-between"><span>Independent Owner</span><span class="font-mono font-semibold text-[var(--text-primary)]">20 pts</span></div>
+            <div class="flex justify-between"><span>Intake / Call Leak</span><span class="font-mono font-semibold text-[var(--text-primary)]">25 pts</span></div>
+            <div class="flex justify-between"><span>Active LSA / Paid Ads</span><span class="font-mono font-semibold text-[var(--text-primary)]">15 pts</span></div>
+            <div class="flex justify-between"><span>\$8K+ Installs</span><span class="font-mono font-semibold text-[var(--text-primary)]">10 pts</span></div>
+            <div class="flex justify-between"><span>Direct Owner Contact</span><span class="font-mono font-semibold text-[var(--text-primary)]">10 pts</span></div>
+          </div>
         </div>
+      </div>
+    </section>
+
+    <!-- Inline Error Recovery Alert -->
+    <div id="huntErrorAlert" role="alert" class="hidden rounded-2xl border badge-rose p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+      <div class="flex items-start gap-2.5 text-xs">
+        ${getSvgIcon('alertTriangle', 'w-4 h-4 shrink-0 mt-0.5')}
+        <div>
+          <p class="font-bold">Hunt Execution Interrupted</p>
+          <p id="huntErrorMessage" class="opacity-90 mt-0.5">Unable to complete scrape cycle.</p>
+        </div>
+      </div>
+      <button type="button" onclick="runAutonomousHuntClient()" class="px-3.5 py-1.5 rounded-xl bg-rose-500 hover:bg-rose-400 text-white font-bold text-xs transition shrink-0 cursor-pointer">
+        Retry Hunt
+      </button>
+    </div>
+
+    <!-- Live Stream Telemetry Bar & Counters -->
+    <section id="huntTelemetryPanel" aria-live="polite" aria-busy="false" class="hidden bg-[var(--bg-card)] rounded-2xl border border-[var(--border-subtle)] p-5 space-y-4">
+      <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+        <div class="flex items-center gap-2 text-xs font-semibold text-[var(--text-primary)]">
+          <span id="telemetryIcon">${getSvgIcon('spinner', 'w-4 h-4 text-[var(--accent-cyan)] animate-spin')}</span>
+          <span id="telemetryStage">Initializing search job...</span>
+        </div>
+        <span id="telemetryProgressLabel" class="text-[11px] font-mono text-[var(--text-muted)]">0 / 0 evaluated</span>
       </div>
 
-      <!-- Hunter Results Grid -->
-      <div id="hunterResultsContainer" class="hidden space-y-3 pt-2">
-        <div class="flex items-center justify-between">
-          <h4 class="text-xs font-bold uppercase tracking-wider text-[var(--text-primary)]">Enriched & Audited Leads</h4>
-          <span id="hunterStatsBadge" class="text-xs font-semibold px-2.5 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20"></span>
-        </div>
-        <div id="hunterCardsList" class="grid grid-cols-1 md:grid-cols-2 gap-4"></div>
+      <div class="w-full h-1.5 rounded-full bg-[var(--bg-surface)] overflow-hidden">
+        <div id="telemetryBar" class="h-full bg-cyan-500 rounded-full transition-all duration-300 motion-reduce:transition-none" style="width: 5%"></div>
       </div>
-    </div>
+
+      <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        <div class="bg-[var(--bg-surface)] border border-[var(--border-subtle)] rounded-xl px-3.5 py-2.5">
+          <div class="text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">Discovered</div>
+          <div id="kpiDiscovered" class="text-lg font-bold font-mono text-[var(--text-primary)] mt-0.5">0</div>
+        </div>
+        <div class="bg-[var(--bg-surface)] border border-[var(--border-subtle)] rounded-xl px-3.5 py-2.5">
+          <div class="text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">Audited</div>
+          <div id="kpiEvaluated" class="text-lg font-bold font-mono text-[var(--accent-cyan)] mt-0.5">0</div>
+        </div>
+        <div class="bg-[var(--bg-surface)] border border-[var(--border-subtle)] rounded-xl px-3.5 py-2.5">
+          <div class="text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">CRM Qualified</div>
+          <div id="kpiCommitted" class="text-lg font-bold font-mono text-[var(--accent-emerald)] mt-0.5">0</div>
+        </div>
+        <div class="bg-[var(--bg-surface)] border border-[var(--border-subtle)] rounded-xl px-3.5 py-2.5">
+          <div class="text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">Blocked / Below Gate</div>
+          <div id="kpiRejected" class="text-lg font-bold font-mono text-amber-500 mt-0.5">0</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Single-URL Qualification Preview Container -->
+    <div id="singleQualCard" class="hidden space-y-2"></div>
+
+    <!-- Streamed Leads Section -->
+    <section id="resultsSection" class="space-y-4">
+      <div id="resultsToolbar" class="hidden flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div class="flex items-center gap-1.5 flex-wrap text-xs">
+          <button type="button" id="filterAllBtn" onclick="setResultFilter('all')" class="result-filter-btn px-3 py-1.5 rounded-xl bg-cyan-500/15 text-[var(--accent-cyan)] border border-cyan-500/35 font-bold cursor-pointer transition">All (0)</button>
+          <button type="button" id="filterQualifiedBtn" onclick="setResultFilter('qualified')" class="result-filter-btn px-3 py-1.5 rounded-xl bg-[var(--bg-surface)] text-[var(--text-secondary)] border border-[var(--border-subtle)] font-medium cursor-pointer transition">Qualified (0)</button>
+          <button type="button" id="filterDisqualifiedBtn" onclick="setResultFilter('disqualified')" class="result-filter-btn px-3 py-1.5 rounded-xl bg-[var(--bg-surface)] text-[var(--text-secondary)] border border-[var(--border-subtle)] font-medium cursor-pointer transition">Disqualified (0)</button>
+        </div>
+        <a href="/outreach/prospects${keyParam}" class="text-xs font-semibold text-[var(--accent-emerald)] hover:underline inline-flex items-center gap-1">
+          <span>Open Pipeline CRM</span>
+          ${getSvgIcon('arrowRight', 'w-3 h-3')}
+        </a>
+      </div>
+
+      <div id="leadsContainer" class="space-y-3">
+        <div class="bg-[var(--bg-card)] border border-[var(--border-subtle)] rounded-2xl p-10 text-center space-y-2">
+          <div class="w-10 h-10 rounded-xl bg-[var(--bg-surface)] border border-[var(--border-subtle)] flex items-center justify-center mx-auto text-[var(--accent-cyan)]">
+            ${getSvgIcon('hunter', 'w-5 h-5')}
+          </div>
+          <h3 class="text-sm font-bold text-[var(--text-primary)]">Ready to Scout Trade Markets</h3>
+          <p class="text-xs text-[var(--text-secondary)] max-w-md mx-auto">
+            Select a vertical and target city above, then click <span class="font-semibold text-[var(--text-primary)]">Run Hunt</span>. Qualified owner-operators meeting the score gate are committed automatically to Pipeline CRM.
+          </p>
+        </div>
+      </div>
+    </section>
   `;
 
   const extraScripts = `
-    <script>
-      const CASCADE_LIST = ${JSON.stringify(ORDERED_CASCADE_CITIES)};
+  <script>
+    const CASCADE_CITIES = ${safeCascadeJson};
+    const NICHE_LABELS = {
+      hvac: 'HVAC',
+      plumbing: 'Plumbing',
+      roofing: 'Roofing',
+      electrical: 'Electrician',
+      water_damage: 'Water Damage Restoration'
+    };
 
-      window.switchTerritoryTab = function(tz) {
-        const pacificPanel = document.getElementById('panelPacificTz');
-        const easternPanel = document.getElementById('panelEasternTz');
-        const tabPac = document.getElementById('tabPacificTz');
-        const tabEast = document.getElementById('tabEasternTz');
+    const SVG = {
+      checkCircle: '${getSvgIcon('checkCircle', 'w-3.5 h-3.5 shrink-0').replace(/'/g, "\\'")}',
+      xCircle: '${getSvgIcon('xCircle', 'w-3.5 h-3.5 shrink-0').replace(/'/g, "\\'")}',
+      alertTriangle: '${getSvgIcon('alertTriangle', 'w-3.5 h-3.5 shrink-0').replace(/'/g, "\\'")}',
+      star: '${getSvgIcon('star', 'w-3.5 h-3.5 shrink-0').replace(/'/g, "\\'")}',
+      mapPin: '${getSvgIcon('mapPin', 'w-3 h-3 shrink-0').replace(/'/g, "\\'")}',
+      phone: '${getSvgIcon('phone', 'w-3 h-3 shrink-0').replace(/'/g, "\\'")}',
+      mail: '${getSvgIcon('mail', 'w-3 h-3 shrink-0').replace(/'/g, "\\'")}',
+      external: '${getSvgIcon('external', 'w-3 h-3 shrink-0').replace(/'/g, "\\'")}',
+      plus: '${getSvgIcon('plus', 'w-3 h-3 shrink-0').replace(/'/g, "\\'")}',
+      chevronDown: '${getSvgIcon('chevronDown', 'w-3.5 h-3.5 shrink-0').replace(/'/g, "\\'")}',
+      spinner: '${getSvgIcon('spinner', 'w-4 h-4 text-[var(--accent-cyan)] animate-spin shrink-0').replace(/'/g, "\\'")}',
+      done: '${getSvgIcon('checkCircle', 'w-4 h-4 text-[var(--accent-emerald)] shrink-0').replace(/'/g, "\\'")}',
+      fail: '${getSvgIcon('xCircle', 'w-4 h-4 text-rose-500 shrink-0').replace(/'/g, "\\'")}'
+    };
 
-        if (tz === 'pacific') {
-          if (pacificPanel) pacificPanel.classList.remove('hidden');
-          if (easternPanel) easternPanel.classList.add('hidden');
-          if (tabPac) {
-            tabPac.classList.remove('bg-[var(--bg-card)]', 'text-[var(--text-secondary)]', 'border-[var(--border-subtle)]', 'font-medium');
-            tabPac.classList.add('bg-cyan-500/15', 'text-cyan-300', 'border-cyan-500/40', 'font-bold');
-          }
-          if (tabEast) {
-            tabEast.classList.remove('bg-cyan-500/15', 'text-cyan-300', 'border-cyan-500/40', 'font-bold');
-            tabEast.classList.add('bg-[var(--bg-card)]', 'text-[var(--text-secondary)]', 'border-[var(--border-subtle)]', 'font-medium');
-          }
-        } else {
-          if (pacificPanel) pacificPanel.classList.add('hidden');
-          if (easternPanel) easternPanel.classList.remove('hidden');
-          if (tabEast) {
-            tabEast.classList.remove('bg-[var(--bg-card)]', 'text-[var(--text-secondary)]', 'border-[var(--border-subtle)]', 'font-medium');
-            tabEast.classList.add('bg-cyan-500/15', 'text-cyan-300', 'border-cyan-500/40', 'font-bold');
-          }
-          if (tabPac) {
-            tabPac.classList.remove('bg-cyan-500/15', 'text-cyan-300', 'border-cyan-500/40', 'font-bold');
-            tabPac.classList.add('bg-[var(--bg-card)]', 'text-[var(--text-secondary)]', 'border-[var(--border-subtle)]', 'font-medium');
-          }
-        }
-      };
+    let activeJobId = null;
+    let pollTimer = null;
+    let pollFailures = 0;
+    let currentLeads = [];
+    let currentFilter = 'all';
+    let lastRenderedSig = '';
 
-      window.stepNextTerritoryCity = function() {
-        const input = document.getElementById('huntCity');
-        const cur = (input ? input.value : '').trim().toLowerCase();
-        let nextCity = CASCADE_LIST[0];
-        const idx = CASCADE_LIST.findIndex(c => c.toLowerCase().includes(cur) || cur.includes(c.toLowerCase()));
-        if (idx !== -1 && idx < CASCADE_LIST.length - 1) {
-          nextCity = CASCADE_LIST[idx + 1];
-        }
-        window.setHuntPreset(nextCity);
-        showToast('Territory Advanced', 'Next in cascade: ' + nextCity, 'info');
-      };
+    function esc(str) {
+      return String(str == null ? '' : str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+    }
 
-      function renderLeadCardHtml(lead, fallbackCity = '') {
-        const hasHook = lead.specificObservation;
-        const qual = lead.qualification || {};
-        const qualScore = qual.score !== undefined ? qual.score : null;
-        const qualGrade = qual.grade || '';
-        const qualPassed = qual.qualified === true;
+    function safeUrl(raw) {
+      const val = String(raw || '').trim();
+      if (!val) return '';
+      if (/^https?:\\/\\//i.test(val)) return val;
+      if (/^[a-z0-9.-]+\\.[a-z]{2,}/i.test(val)) return 'https://' + val;
+      return '';
+    }
 
-        const scoreBadgeClass = qualScore === null
-          ? 'bg-gray-500/10 text-gray-400 border border-gray-500/20'
-          : qualScore >= 75
-          ? 'bg-emerald-500/15 text-emerald-300 border border-emerald-500/30'
-          : qualScore >= 60
-          ? 'bg-amber-500/15 text-amber-300 border border-amber-500/30'
-          : 'bg-rose-500/15 text-rose-400 border border-rose-500/30';
+    function fmtPhone(raw) {
+      const digits = String(raw || '').replace(/[^0-9]/g, '');
+      if (digits.length === 11 && digits.startsWith('1')) {
+        return '+1 (' + digits.slice(1, 4) + ') ' + digits.slice(4, 7) + '-' + digits.slice(7);
+      }
+      if (digits.length === 10) {
+        return '(' + digits.slice(0, 3) + ') ' + digits.slice(3, 6) + '-' + digits.slice(6);
+      }
+      return String(raw || '');
+    }
 
-        const scoreBadge = qualScore !== null
-          ? '<span class="text-[10px] font-bold px-2 py-0.5 rounded font-mono ' + scoreBadgeClass + '">' + (qualPassed ? '✓ ' : '✗ ') + qualScore + '/100 · ' + qualGrade + '</span>'
-          : '';
+    function syncMetaAdsLink() {
+      const niche = document.getElementById('huntNiche').value || 'hvac';
+      const city = document.getElementById('huntCity').value.trim() || 'Los Angeles, CA';
+      const label = NICHE_LABELS[niche] || 'HVAC';
+      const btn = document.getElementById('topMetaAdsBtn');
+      if (btn) {
+        btn.href = 'https://www.facebook.com/ads/library/?active_status=active&ad_type=all&country=US&media_type=all&q=' + encodeURIComponent(label + ' ' + city);
+      }
+    }
 
-        const revBadge = qual.reviewCount
-          ? '<span class="text-[10px] font-mono px-2 py-0.5 rounded bg-amber-500/10 text-amber-300 border border-amber-500/20">★ ' + (qual.googleRating || '4.8') + ' (' + qual.reviewCount + ' rev)</span>'
-          : '';
+    function selectCascadeCity(cityVal) {
+      if (!cityVal) return;
+      document.getElementById('huntCity').value = cityVal;
+      syncMetaAdsLink();
+    }
 
-        const badgeClass = lead.dbStatus === 'saved'
-          ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
-          : lead.dbStatus === 'duplicate'
-          ? 'bg-amber-500/10 text-amber-400 border border-amber-500/20'
-          : lead.dbStatus === 'disqualified'
-          ? 'bg-rose-500/10 text-rose-400 border border-rose-500/20'
-          : 'bg-gray-800 text-gray-400';
-        const badgeText = lead.dbStatus === 'saved'
-          ? '✓ Saved to CRM'
-          : lead.dbStatus === 'duplicate'
-          ? 'Already in CRM'
-          : lead.dbStatus === 'disqualified'
-          ? '✗ Rejected (No CRM)'
-          : lead.qualification
-          ? (qualPassed ? 'Ready to Add' : '✗ Below Gate')
-          : 'No Email';
+    function nextTerritoryCity() {
+      const input = document.getElementById('huntCity');
+      const cur = (input.value || '').trim().toLowerCase();
+      let idx = CASCADE_CITIES.findIndex((c) => c.toLowerCase() === cur || cur.indexOf(c.toLowerCase()) !== -1);
+      if (idx === -1 || idx >= CASCADE_CITIES.length - 1) idx = 0;
+      else idx += 1;
+      const nextCity = CASCADE_CITIES[idx];
+      input.value = nextCity;
+      const sel = document.getElementById('cascadeCitySelect');
+      if (sel) sel.value = nextCity;
+      syncMetaAdsLink();
+      showToast('Territory Shifted', 'Next market set to ' + nextCity, 'success');
+    }
 
-        let hookHtml = '';
-        if (hasHook) {
-          hookHtml = '<div class="bg-[var(--bg-surface)] border border-[var(--border-subtle)] rounded-lg p-2.5 text-[11px] space-y-1">' +
-            '<div class="font-semibold text-cyan-400 flex items-center gap-1"><span>💡 Auditor Observation:</span></div>' +
-            '<p class="italic text-[var(--text-secondary)]">\\"' + (lead.specificObservation || '') + '\\"</p></div>';
-        }
+    function toggleRubricPanel() {
+      const panel = document.getElementById('rubricPanel');
+      const btn = document.getElementById('btnToggleRubric');
+      if (!panel || !btn) return;
+      const isHidden = panel.classList.contains('hidden');
+      panel.classList.toggle('hidden');
+      btn.setAttribute('aria-expanded', isHidden ? 'true' : 'false');
+      const svg = btn.querySelector('svg');
+      if (svg) svg.style.transform = isHidden ? 'rotate(180deg)' : 'rotate(0deg)';
+    }
 
-        const isChain = lead.multiLocation && lead.multiLocation.isMultiLocation;
-        const chainBadge = isChain
-          ? '<span class="text-[10px] font-semibold px-2 py-0.5 rounded bg-rose-500/15 text-rose-400 border border-rose-500/30 font-mono">⚠ Chain Blocked</span>'
-          : '<span class="text-[10px] font-semibold px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-mono">✓ Family / Single</span>';
+    function eyeChip(item, fallbackLabel) {
+      const state = item && typeof item === 'object' ? item.pass : item;
+      const lbl = (item && item.label) ? item.label : fallbackLabel;
+      if (state === true) {
+        return '<div class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg border text-[11px] font-medium bg-[var(--accent-emerald-subtle)] text-[var(--accent-emerald)] border-emerald-500/25" title="' + esc(lbl) + '">' +
+          SVG.checkCircle + '<span>' + esc(fallbackLabel) + '</span></div>';
+      }
+      if (state === null || state === undefined) {
+        return '<div class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg border text-[11px] font-medium bg-[var(--bg-surface)] text-[var(--text-muted)] border-[var(--border-subtle)]" title="' + esc(lbl) + '">' +
+          SVG.alertTriangle + '<span>' + esc(fallbackLabel) + ' (Unpublished)</span></div>';
+      }
+      return '<div class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg border text-[11px] font-medium badge-rose" title="' + esc(lbl) + '">' +
+        SVG.xCircle + '<span>' + esc(fallbackLabel) + '</span></div>';
+    }
 
-        const gmb = lead.socialSignals && lead.socialSignals.hasGmb;
-        const ig = lead.socialSignals && lead.socialSignals.hasInstagram;
-        const fb = lead.socialSignals && lead.socialSignals.hasFacebook;
-        const socialHtml = '<div class="flex items-center gap-2 text-[10px] font-mono">' +
-          '<span class="' + (gmb ? 'text-emerald-400 font-bold' : 'text-gray-500') + '">' + (gmb ? 'GMB:✓' : 'GMB:○') + '</span>' +
-          '<span class="' + (ig ? 'text-purple-400 font-bold' : 'text-gray-500') + '">' + (ig ? 'IG:✓' : 'IG:○') + '</span>' +
-          '<span class="' + (fb ? 'text-blue-400 font-bold' : 'text-gray-500') + '">' + (fb ? 'FB:✓' : 'FB:○') + '</span>' +
-        '</div>';
+    function scoreBarRow(label, metricObj, maxPts) {
+      const earned = metricObj && typeof metricObj === 'object' ? Number(metricObj.earned || 0) : Number(metricObj || 0);
+      const detail = metricObj && metricObj.detail ? metricObj.detail : '';
+      const pct = maxPts > 0 ? Math.min(100, Math.round((earned / maxPts) * 100)) : 0;
+      return '<div class="space-y-1" title="' + esc(detail) + '">' +
+        '<div class="flex justify-between text-[11px]">' +
+          '<span class="text-[var(--text-secondary)]">' + esc(label) + '</span>' +
+          '<span class="font-mono font-semibold text-[var(--text-primary)]">' + earned + '/' + maxPts + '</span>' +
+        '</div>' +
+        '<div class="w-full h-1.5 rounded-full bg-[var(--bg-surface)] overflow-hidden">' +
+          '<div class="h-full rounded-full bg-cyan-500" style="width:' + pct + '%"></div>' +
+        '</div>' +
+        (detail ? '<div class="text-[10px] text-[var(--text-muted)] truncate">' + esc(detail) + '</div>' : '') +
+      '</div>';
+    }
 
-        const salutationHtml = lead.salutation
-          ? '<div class="text-[10px] text-gray-400 font-mono pt-1">Salutation: <span class="text-cyan-300">"Hey ' + lead.salutation + ',"</span></div>'
-          : '';
+    function extractHost(rawUrl) {
+      try {
+        return new URL(safeUrl(rawUrl) || rawUrl).hostname.replace(/^www\\./i, '');
+      } catch (_) {
+        return String(rawUrl || '');
+      }
+    }
 
-        // 10-Second Eye Test mini badges
-        let eyeTestHtml = '';
-        if (qual.eyeTest) {
-          const et = qual.eyeTest;
-          const pill = (item, text) => {
-            const cls = item?.pass === true
-              ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
-              : item?.pass === false
-              ? 'bg-rose-500/10 text-rose-400 border-rose-500/20'
-              : 'bg-gray-500/10 text-gray-400 border-gray-500/20';
-            const mark = item?.pass === true ? '✓' : item?.pass === false ? '✗' : '•';
-            return '<span class="px-1.5 py-0.5 rounded border font-mono text-[9px] ' + cls + '" title="' + (item?.label || '') + '">' + mark + ' ' + text + '</span>';
-          };
-          eyeTestHtml = '<div class="flex flex-wrap gap-1 pt-1">' +
-            pill(et.reviewsInRange, et.reviewsInRange?.value ? et.reviewsInRange.value + ' Revs' : 'Revs N/A') +
-            pill(et.familyOwned, '1-2 Locs') +
-            pill(et.painConfirmed, 'Form/5PM Pain') +
-            pill(et.activeAds, 'Paid Ads') +
-          '</div>';
-        }
+    function renderLeadCard(lead, isSinglePreview) {
+      const q = lead.qualification || {};
+      const eye = q.eyeTest || {};
+      const bd = q.breakdown || {};
+      const score = Number.isFinite(q.score) ? q.score : 0;
+      const passed = Boolean(q.qualified);
+      const href = safeUrl(lead.url);
+      const domainLabel = esc(extractHost(lead.domain || lead.url || ''));
+      const bizName = lead.clinicName || lead.businessName || domainLabel;
+      const ownerName = lead.doctorName || lead.ownerName || 'Owner / Team';
+      const hookText = lead.specificObservation || lead.hook || lead.recommendedAngle || '';
+      const revCount = q.reviewCount != null ? q.reviewCount : lead.reviewCount;
+      const gRating = q.googleRating != null ? q.googleRating : lead.googleRating;
+      const fleetSz = q.fleetSize != null ? q.fleetSize : lead.fleetSize;
+      const phoneStr = lead.phone ? fmtPhone(lead.phone) : '';
+      const telHref = lead.phone ? 'tel:' + String(lead.phone).replace(/[^0-9+]/g, '') : '';
 
-        // Breakdown mini-table
-        let qualBreakdownHtml = '';
-        if (qual.breakdown) {
-          const rows = Object.values(qual.breakdown).map(b =>
-            '<div class="flex items-center justify-between gap-2">' +
-              '<span class="' + (b.pass ? 'text-emerald-400' : 'text-gray-500') + '" title="' + (b.detail || '') + '">' + (b.pass ? '✓' : '✗') + ' ' + b.label + '</span>' +
-              '<span class="font-mono font-bold ' + (b.earned > 0 ? 'text-cyan-300' : 'text-gray-600') + '">' + b.earned + '/' + b.max + '</span>' +
-            '</div>'
-          ).join('');
-          qualBreakdownHtml = '<details class="text-[10px] text-gray-400 mt-1">' +
-            '<summary class="cursor-pointer hover:text-gray-300 font-semibold">🎯 Rate Score Breakdown: ' + (qualScore ?? '?') + '/100 (' + (qual.tierLabel || qualGrade) + ') — expand</summary>' +
-            '<div class="mt-2 space-y-1 bg-[var(--bg-card)] rounded-lg p-2.5 border border-[var(--border-subtle)]">' + rows + '</div>' +
-            (qual.disqualifyReasons && qual.disqualifyReasons.length > 0
-              ? '<div class="mt-1 text-rose-400 text-[10px]">Blocked: ' + qual.disqualifyReasons.join(' · ') + '</div>'
+      let scoreCls = 'badge-rose';
+      if (score >= 75) scoreCls = 'bg-[var(--accent-emerald-subtle)] text-[var(--accent-emerald)] border-emerald-500/30';
+      else if (score >= 60) scoreCls = 'badge-amber';
+
+      let dbPill = '';
+      if (lead.dbStatus === 'saved') {
+        dbPill = '<span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-semibold bg-[var(--accent-emerald-subtle)] text-[var(--accent-emerald)] border border-emerald-500/30">' + SVG.checkCircle + '<span>Committed to CRM</span></span>';
+      } else if (lead.dbStatus === 'duplicate') {
+        dbPill = '<span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-semibold bg-[var(--bg-surface)] text-[var(--text-secondary)] border border-[var(--border-subtle)]"><span>Already in CRM</span></span>';
+      } else if (lead.dbStatus === 'no_email') {
+        dbPill = '<span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-semibold badge-amber border">' + SVG.alertTriangle + '<span>Qualified (No Email)</span></span>';
+      } else if (lead.dbStatus === 'disqualified' || !passed) {
+        dbPill = '<span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-semibold badge-rose border">' + SVG.xCircle + '<span>Blocked (&lt; Threshold)</span></span>';
+      }
+
+      const ratingHtml = revCount
+        ? '<span class="inline-flex items-center gap-1 text-[11px] font-mono badge-amber px-2 py-0.5 rounded-md border">' + SVG.star + '<span>' + esc(gRating || '4.8') + ' (' + esc(revCount) + ' rev)</span></span>'
+        : '';
+
+      const forceBtn = (!passed || lead.dbStatus === 'disqualified' || lead.dbStatus === 'no_email') && lead.email && lead.dbStatus !== 'saved' && lead.dbStatus !== 'duplicate'
+        ? '<button type="button" onclick="forceAddLead(this)" data-url="' + esc(href || lead.url) + '" data-city="' + esc(lead.city || '') + '" data-niche="' + esc(lead.niche || 'hvac') + '" class="inline-flex items-center gap-1 px-3 py-1.5 rounded-xl bg-[var(--bg-surface)] hover:bg-[var(--bg-hover)] border border-[var(--border-subtle)] text-[11px] font-semibold text-[var(--text-primary)] cursor-pointer transition">' + SVG.plus + '<span>Force Add to CRM</span></button>'
+        : '';
+
+      const headerTag = isSinglePreview
+        ? '<div class="text-[10px] font-mono uppercase tracking-wider text-[var(--accent-cyan)] mb-2 font-bold">Single-Domain Diagnostic</div>'
+        : '';
+
+      return '<article class="bg-[var(--bg-card)] border border-[var(--border-subtle)] rounded-2xl p-4 sm:p-5 space-y-3.5 transition hover:border-[var(--border-strong)]">' +
+        headerTag +
+        '<div class="flex flex-col md:flex-row md:items-start justify-between gap-3">' +
+          '<div class="space-y-1 min-w-0">' +
+            '<div class="flex items-center gap-2 flex-wrap">' +
+              '<h4 class="text-sm font-bold text-[var(--text-primary)] truncate">' + esc(bizName) + '</h4>' +
+              (href ? '<a href="' + esc(href) + '" target="_blank" rel="noopener noreferrer" class="inline-flex items-center gap-1 text-[11px] font-mono text-[var(--accent-cyan)] hover:underline">' + domainLabel + ' ' + SVG.external + '</a>' : '') +
+              ratingHtml +
+            '</div>' +
+            '<div class="flex items-center gap-3 flex-wrap text-xs text-[var(--text-secondary)]">' +
+              '<span class="inline-flex items-center gap-1">' + SVG.mapPin + '<span>' + esc(lead.city || 'United States') + '</span></span>' +
+              '<span>Owner/Lead: <strong class="text-[var(--text-primary)]">' + esc(ownerName) + '</strong></span>' +
+              (fleetSz ? '<span class="font-mono text-[11px]">~' + esc(fleetSz) + ' trucks</span>' : '') +
+            '</div>' +
+          '</div>' +
+          '<div class="flex items-center gap-2 flex-wrap shrink-0">' +
+            '<span class="px-2.5 py-1 rounded-lg text-xs font-bold font-mono border ' + scoreCls + '">' + score + '/100 &middot; Tier ' + esc(q.grade || 'C') + '</span>' +
+            dbPill +
+          '</div>' +
+        '</div>' +
+
+        '<!-- Direct Contact + Call Leak Observation -->' +
+        '<div class="flex flex-col lg:flex-row lg:items-center justify-between gap-2.5 bg-[var(--bg-surface)] border border-[var(--border-subtle)] rounded-xl p-3">' +
+          '<div class="flex items-center gap-2 flex-wrap">' +
+            (phoneStr
+              ? '<a href="' + esc(telHref) + '" class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-[var(--accent-emerald-subtle)] text-[var(--accent-emerald)] border border-emerald-500/25 font-mono text-xs font-bold hover:opacity-85 transition">' + SVG.phone + '<span>' + esc(phoneStr) + '</span></a>'
+              : '<span class="text-xs text-[var(--text-muted)] italic">No phone found</span>') +
+            (lead.email
+              ? '<a href="mailto:' + esc(lead.email) + '" class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-cyan-500/10 text-[var(--accent-cyan)] border border-cyan-500/25 font-mono text-xs hover:opacity-85 transition">' + SVG.mail + '<span>' + esc(lead.email) + '</span></a>'
+              : '<span class="text-xs text-[var(--text-muted)] italic">No direct email</span>') +
+          '</div>' +
+          '<div class="text-xs text-[var(--text-secondary)] truncate lg:max-w-md" title="' + esc(hookText) + '">' +
+            '<span class="font-semibold text-[var(--text-primary)]">Gap: </span>' + esc(hookText || q.tierLabel || 'Manual call-leak review recommended') +
+          '</div>' +
+        '</div>' +
+
+        '<!-- 10-Second Eye Test Row -->' +
+        '<div class="flex items-center gap-2 flex-wrap">' +
+          eyeChip(eye.reviewsInRange, '20-300 Reviews') +
+          eyeChip(eye.familyOwned, 'Independent (1-2 Locs)') +
+          eyeChip(eye.painConfirmed, 'Intake / Hours Gap') +
+          eyeChip(eye.activeAds, 'Active LSA / Paid Ads') +
+        '</div>' +
+
+        '<!-- Expandable Score Breakdown & Force Override -->' +
+        '<div class="flex items-center justify-between gap-3 pt-1">' +
+          '<details class="flex-1">' +
+            '<summary class="inline-flex items-center gap-1 text-[11px] font-semibold text-[var(--text-secondary)] hover:text-[var(--text-primary)] cursor-pointer select-none list-none">' +
+              SVG.chevronDown +
+              '<span>Score Breakdown &amp; Audit Notes</span>' +
+            '</summary>' +
+            '<div class="mt-3 pt-3 border-t border-[var(--border-subtle)] grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">' +
+              scoreBarRow('Fleet Size (5-15)', bd.fleetSize, 20) +
+              scoreBarRow('Ownership / Indie', bd.ownership, 20) +
+              scoreBarRow('Intake / After-Hours', bd.intakeFriction, 25) +
+              scoreBarRow('Active Paid Ads', bd.adSpend, 15) +
+              scoreBarRow('High-Ticket ($8K+)', bd.highTicket, 10) +
+              scoreBarRow('Direct Owner Contact', bd.ownerContact, 10) +
+            '</div>' +
+            (q.disqualifyReasons && q.disqualifyReasons.length
+              ? '<div class="mt-2.5 text-[11px] text-amber-500 font-mono">Gate Notes: ' + esc(q.disqualifyReasons.join(' | ')) + '</div>'
               : '') +
-          '</details>';
-        }
+          '</details>' +
+          '<div class="shrink-0">' + forceBtn + '</div>' +
+        '</div>' +
+      '</article>';
+    }
 
-        const commitBtn = (!lead.savedToDb && qualPassed && lead.dbStatus !== 'duplicate')
-          ? '<button type="button" onclick="runSingleQualifyTest(true, \\'' + (lead.url || '') + '\\')" class="px-2.5 py-1 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-black font-bold text-[10px] transition cursor-pointer">+ Add to CRM</button>'
-          : '';
-
-        return '<div class="bg-[var(--bg-surface)] border border-[var(--border-subtle)] rounded-xl p-4 space-y-3 hunter-card' + (lead.dbStatus === 'disqualified' ? ' opacity-65' : '') + '">' +
-          '<div class="flex items-start justify-between gap-2">' +
-            '<div>' +
-              '<div class="flex items-center gap-1.5 flex-wrap">' +
-                '<h4 class="font-bold text-[var(--text-primary)] text-sm">' + (lead.clinicName || 'Practice') + '</h4>' +
-                chainBadge +
-                scoreBadge +
-                revBadge +
-              '</div>' +
-              '<p class="text-[11px] text-[var(--text-muted)] mt-0.5">' + (lead.doctorName || 'Lead') + ' • ' + (lead.city || fallbackCity) + '</p>' +
-              salutationHtml +
-              eyeTestHtml +
-            '</div>' +
-            '<div class="flex items-center gap-1.5 shrink-0">' +
-              commitBtn +
-              '<span class="text-[10px] font-semibold px-2 py-0.5 rounded ' + badgeClass + '">' + badgeText + '</span>' +
-              '<button type="button" data-email="' + (lead.email || '') + '" data-clinic="' + (lead.clinicName || 'Lead').replace(/"/g, '&quot;') + '" onclick="removeHuntedLead(this)" class="p-1 rounded-lg bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/30 text-[10px] transition cursor-pointer" title="Remove lead from database">' +
-                '${getSvgIcon('trash', 'w-3 h-3')}' +
-              '</button>' +
-            '</div>' +
-          '</div>' +
-          '<div class="text-xs space-y-2 border-t border-[var(--border-subtle)] pt-2.5">' +
-            '<div class="flex items-center justify-between gap-2 p-2 rounded-xl bg-[var(--bg-card)]/60 border border-[var(--border-subtle)]/70 text-[11px]">' +
-              '<div class="flex items-center gap-1.5 font-mono text-[var(--text-primary)] font-bold">' +
-                '<span>📞</span>' +
-                (lead.phone ? '<a href="tel:' + String(lead.phone).replace(/[^0-9+]/g, '') + '" class="hover:text-emerald-400 transition" title="Click to dial">' + lead.phone + '</a>' : '<span class="text-[var(--text-muted)] italic font-normal">No phone</span>') +
-              '</div>' +
-              '<div class="flex items-center gap-1.5 font-mono text-cyan-400">' +
-                '<span>✉️</span>' +
-                (lead.email ? '<a href="mailto:' + lead.email + '" class="hover:underline truncate max-w-[190px]" title="Click to email ' + lead.email + '">' + lead.email + '</a>' : '<span class="text-[var(--text-muted)] italic">No email</span>') +
-              '</div>' +
-            '</div>' +
-            '<div class="flex items-center justify-between text-[var(--text-muted)] text-[11px]">' +
-              '<span>Procedure: <span class="text-purple-300 font-medium">' + (lead.treatment || 'High-Ticket') + '</span></span>' +
-              socialHtml +
-            '</div>' +
-            qualBreakdownHtml +
-          '</div>' +
-          hookHtml +
-          '<div class="pt-2 border-t border-[var(--border-subtle)] flex items-center justify-between text-[11px]">' +
-            '<a href="' + getAuthUrl('/outreach/preview') + '" target="_blank" class="text-cyan-400 hover:underline">Preview Harvey Email →</a>' +
-            '<a href="' + (lead.url || '#') + '" target="_blank" class="text-[var(--text-muted)] hover:text-[var(--text-primary)]">Visit Site ↗</a>' +
-          '</div>' +
-        '</div>';
-      }
-
-      async function runSingleQualifyTest(autoCommit = false, overrideUrl = null) {
-        const url = (overrideUrl || document.getElementById('singleQualUrl')?.value || '').trim();
-        if (!url) {
-          showToast('URL Required', 'Paste a contractor website URL to test qualification.', 'error');
-          return;
-        }
-        const niche = document.getElementById('huntNiche').value;
-        const minScore = Number(document.getElementById('huntMinScore')?.value || 60);
-        const btn = document.getElementById('btnTestSingleUrl');
-        const resultsContainer = document.getElementById('hunterResultsContainer');
-        const cardsList = document.getElementById('hunterCardsList');
-        const statsBadge = document.getElementById('hunterStatsBadge');
-
-        if (btn) {
-          btn.disabled = true;
-          btn.innerText = 'Scoring...';
-        }
-        try {
-          const data = await safeFetchJson('/scraper/qualify', {
-            method: 'POST',
-            body: JSON.stringify({ url, niche, minScore, autoCommit })
-          });
-          if (data.success && data.lead) {
-            resultsContainer.classList.remove('hidden');
-            const q = data.qualification || {};
-            statsBadge.innerText = (q.qualified ? '✅ QUALIFIED' : '❌ REJECTED') + ' (' + (q.score ?? 0) + '/100)';
-            cardsList.innerHTML = renderLeadCardHtml(data.lead, data.lead.city || '');
-            showToast(
-              q.qualified ? 'Lead Qualified!' : 'Lead Rejected',
-              data.lead.clinicName + ' scored ' + (q.score ?? 0) + '/100 (' + q.grade + ')' + (data.committed ? ' — Added to CRM!' : ''),
-              q.qualified ? 'success' : 'error'
-            );
-          }
-        } catch (err) {
-          showToast('Qualify Error', err.message, 'error');
-        } finally {
-          if (btn) {
-            btn.disabled = false;
-            btn.innerText = 'Test Score';
-          }
-        }
-      }
-
-      window.setHuntPreset = function(city, btnEl) {
-        if (!city) return;
-        const input = document.getElementById('huntCity');
-        if (input) {
-          input.value = city;
-          input.classList.add('ring-2', 'ring-cyan-400', 'border-cyan-400', 'bg-cyan-950/20');
-          setTimeout(() => {
-            input.classList.remove('ring-2', 'ring-cyan-400', 'border-cyan-400', 'bg-cyan-950/20');
-          }, 800);
-          try {
-            input.dispatchEvent(new Event('input', { bubbles: true }));
-            input.dispatchEvent(new Event('change', { bubbles: true }));
-          } catch(e) {}
-        }
-
-        // Visual selection indicator on preset badges
-        let matchedBtn = btnEl;
-        document.querySelectorAll('.market-preset-btn').forEach(btn => {
-          btn.classList.remove('bg-cyan-500/15', 'text-cyan-300', 'border-cyan-500/40', 'font-bold', 'shadow-sm', 'shadow-cyan-500/10', 'active');
-          btn.classList.add('bg-[var(--bg-surface)]', 'text-[var(--text-secondary)]', 'border-[var(--border-subtle)]', 'font-medium');
-          if (!matchedBtn && btn.innerText.toLowerCase().includes(city.split(',')[0].toLowerCase())) {
-            matchedBtn = btn;
-          }
-        });
-
-        if (matchedBtn) {
-          matchedBtn.classList.remove('bg-[var(--bg-surface)]', 'text-[var(--text-secondary)]', 'border-[var(--border-subtle)]', 'font-medium');
-          matchedBtn.classList.add('bg-cyan-500/15', 'text-cyan-300', 'border-cyan-500/40', 'font-bold', 'shadow-sm', 'shadow-cyan-500/10', 'active');
-        }
-
-        const picker = document.getElementById('marketQuickPicker');
-        if (picker) {
-          for (let i = 0; i < picker.options.length; i++) {
-            if (picker.options[i].value && picker.options[i].value.toLowerCase().includes(city.split(',')[0].toLowerCase())) {
-              picker.selectedIndex = i;
-              break;
-            }
-          }
-        }
-
-        window.updateMetaAdsRedirection();
-        showToast('Market Selected', 'Ready to hunt ' + city + '. Click Launch Hunter or press Enter.', 'info');
-      };
-
-      window.updateMetaAdsRedirection = function() {
-        const nicheEl = document.getElementById('huntNiche');
-        const cityEl = document.getElementById('huntCity');
-        const niche = nicheEl ? nicheEl.value : 'hvac';
-        const rawCity = (cityEl && cityEl.value ? cityEl.value : 'Los Angeles, CA').trim();
-        const cleanCity = rawCity.split(',')[0].trim() || 'Los Angeles';
-        const keywords = {
-          hvac: 'HVAC AC Repair',
-          plumbing: 'Emergency Plumber',
-          roofing: 'Roofing Contractor',
-          electrical: 'Emergency Electrician',
-          water_damage: 'Water Damage Restoration',
-          medspa: 'MedSpa',
-        };
-        const searchTerm = (keywords[niche] || 'HVAC Repair') + ' ' + cleanCity;
-        const metaUrl = 'https://www.facebook.com/ads/library/?active_status=active&ad_type=all&country=US&media_type=all&q=' + encodeURIComponent(searchTerm);
-
-        const topBtn = document.getElementById('topMetaAdsBtn');
-        const cardBtn = document.getElementById('cardMetaAdsBtn');
-        if (topBtn) topBtn.href = metaUrl;
-        if (cardBtn) cardBtn.href = metaUrl;
-      };
-
-      window.updateNicheDefaults = function() {
-        const nicheSelect = document.getElementById('huntNiche');
-        if (!nicheSelect) return;
-        const niche = nicheSelect.value;
-        const input = document.getElementById('huntCity');
-        const currentVal = input ? input.value.trim() : '';
-
-        const placeholders = {
-          hvac: 'e.g. Los Angeles, CA or Phoenix, AZ',
-          plumbing: 'e.g. San Diego, CA or Dallas, TX',
-          roofing: 'e.g. Tampa, FL or Atlanta, GA',
-          electrical: 'e.g. Seattle, WA or Houston, TX',
-          water_damage: 'e.g. Miami, FL or Orlando, FL',
-        };
-
-        if (input && placeholders[niche]) {
-          input.placeholder = placeholders[niche];
-        }
-
-        window.updateMetaAdsRedirection();
-      };
-
-      async function safeFetchJson(url, options = {}) {
-        const fullUrl = getAuthUrl(url);
-        const res = await fetch(fullUrl, {
-          ...options,
-          credentials: 'include',
-          headers: getAuthHeaders(options.headers || {})
-        });
-
-        if (!res.ok) {
-          let errMessage = 'Request failed (HTTP ' + res.status + ')';
-          try {
-            const errData = await res.json();
-            errMessage = errData.message || errData.error || errMessage;
-          } catch (e) {
-            if (res.status === 401) {
-              errMessage = 'Authentication required. Please refresh this page and log in (admin / suregreet2026!).';
-            }
-          }
-          throw new Error(errMessage);
-        }
-        return await res.json();
-      }
-
-      async function runAutonomousHuntClient() {
-        const niche = document.getElementById('huntNiche').value;
-        const city = document.getElementById('huntCity').value.trim();
-        const limit = document.getElementById('huntLimit').value;
-        const minScore = Number(document.getElementById('huntMinScore')?.value || 60);
-        const btn = document.getElementById('btnLaunchHunter');
-        const consoleBox = document.getElementById('huntConsole');
-        const statusText = document.getElementById('huntConsoleStatus');
-        const timerEl = document.getElementById('huntTimer');
-        const bar = document.getElementById('huntProgressBar');
-        const resultsContainer = document.getElementById('hunterResultsContainer');
-        const cardsList = document.getElementById('hunterCardsList');
-        const statsBadge = document.getElementById('hunterStatsBadge');
-
-        btn.disabled = true;
-        btn.innerHTML = '${getSvgIcon('spinner', 'w-4 h-4 mr-1 text-black')}<span>Hunting Leads...</span>';
-        consoleBox.classList.remove('hidden');
-        resultsContainer.classList.add('hidden');
-        cardsList.innerHTML = '';
-
-        let seconds = 0;
-        const timerInterval = setInterval(() => {
-          seconds += 0.5;
-          timerEl.innerText = seconds.toFixed(1) + 's';
-        }, 500);
-
-        bar.style.width = '30%';
-        statusText.innerText = 'Sourcing verified contractors in ' + city + ' (' + niche + ')...';
-
-        const step1 = setTimeout(() => {
-          bar.style.width = '65%';
-          statusText.innerText = 'Running 10-Second Eye Test & 100-Pt Qualification Gate...';
-        }, 1200);
-
-        const step2 = setTimeout(() => {
-          bar.style.width = '85%';
-          statusText.innerText = 'Committing leads scoring ' + minScore + '+ pts to Pipeline CRM...';
-        }, 2800);
-
-        try {
-          const data = await safeFetchJson('/scraper/hunt', {
-            method: 'POST',
-            body: JSON.stringify({ city, niche, limit, minScore })
-          });
-
-          bar.style.width = '100%';
-          statusText.innerText = 'Hunt complete! ' + (data.evaluatedCount || data.leads?.length || 0) + ' candidates evaluated.';
-
-          if (data.leads && data.leads.length > 0) {
-            statsBadge.innerText = data.committedCount + ' Qualified Added to CRM';
-
-            const crmUrl = getAuthUrl('/outreach/prospects');
-            let bannerHtml = '<div class="md:col-span-2 p-4 bg-emerald-950/40 border border-emerald-500/30 rounded-2xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 mb-2 shadow-lg">' +
-              '<div>' +
-                '<div class="flex items-center gap-2">' +
-                  '<span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>' +
-                  '<h4 class="text-sm font-bold text-white">' + data.committedCount + ' Qualified Leads Added → Pipeline CRM</h4>' +
-                '</div>' +
-                '<p class="text-xs text-gray-400 mt-0.5">' + (data.disqualifiedCount || 0) + ' rejected below ' + minScore + '/100 Gate • ' + (data.duplicateCount || 0) + ' already in CRM.</p>' +
-              '</div>' +
-              '<a href="' + crmUrl + '" class="px-4 py-2 bg-emerald-500 hover:bg-emerald-400 text-black font-extrabold rounded-xl text-xs transition shadow-md shadow-emerald-500/20 whitespace-nowrap flex items-center gap-1.5">' +
-                '<span>View in Pipeline CRM</span>' +
-                '<span>→</span>' +
-              '</a>' +
-            '</div>';
-
-            cardsList.innerHTML = bannerHtml + data.leads.map(lead => renderLeadCardHtml(lead, city)).join('');
-
-            resultsContainer.classList.remove('hidden');
-            showToast('Hunt Complete', data.committedCount + ' qualified leads committed to CRM', 'success');
-          } else {
-            showToast('No New Leads', data.message || 'No qualifying domains found in this market.', 'info');
-          }
-
-        } catch (err) {
-          showToast('Hunt Error', err.message, 'error');
-        } finally {
-          clearInterval(timerInterval);
-          clearTimeout(step1);
-          clearTimeout(step2);
-          btn.disabled = false;
-          btn.innerHTML = '${getSvgIcon('bolt', 'w-4 h-4')}<span>Launch Hunter</span>';
-        }
-      }
-
-      async function removeHuntedLead(btnEl, passedEmail, passedClinic) {
-        const email = (passedEmail || btnEl.getAttribute('data-email') || '').trim();
-        const clinicName = (passedClinic || btnEl.getAttribute('data-clinic') || 'Lead').trim();
-        if (!email) {
-          const card = btnEl.closest('.hunter-card');
-          if (card) card.remove();
-          return;
-        }
-        if (!confirm('Permanently remove ' + clinicName + ' from the database?')) return;
-        const card = btnEl.closest('.hunter-card');
-        try {
-          const data = await safeFetchJson('/scraper/lead/delete', {
-            method: 'POST',
-            body: JSON.stringify({ email })
-          });
-          if (data.status === 'success') {
-            showToast('Lead Deleted', clinicName + ' removed from database.', 'success');
-            if (card) {
-              card.style.transition = 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)';
-              card.style.opacity = '0';
-              card.style.transform = 'scale(0.95)';
-              setTimeout(() => card.remove(), 300);
-            }
-          } else {
-            showToast('Delete Failed', data.message || 'Error deleting lead', 'error');
-          }
-        } catch (e) {
-          showToast('Error', e.message, 'error');
-        }
-      }
-
-      document.addEventListener('DOMContentLoaded', () => {
-        if (typeof window.updateMetaAdsRedirection === 'function') {
-          window.updateMetaAdsRedirection();
-        }
-        const cityInput = document.getElementById('huntCity');
-        if (cityInput) {
-          cityInput.addEventListener('input', () => {
-            if (typeof window.updateMetaAdsRedirection === 'function') {
-              window.updateMetaAdsRedirection();
-            }
-          });
-        }
+    function setResultFilter(mode) {
+      currentFilter = mode;
+      document.querySelectorAll('.result-filter-btn').forEach((btn) => {
+        btn.className = 'result-filter-btn px-3 py-1.5 rounded-xl bg-[var(--bg-surface)] text-[var(--text-secondary)] border border-[var(--border-subtle)] font-medium cursor-pointer transition';
       });
-    </script>
+      const activeBtn = document.getElementById(
+        mode === 'qualified' ? 'filterQualifiedBtn' : mode === 'disqualified' ? 'filterDisqualifiedBtn' : 'filterAllBtn'
+      );
+      if (activeBtn) {
+        activeBtn.className = 'result-filter-btn px-3 py-1.5 rounded-xl bg-cyan-500/15 text-[var(--accent-cyan)] border border-cyan-500/35 font-bold cursor-pointer transition';
+      }
+      renderLeadsStream(true);
+    }
+
+    function renderLeadsStream(forceRedraw) {
+      const sig = currentFilter + ':' + currentLeads.length + ':' + currentLeads.map((l) => (l.url || l.domain || '') + (l.dbStatus || '')).join(',');
+      if (!forceRedraw && sig === lastRenderedSig) return;
+      lastRenderedSig = sig;
+
+      const totalCount = currentLeads.length;
+      const qualLeads = currentLeads.filter((l) => l.qualification && l.qualification.qualified);
+      const disqLeads = currentLeads.filter((l) => !l.qualification || !l.qualification.qualified);
+
+      const toolbar = document.getElementById('resultsToolbar');
+      if (totalCount > 0) toolbar.classList.remove('hidden');
+
+      document.getElementById('filterAllBtn').textContent = 'All (' + totalCount + ')';
+      document.getElementById('filterQualifiedBtn').textContent = 'Qualified (' + qualLeads.length + ')';
+      document.getElementById('filterDisqualifiedBtn').textContent = 'Disqualified (' + disqLeads.length + ')';
+
+      const list = currentFilter === 'qualified' ? qualLeads : currentFilter === 'disqualified' ? disqLeads : currentLeads;
+      const container = document.getElementById('leadsContainer');
+
+      if (!list.length) {
+        container.innerHTML = '<div class="bg-[var(--bg-card)] border border-[var(--border-subtle)] rounded-2xl p-8 text-center text-xs text-[var(--text-secondary)]">No evaluated leads match the active filter yet.</div>';
+        return;
+      }
+
+      container.innerHTML = list.map((lead) => renderLeadCard(lead, false)).join('');
+    }
+
+    function showHuntError(msg) {
+      const box = document.getElementById('huntErrorAlert');
+      document.getElementById('huntErrorMessage').textContent = msg || 'Unknown error while hunting leads.';
+      box.classList.remove('hidden');
+    }
+
+    function clearHuntError() {
+      document.getElementById('huntErrorAlert').classList.add('hidden');
+    }
+
+    function setHuntingUiState(isRunning) {
+      const btn = document.getElementById('btnRunHunt');
+      const lbl = document.getElementById('btnRunHuntLabel');
+      const stopBtn = document.getElementById('btnStopHunt');
+      const panel = document.getElementById('huntTelemetryPanel');
+      btn.disabled = isRunning;
+      btn.classList.toggle('opacity-60', isRunning);
+      btn.classList.toggle('cursor-not-allowed', isRunning);
+      lbl.textContent = isRunning ? 'Hunting Market...' : 'Run Hunt';
+      if (isRunning) {
+        stopBtn.classList.remove('hidden');
+        stopBtn.classList.add('inline-flex');
+        panel.classList.remove('hidden');
+        panel.setAttribute('aria-busy', 'true');
+      } else {
+        stopBtn.classList.add('hidden');
+        stopBtn.classList.remove('inline-flex');
+        panel.setAttribute('aria-busy', 'false');
+      }
+    }
+
+    async function runAutonomousHuntClient() {
+      if (activeJobId && pollTimer) return;
+      const city = document.getElementById('huntCity').value.trim();
+      const niche = document.getElementById('huntNiche').value;
+      const minScore = Number(document.getElementById('huntMinScore').value || 60);
+      const limit = Number(document.getElementById('huntLimit').value || 10);
+
+      if (!city) {
+        showHuntError('Enter a target US city or select one from Territory Preset before launching.');
+        document.getElementById('huntCity').focus();
+        return;
+      }
+
+      clearHuntError();
+      currentLeads = [];
+      lastRenderedSig = '';
+      pollFailures = 0;
+      setHuntingUiState(true);
+
+      document.getElementById('telemetryIcon').innerHTML = SVG.spinner;
+      document.getElementById('telemetryStage').textContent = 'Starting search in ' + city + '...';
+      document.getElementById('telemetryProgressLabel').textContent = '0 evaluated';
+      document.getElementById('telemetryBar').style.width = '6%';
+      document.getElementById('kpiDiscovered').textContent = '0';
+      document.getElementById('kpiEvaluated').textContent = '0';
+      document.getElementById('kpiCommitted').textContent = '0';
+      document.getElementById('kpiRejected').textContent = '0';
+
+      try {
+        const res = await fetch(getAuthUrl('/scraper/hunt/start'), {
+          method: 'POST',
+          headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
+          body: JSON.stringify({ city, niche, limit, minScore, notifyTelegram: true }),
+        });
+
+        const data = await res.json();
+        if (!res.ok || !data.success || !data.job) {
+          throw new Error(data.error || data.message || 'Server failed to start hunt job (' + res.status + ')');
+        }
+
+        activeJobId = data.job.jobId;
+        if (pollTimer) clearInterval(pollTimer);
+        pollTimer = setInterval(pollHuntStatus, 1200);
+        setTimeout(pollHuntStatus, 450);
+      } catch (err) {
+        activeJobId = null;
+        setHuntingUiState(false);
+        document.getElementById('telemetryIcon').innerHTML = SVG.fail;
+        document.getElementById('telemetryStage').textContent = 'Failed to launch hunt';
+        showHuntError(err.message);
+      }
+    }
+
+    async function pollHuntStatus() {
+      if (!activeJobId) return;
+      try {
+        const res = await fetch(getAuthUrl('/scraper/hunt/status/' + encodeURIComponent(activeJobId)), {
+          headers: getAuthHeaders(),
+        });
+        const data = await res.json();
+        if (!res.ok || !data.success || !data.job) {
+          throw new Error(data.error || 'Status check failed (' + res.status + ')');
+        }
+
+        pollFailures = 0;
+        const job = data.job;
+        const total = Math.max(job.totalCandidates || job.targetLimit || 1, 1);
+        const pct = job.status === 'completed' ? 100 : Math.min(95, Math.max(8, Math.round(((job.evaluatedCount || 0) / total) * 100)));
+
+        document.getElementById('telemetryStage').textContent = job.stage || 'Scanning contractors...';
+        document.getElementById('telemetryProgressLabel').textContent = (job.evaluatedCount || 0) + ' / ' + (job.totalCandidates || '?') + ' evaluated';
+        document.getElementById('telemetryBar').style.width = pct + '%';
+
+        document.getElementById('kpiDiscovered').textContent = String(job.totalCandidates || 0);
+        document.getElementById('kpiEvaluated').textContent = String(job.evaluatedCount || 0);
+        document.getElementById('kpiCommitted').textContent = String(job.committedCount || 0);
+        document.getElementById('kpiRejected').textContent = String(job.disqualifiedCount || 0);
+
+        if (Array.isArray(job.leads)) {
+          currentLeads = job.leads;
+          renderLeadsStream(false);
+        }
+
+        if (job.status === 'completed' || job.status === 'cancelled' || job.status === 'failed') {
+          clearInterval(pollTimer);
+          pollTimer = null;
+          activeJobId = null;
+          setHuntingUiState(false);
+
+          if (job.status === 'completed') {
+            document.getElementById('telemetryIcon').innerHTML = SVG.done;
+            showToast('Hunt Complete', (job.committedCount || 0) + ' qualified leads committed to CRM.', 'success');
+          } else if (job.status === 'cancelled') {
+            document.getElementById('telemetryIcon').innerHTML = SVG.alertTriangle;
+            showToast('Hunt Stopped', 'Cancelled cleanly. Partial leads retained below.', 'success');
+          } else {
+            document.getElementById('telemetryIcon').innerHTML = SVG.fail;
+            showHuntError(job.error || 'Background job terminated with an error.');
+          }
+        }
+      } catch (err) {
+        pollFailures += 1;
+        if (pollFailures >= 4) {
+          clearInterval(pollTimer);
+          pollTimer = null;
+          activeJobId = null;
+          setHuntingUiState(false);
+          document.getElementById('telemetryIcon').innerHTML = SVG.fail;
+          showHuntError('Lost connection while polling status: ' + err.message);
+        }
+      }
+    }
+
+    async function stopActiveHunt() {
+      if (!activeJobId) return;
+      document.getElementById('telemetryStage').textContent = 'Stopping active hunt wave...';
+      try {
+        await fetch(getAuthUrl('/scraper/hunt/cancel/' + encodeURIComponent(activeJobId)), {
+          method: 'POST',
+          headers: getAuthHeaders(),
+        });
+      } catch (_) {}
+    }
+
+    async function runSingleUrlTest() {
+      const urlInput = document.getElementById('singleUrlInput');
+      const rawUrl = urlInput.value.trim();
+      const city = document.getElementById('huntCity').value.trim();
+      const niche = document.getElementById('huntNiche').value;
+      const minScore = Number(document.getElementById('huntMinScore').value || 60);
+      const autoCommit = document.getElementById('singleAutoCommit').checked;
+
+      if (!rawUrl) {
+        showToast('Missing URL', 'Paste a contractor website URL first.', 'error');
+        urlInput.focus();
+        return;
+      }
+
+      const btn = document.getElementById('btnTestSingle');
+      const lbl = document.getElementById('btnTestSingleLabel');
+      btn.disabled = true;
+      lbl.textContent = 'Auditing...';
+
+      try {
+        const res = await fetch(getAuthUrl('/scraper/qualify'), {
+          method: 'POST',
+          headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
+          body: JSON.stringify({ url: rawUrl, city, niche, minScore, autoCommit }),
+        });
+        const data = await res.json();
+        if (!res.ok || !data.success || !data.lead) {
+          throw new Error(data.message || data.error || 'Qualification failed');
+        }
+
+        const box = document.getElementById('singleQualCard');
+        box.innerHTML = renderLeadCard(data.lead, true);
+        box.classList.remove('hidden');
+
+        if (data.committed) {
+          showToast('CRM Committed', (data.lead.businessName || rawUrl) + ' passed (' + (data.qualification?.score || 0) + '/100).', 'success');
+        } else {
+          showToast('Audit Complete', 'Score: ' + (data.qualification?.score || 0) + '/100 (Tier ' + (data.qualification?.grade || 'C') + ')', 'success');
+        }
+      } catch (err) {
+        showToast('Inspection Failed', err.message, 'error');
+      } finally {
+        btn.disabled = false;
+        lbl.textContent = 'Test URL';
+      }
+    }
+
+    async function forceAddLead(btn) {
+      const url = btn.dataset.url;
+      const city = btn.dataset.city || '';
+      const niche = btn.dataset.niche || 'hvac';
+      if (!url) return;
+
+      btn.disabled = true;
+      btn.textContent = 'Saving...';
+
+      try {
+        const res = await fetch(getAuthUrl('/scraper/ingest'), {
+          method: 'POST',
+          headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
+          body: JSON.stringify({ url, city, niche, force: true }),
+        });
+        const data = await res.json();
+        if (data.status === 'success') {
+          showToast('Added to CRM', 'Lead force-committed to Pipeline CRM.', 'success');
+          const match = currentLeads.find((l) => l.url === url || safeUrl(l.url) === url);
+          if (match) match.dbStatus = 'saved';
+          btn.outerHTML = '<span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-semibold bg-[var(--accent-emerald-subtle)] text-[var(--accent-emerald)] border border-emerald-500/30">Added Manually</span>';
+        } else {
+          throw new Error(data.message || data.error || 'Unable to force add');
+        }
+      } catch (err) {
+        btn.disabled = false;
+        btn.innerHTML = SVG.plus + '<span>Force Add to CRM</span>';
+        showToast('Save Failed', err.message, 'error');
+      }
+    }
+  </script>
   `;
 
-  res.setHeader('Content-Type', 'text/html; charset=utf-8');
   res.send(
     renderSaasShell({
-      title: 'SureGreet AI — Lead Hunter & Digital Auditor Studio',
+      title: 'Lead Hunter Studio — SureGreet AI',
       activeNav: 'scraper',
-      pageHeading: 'Lead Hunter & Diagnostic Auditor Studio',
-      badgeText: 'Pillars 1 & 2 • $0 Sourcing',
+      pageHeading: 'Lead Hunter Studio',
+      badgeText: '100-Pt Eye Test',
       bodyContent,
       extraScripts,
       authKeyParam: authKey,

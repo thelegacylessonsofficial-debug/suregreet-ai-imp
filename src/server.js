@@ -83,6 +83,8 @@ app.get('/', (req, res) => {
       'POST /scraper/ingest',
       'POST /scraper/bulk',
       'POST /scraper/hunt',
+      'POST /scraper/hunt/start',
+      'GET /scraper/hunt/status/:jobId',
       'GET /scraper/dashboard',
       'POST /outreach/requalify',
       'GET /set-webhook',

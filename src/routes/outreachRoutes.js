@@ -170,24 +170,26 @@ function renderProspectsHtml(list, authKey = '') {
         </div>
 
         <div class="flex items-center gap-2 shrink-0 flex-wrap">
-          <button onclick="runHarveyBatchToSheets()" id="btnRunHarveyBatch" class="px-3.5 py-2 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-black font-extrabold text-xs transition shadow-md shadow-cyan-500/20 flex items-center gap-1.5 cursor-pointer active:scale-95" title="Run Harvey Sales Engine on Trade Leads & Sync to Google Sheets">
+          <button onclick="runHarveyBatchToSheets()" id="btnRunHarveyBatch" class="px-3.5 py-2 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-extrabold text-xs transition shadow-md shadow-cyan-500/20 flex items-center gap-1.5 cursor-pointer active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500" title="Run Harvey Sales Engine on Trade Leads & Sync to Google Sheets">
             ${getSvgIcon('bolt', 'w-3.5 h-3.5')}
-            <span>⚡ Run Harvey Engine</span>
+            <span>Run Harvey Engine</span>
           </button>
-          <button onclick="copySheetsTsv()" id="btnCopySheets" class="px-3 py-2 rounded-xl bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-300 border border-emerald-500/30 font-bold text-xs transition flex items-center gap-1.5 cursor-pointer active:scale-95" title="Copy raw tab-separated table to clipboard (paste straight into Google Sheet)">
-            <span>📋 Copy for Google Sheet</span>
+          <button onclick="copySheetsTsv()" id="btnCopySheets" class="px-3 py-2 rounded-xl bg-emerald-500/15 hover:bg-emerald-500/25 text-[var(--accent-emerald)] border border-emerald-500/30 font-bold text-xs transition flex items-center gap-1.5 cursor-pointer active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500" title="Copy raw tab-separated table to clipboard (paste straight into Google Sheet)">
+            ${getSvgIcon('copy', 'w-3.5 h-3.5')}
+            <span>Copy for Google Sheet</span>
           </button>
-          <a href="/outreach/harvey/export-csv" class="px-3 py-2 rounded-xl bg-[var(--bg-surface)] hover:bg-[var(--bg-hover)] border border-[var(--border-subtle)] text-xs font-semibold text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition flex items-center gap-1.5" title="Download CSV for Google Sheets">
-            ${getSvgIcon('download', 'w-3.5 h-3.5 text-emerald-400')}
-            <span>CSV ⤓</span>
+          <a href="/outreach/harvey/export-csv" class="px-3 py-2 rounded-xl bg-[var(--bg-surface)] hover:bg-[var(--bg-hover)] border border-[var(--border-subtle)] text-xs font-semibold text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition flex items-center gap-1.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500" title="Download CSV for Google Sheets">
+            ${getSvgIcon('download', 'w-3.5 h-3.5 text-emerald-500')}
+            <span>Export CSV</span>
           </a>
-          <button onclick="triggerOutreachWorker(true)" id="btnTriggerWorker" class="px-3 py-2 rounded-xl bg-[var(--bg-surface)] hover:bg-[var(--bg-hover)] border border-[var(--border-subtle)] text-xs font-semibold text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition flex items-center gap-1.5 cursor-pointer active:scale-95">
-            ${getSvgIcon('play', 'w-3.5 h-3.5 text-cyan-400')}
+          <button onclick="triggerOutreachWorker(true)" id="btnTriggerWorker" class="px-3 py-2 rounded-xl bg-[var(--bg-surface)] hover:bg-[var(--bg-hover)] border border-[var(--border-subtle)] text-xs font-semibold text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition flex items-center gap-1.5 cursor-pointer active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500">
+            ${getSvgIcon('play', 'w-3.5 h-3.5 text-cyan-500')}
             <span>Run Cadence</span>
           </button>
-          <a href="/outreach/preview" class="px-3 py-2 rounded-xl bg-[var(--bg-surface)] hover:bg-[var(--bg-hover)] border border-[var(--border-subtle)] text-xs font-semibold text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition flex items-center gap-1.5" title="View email scripts">
-            ${getSvgIcon('mail', 'w-3.5 h-3.5 text-cyan-400')}
-            <span>Scripts ↗</span>
+          <a href="/outreach/preview" class="px-3 py-2 rounded-xl bg-[var(--bg-surface)] hover:bg-[var(--bg-hover)] border border-[var(--border-subtle)] text-xs font-semibold text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition flex items-center gap-1.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500" title="View email scripts">
+            ${getSvgIcon('mail', 'w-3.5 h-3.5 text-cyan-500')}
+            <span>Scripts</span>
+            ${getSvgIcon('external', 'w-3 h-3 opacity-70')}
           </a>
         </div>
       </div>
@@ -197,13 +199,15 @@ function renderProspectsHtml(list, authKey = '') {
         <div class="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3">
           <div class="flex items-center gap-1.5 overflow-x-auto text-xs">
             <span class="text-[11px] font-bold text-[var(--text-muted)] uppercase tracking-wider mr-1">Focus:</span>
-            <button onclick="filterNiche('trades')" id="tab-niche-trades" class="niche-filter-tab px-3 py-1.5 rounded-xl bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 font-bold transition flex items-center gap-1.5 cursor-pointer">
-              <span>⚡ HVAC & Trade Contractors (${hvacTradeCount})</span>
+            <button onclick="filterNiche('trades')" id="tab-niche-trades" class="niche-filter-tab px-3 py-1.5 rounded-xl bg-cyan-500/15 text-[var(--accent-cyan)] border border-cyan-500/35 font-bold transition flex items-center gap-1.5 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500">
+              ${getSvgIcon('bolt', 'w-3.5 h-3.5')}
+              <span>HVAC & Trade Contractors (${hvacTradeCount})</span>
             </button>
-            <button onclick="filterNiche('qualified')" id="tab-niche-qualified" class="niche-filter-tab px-3 py-1.5 rounded-xl bg-[var(--bg-surface)] text-[var(--text-secondary)] border border-[var(--border-subtle)] font-medium transition flex items-center gap-1.5 cursor-pointer">
-              <span>🎯 Qualified 60+ Pts (${list.filter(p => (p.qual_score || 0) >= 60).length})</span>
+            <button onclick="filterNiche('qualified')" id="tab-niche-qualified" class="niche-filter-tab px-3 py-1.5 rounded-xl bg-[var(--bg-surface)] text-[var(--text-secondary)] border border-[var(--border-subtle)] font-medium transition flex items-center gap-1.5 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500">
+              ${getSvgIcon('shield', 'w-3.5 h-3.5')}
+              <span>Qualified 60+ Pts (${list.filter(p => (p.qual_score || 0) >= 60).length})</span>
             </button>
-            <button onclick="filterNiche('all')" id="tab-niche-all" class="niche-filter-tab px-3 py-1.5 rounded-xl bg-[var(--bg-surface)] text-[var(--text-secondary)] border border-[var(--border-subtle)] font-medium transition flex items-center gap-1.5 cursor-pointer">
+            <button onclick="filterNiche('all')" id="tab-niche-all" class="niche-filter-tab px-3 py-1.5 rounded-xl bg-[var(--bg-surface)] text-[var(--text-secondary)] border border-[var(--border-subtle)] font-medium transition flex items-center gap-1.5 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500">
               <span>All Leads (${total})</span>
             </button>
           </div>
@@ -268,16 +272,16 @@ function renderProspectsHtml(list, authKey = '') {
                     .toUpperCase();
 
                   const nicheMap = {
-                    hvac: { label: 'HVAC', color: 'bg-amber-500/10 text-amber-300 border-amber-500/20' },
-                    plumbing: { label: 'Plumbing', color: 'bg-blue-500/10 text-blue-300 border-blue-500/20' },
-                    roofing: { label: 'Roofing', color: 'bg-orange-500/10 text-orange-300 border-orange-500/20' },
-                    electrical: { label: 'Electric', color: 'bg-yellow-500/10 text-yellow-300 border-yellow-500/20' },
-                    water_damage: { label: 'Restoration', color: 'bg-cyan-500/10 text-cyan-300 border-cyan-500/20' },
+                    hvac: { label: 'HVAC', color: 'bg-amber-500/10 text-amber-500 border-amber-500/25' },
+                    plumbing: { label: 'Plumbing', color: 'bg-blue-500/10 text-blue-500 border-blue-500/25' },
+                    roofing: { label: 'Roofing', color: 'bg-orange-500/10 text-orange-500 border-orange-500/25' },
+                    electrical: { label: 'Electric', color: 'bg-yellow-500/10 text-yellow-500 border-yellow-500/25' },
+                    water_damage: { label: 'Restoration', color: 'bg-cyan-500/10 text-[var(--accent-cyan)] border-cyan-500/25' },
                   };
                   const isTrade = p.niche !== 'medspa';
                   const nicheInfo = nicheMap[p.niche] || (isTrade 
-                    ? { label: (p.niche || 'Trade').toUpperCase(), color: 'bg-emerald-500/10 text-emerald-300 border-emerald-500/20' }
-                    : { label: 'MedSpa (Archived)', color: 'bg-purple-500/10 text-purple-300 border-purple-500/20' });
+                    ? { label: (p.niche || 'Trade').toUpperCase(), color: 'bg-emerald-500/10 text-[var(--accent-emerald)] border-emerald-500/25' }
+                    : { label: 'Legacy', color: 'bg-slate-500/10 text-[var(--text-muted)] border-[var(--border-subtle)]' });
                   const nicheBadge = `<span class="px-2 py-0.5 rounded text-[10px] font-semibold ${nicheInfo.color} border">${nicheInfo.label}</span>`;
 
                   const currentStep = p.current_step || 0;
@@ -298,8 +302,8 @@ function renderProspectsHtml(list, authKey = '') {
                   if (p.next_due_at && p.status === 'active') {
                     const dueDate = new Date(p.next_due_at);
                     const isDueNow = dueDate <= new Date();
-                    dueText = `<div class="text-[10px] ${isDueNow ? 'text-amber-400 font-bold animate-pulse' : 'text-[var(--text-muted)]'} font-mono mt-0.5">
-                      ${isDueNow ? '● Due Now' : 'Due: ' + dueDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                    dueText = `<div class="text-[10px] ${isDueNow ? 'text-amber-500 font-bold animate-pulse' : 'text-[var(--text-muted)]'} font-mono mt-0.5 flex items-center gap-1">
+                      ${isDueNow ? '<span class="w-1.5 h-1.5 rounded-full bg-amber-500"></span><span>Due Now</span>' : 'Due: ' + dueDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
                     </div>`;
                   }
 
@@ -336,7 +340,8 @@ function renderProspectsHtml(list, authKey = '') {
                         ${nicheBadge}
                       </div>
                       <div class="text-[11px] text-[var(--text-muted)] flex items-center gap-1 mt-0.5">
-                        <span>📍 ${escapeHtml(p.city || 'United States')}</span>
+                        ${getSvgIcon('mapPin', 'w-3 h-3 shrink-0 opacity-75')}
+                        <span>${escapeHtml(p.city || 'United States')}</span>
                       </div>
                     </td>
 
@@ -349,11 +354,11 @@ function renderProspectsHtml(list, authKey = '') {
                               ? `<span class="px-2 py-0.5 rounded text-[10px] font-bold font-mono border ${qColor}">${qScore}/100 ${escapeHtml(qGrade)}</span>`
                               : `<span class="px-2 py-0.5 rounded text-[10px] font-mono bg-gray-500/10 text-gray-400 border border-gray-500/20">Unscored</span>`
                           }
-                          <button type="button" onclick="requalifyProspect('${p.id}', this)" class="text-[10px] text-cyan-400 hover:underline font-mono cursor-pointer" title="Run 10-Second Eye Test & 100-Pt Score on this website">↻ Score</button>
+                          <button type="button" onclick="requalifyProspect('${p.id}', this)" class="inline-flex items-center gap-1 text-[10px] text-[var(--accent-cyan)] hover:underline font-mono cursor-pointer" title="Run 10-Second Eye Test & 100-Pt Score on this website">${getSvgIcon('refresh', 'w-3 h-3')}<span>Score</span></button>
                         </div>
                         ${
                           p.review_count
-                            ? `<div class="text-[10px] font-mono text-amber-300">★ ${p.google_rating || '4.8'} (${p.review_count} rev)</div>`
+                            ? `<div class="inline-flex items-center gap-1 text-[10px] font-mono text-amber-500">${getSvgIcon('star', 'w-3 h-3')}<span>${p.google_rating || '4.8'} (${p.review_count} rev)</span></div>`
                             : ''
                         }
                       </div>
@@ -372,8 +377,8 @@ function renderProspectsHtml(list, authKey = '') {
                         }
                         ${
                           p.email
-                            ? `<a href="mailto:${escapeHtml(p.email)}" class="inline-flex items-center gap-1 px-2.5 py-1.5 bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 rounded-xl font-mono text-xs transition shadow-sm" title="Direct Email: ${escapeHtml(p.email)}">
-                                <span>✉️</span>
+                            ? `<a href="mailto:${escapeHtml(p.email)}" class="inline-flex items-center gap-1.5 px-2.5 py-1.5 bg-cyan-500/10 hover:bg-cyan-500/20 text-[var(--accent-cyan)] border border-cyan-500/30 rounded-xl font-mono text-xs transition shadow-sm" title="Direct Email: ${escapeHtml(p.email)}">
+                                ${getSvgIcon('mail', 'w-3 h-3 shrink-0')}
                                 <span class="max-w-[170px] truncate">${escapeHtml(p.email)}</span>
                               </a>`
                             : `<span class="text-[var(--text-muted)] text-xs italic">No email</span>`
@@ -387,16 +392,17 @@ function renderProspectsHtml(list, authKey = '') {
                         <div class="flex items-center gap-1.5">
                           ${
                             p.harvey_status === 'passed'
-                              ? `<span class="px-2 py-0.5 rounded text-[10px] font-bold font-mono bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">✓ Ready</span>`
-                              : `<span class="px-2 py-0.5 rounded text-[10px] font-mono text-cyan-400 bg-cyan-500/10 border border-cyan-500/20">○ Pending</span>`
+                              ? `<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold font-mono bg-emerald-500/15 text-[var(--accent-emerald)] border border-emerald-500/30">${getSvgIcon('check', 'w-2.5 h-2.5')}<span>Ready</span></span>`
+                              : `<span class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-[10px] font-mono text-[var(--accent-cyan)] bg-cyan-500/10 border border-cyan-500/20"><span class="w-1.5 h-1.5 rounded-full bg-cyan-500"></span><span>Pending</span></span>`
                           }
                           <button 
                             type="button"
                             onclick="inspectHarveyHook('${p.id}')"
-                            class="text-[10px] text-cyan-400 hover:text-cyan-300 underline font-semibold transition cursor-pointer"
+                            class="inline-flex items-center gap-1 text-[10px] text-[var(--accent-cyan)] hover:underline font-semibold transition cursor-pointer"
                             title="Inspect bespoke prompt and draft"
                           >
-                            Inspect Hook ↗
+                            <span>Inspect Hook</span>
+                            ${getSvgIcon('external', 'w-2.5 h-2.5')}
                           </button>
                         </div>
                         <p class="text-[11px] text-[var(--text-primary)] font-medium leading-tight line-clamp-2" title="${escapeHtml(p.specific_observation || p.harvey_draft || '')}">
@@ -475,8 +481,9 @@ function renderProspectsHtml(list, authKey = '') {
 
         ${
           list.length === 0
-            ? `<div class="p-12 text-center text-[var(--text-muted)] text-xs">
-                No prospects found in database. <a href="/scraper/dashboard" class="text-cyan-400 underline font-medium">Scout clinics now</a>.
+            ? `<div class="p-12 text-center text-[var(--text-muted)] text-xs space-y-2">
+                <p class="font-medium text-[var(--text-secondary)]">No qualified trade prospects in pipeline yet.</p>
+                <a href="/scraper/dashboard" class="inline-flex items-center gap-1.5 text-[var(--accent-cyan)] hover:underline font-semibold">Launch Lead Hunter ${getSvgIcon('arrowRight', 'w-3.5 h-3.5')}</a>
               </div>`
             : ''
         }
@@ -495,28 +502,28 @@ function renderProspectsHtml(list, authKey = '') {
               <h3 id="modalTitle" class="text-sm font-bold text-[var(--text-primary)]">Preview Step 1 Email Audit</h3>
               <span id="modalWordCount" class="text-[10px] font-mono px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20"></span>
             </div>
-            <p id="modalRecipient" class="text-xs text-[var(--text-muted)] font-mono mt-0.5">To: doctor@clinic.com</p>
+            <p id="modalRecipient" class="text-xs text-[var(--text-muted)] font-mono mt-0.5">To: owner@contractor.com</p>
           </div>
-          <button onclick="closeModal()" class="text-[var(--text-muted)] hover:text-[var(--text-primary)] text-lg font-bold">✕</button>
+          <button onclick="closeModal()" aria-label="Close preview modal" class="p-1.5 rounded-lg text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)] transition cursor-pointer">${getSvgIcon('close', 'w-4 h-4')}</button>
         </div>
 
         <div class="bg-[var(--bg-surface)] p-4 rounded-xl border border-[var(--border-subtle)] space-y-3 text-xs">
           <div class="text-[var(--text-secondary)] font-mono border-b border-[var(--border-subtle)] pb-2">
-            <strong>Subject:</strong> <span id="modalSubject" class="text-cyan-400 font-semibold"></span>
+            <strong>Subject:</strong> <span id="modalSubject" class="text-[var(--accent-cyan)] font-semibold"></span>
           </div>
           <div id="modalBody" class="font-mono text-[var(--text-primary)] leading-relaxed whitespace-pre-line py-1"></div>
           <div class="text-[11px] text-[var(--text-muted)] border-t border-[var(--border-subtle)] pt-2 font-mono flex items-center justify-between">
             <span>Rules: 45–65 words • Zero AI fluff • Lowercase after dash</span>
-            <span class="text-emerald-400">✓ Harvey Compliant</span>
+            <span class="text-[var(--accent-emerald)] inline-flex items-center gap-1">${getSvgIcon('check', 'w-3 h-3')} Harvey Compliant</span>
           </div>
         </div>
 
         <div class="flex items-center justify-between pt-2">
-          <a id="modalFullStudioLink" href="/outreach/preview" class="text-xs text-cyan-400 hover:underline flex items-center gap-1 font-semibold">
+          <a id="modalFullStudioLink" href="/outreach/preview" class="text-xs text-[var(--accent-cyan)] hover:underline flex items-center gap-1 font-semibold">
             <span>Open Full Script Studio (All 4 Steps)</span>
-            <span>→</span>
+            ${getSvgIcon('arrowRight', 'w-3.5 h-3.5')}
           </a>
-          <button onclick="closeModal()" class="px-4 py-1.5 rounded-xl bg-[var(--bg-surface)] hover:bg-[var(--bg-hover)] text-[var(--text-secondary)] text-xs font-medium transition">
+          <button onclick="closeModal()" class="px-4 py-1.5 rounded-xl bg-[var(--bg-surface)] hover:bg-[var(--bg-hover)] text-[var(--text-secondary)] text-xs font-medium transition cursor-pointer">
             Close
           </button>
         </div>
@@ -529,15 +536,15 @@ function renderProspectsHtml(list, authKey = '') {
         <div class="flex items-start justify-between border-b border-[var(--border-subtle)] pb-3">
           <div>
             <div class="flex items-center gap-2">
-              <span class="p-1 rounded-lg bg-cyan-500/10 text-cyan-400 font-bold">${getSvgIcon('bolt', 'w-4 h-4')}</span>
+              <span class="p-1 rounded-lg bg-cyan-500/10 text-[var(--accent-cyan)] font-bold">${getSvgIcon('bolt', 'w-4 h-4')}</span>
               <h3 class="text-sm font-bold text-[var(--text-primary)] flex items-center gap-2">
-                <span>Harvey Bespoke Hook & Quality Gate</span>
-                <span id="modalHarveyScoreBadge" class="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-mono font-bold">Score: 100/100</span>
+                <span>Harvey Bespoke Hook &amp; Quality Gate</span>
+                <span id="modalHarveyScoreBadge" class="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/10 text-[var(--accent-emerald)] border border-emerald-500/20 font-mono font-bold">Score: 100/100</span>
               </h3>
             </div>
             <p id="modalHarveySubtitle" class="text-xs text-[var(--text-muted)] mt-0.5">Site-Inspected 1-of-1 Cold Hook Draft</p>
           </div>
-          <button onclick="closeHarveyModal()" class="text-[var(--text-muted)] hover:text-[var(--text-primary)] text-lg font-bold cursor-pointer">✕</button>
+          <button onclick="closeHarveyModal()" aria-label="Close inspector modal" class="p-1.5 rounded-lg text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)] transition cursor-pointer">${getSvgIcon('close', 'w-4 h-4')}</button>
         </div>
 
         <div class="space-y-4 text-xs">
@@ -588,11 +595,12 @@ function renderProspectsHtml(list, authKey = '') {
 
           <!-- Dynamic Prompt Dossier Accordion -->
           <details class="group bg-[var(--bg-surface)] border border-[var(--border-subtle)] rounded-xl p-3">
-            <summary class="flex items-center justify-between cursor-pointer font-semibold text-[11px] text-[var(--text-secondary)] group-open:text-cyan-400">
+            <summary class="flex items-center justify-between cursor-pointer font-semibold text-[11px] text-[var(--text-secondary)] group-open:text-[var(--accent-cyan)]">
               <span class="flex items-center gap-1.5">
-                <span>🔍 Inspect Dynamic Harvey Prompt Fed to LLM</span>
+                ${getSvgIcon('sliders', 'w-3.5 h-3.5')}
+                <span>Inspect Dynamic Harvey Prompt Fed to LLM</span>
               </span>
-              <span class="text-[10px] font-mono group-open:rotate-180 transition">▼</span>
+              ${getSvgIcon('chevronDown', 'w-3.5 h-3.5 group-open:rotate-180 transition')}
             </summary>
             <div id="modalHarveyPrompt" class="mt-2.5 pt-2 border-t border-[var(--border-subtle)] font-mono text-[11px] text-[var(--text-muted)] whitespace-pre-line leading-relaxed max-h-48 overflow-y-auto pr-1">
             </div>
@@ -601,8 +609,8 @@ function renderProspectsHtml(list, authKey = '') {
 
         <!-- Safe Demo Dispatch Bar -->
         <div class="pt-3 border-t border-[var(--border-subtle)] flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
-          <div class="text-[11px] text-amber-400 flex items-center gap-1.5 font-medium">
-            <span>🛡️</span>
+          <div class="text-[11px] text-amber-500 flex items-center gap-1.5 font-medium">
+            ${getSvgIcon('shield', 'w-3.5 h-3.5 shrink-0')}
             <span>Safety Gate: Demo sends strictly to your phone. Live prospects remain frozen.</span>
           </div>
 
@@ -916,7 +924,7 @@ function renderProspectsHtml(list, authKey = '') {
         const btn = document.getElementById('btnTriggerWorker');
         if (btn) {
           btn.disabled = true;
-          btn.innerHTML = '<span>⏳ Processing Queue...</span>';
+          btn.innerHTML = '${getSvgIcon('spinner', 'w-3.5 h-3.5 animate-spin')}<span>Processing Queue...</span>';
         }
         try {
           const url = getAuthUrl('/outreach/cron/trigger' + (force ? '?force=true' : ''));
@@ -929,7 +937,7 @@ function renderProspectsHtml(list, authKey = '') {
           const data = await res.json();
           if (btn) {
             btn.disabled = false;
-            btn.innerHTML = '${getSvgIcon('play', 'w-3.5 h-3.5')}<span>Run Follow-Up Queue Now</span>';
+            btn.innerHTML = '${getSvgIcon('play', 'w-3.5 h-3.5 text-cyan-500')}<span>Run Cadence</span>';
           }
           if (res.ok) {
             const summary = data.summary || {};
@@ -1136,7 +1144,7 @@ function renderProspectsHtml(list, authKey = '') {
         } finally {
           if (btn) {
             btn.disabled = false;
-            btn.innerHTML = '${getSvgIcon('bolt', 'w-3.5 h-3.5')}<span>⚡ Run Harvey Engine</span>';
+            btn.innerHTML = '${getSvgIcon('bolt', 'w-3.5 h-3.5')}<span>Run Harvey Engine</span>';
           }
         }
       }
@@ -1145,7 +1153,7 @@ function renderProspectsHtml(list, authKey = '') {
         const btn = document.getElementById('btnCopySheets');
         if (btn) {
           btn.disabled = true;
-          btn.innerHTML = '<span>⏳ Copying...</span>';
+          btn.innerHTML = '${getSvgIcon('spinner', 'w-3.5 h-3.5 animate-spin')}<span>Copying...</span>';
         }
         try {
           const res = await fetch(getAuthUrl('/outreach/harvey/export-tsv'), {
@@ -1159,7 +1167,7 @@ function renderProspectsHtml(list, authKey = '') {
         } finally {
           if (btn) {
             btn.disabled = false;
-            btn.innerHTML = '<span>📋 Copy for Google Sheet</span>';
+            btn.innerHTML = '${getSvgIcon('copy', 'w-3.5 h-3.5')}<span>Copy for Google Sheet</span>';
           }
         }
       }
@@ -1188,7 +1196,7 @@ function renderProspectsHtml(list, authKey = '') {
         } finally {
           if (btn) {
             btn.disabled = false;
-            btn.innerHTML = '<span>📊 Sync to Sheets</span>';
+            btn.innerHTML = '${getSvgIcon('refresh', 'w-3.5 h-3.5')}<span>Sync to Sheets</span>';
           }
         }
       }
@@ -1215,7 +1223,9 @@ function renderProspectsHtml(list, authKey = '') {
               ? 'bg-amber-500/15 text-amber-300 border-amber-500/30'
               : 'bg-rose-500/15 text-rose-400 border-rose-500/30';
             if (cell) {
-              cell.innerHTML = '<div class="space-y-1"><div class="flex items-center gap-1.5"><span class="px-2 py-0.5 rounded text-[10px] font-bold font-mono border ' + cClass + '">' + q.score + '/100 ' + q.grade + '</span><button type="button" onclick="requalifyProspect(\\'' + id + '\\', this)" class="text-[10px] text-cyan-400 hover:underline font-mono cursor-pointer">↻ Score</button></div>' + (q.reviewCount ? '<div class="text-[10px] font-mono text-amber-300">★ ' + (q.googleRating || '4.8') + ' (' + q.reviewCount + ' rev)</div>' : '') + '</div>';
+              const refreshSvg = '${getSvgIcon('refresh', 'w-3 h-3').replace(/'/g, '"')}';
+              const starSvg = '${getSvgIcon('star', 'w-3 h-3').replace(/'/g, '"')}';
+              cell.innerHTML = '<div class="space-y-1"><div class="flex items-center gap-1.5"><span class="px-2 py-0.5 rounded text-[10px] font-bold font-mono border ' + cClass + '">' + q.score + '/100 ' + q.grade + '</span><button type="button" data-id="' + id + '" onclick="requalifyProspect(this.dataset.id, this)" class="inline-flex items-center gap-1 text-[10px] text-[var(--accent-cyan)] hover:underline font-mono cursor-pointer">' + refreshSvg + '<span>Score</span></button></div>' + (q.reviewCount ? '<div class="inline-flex items-center gap-1 text-[10px] font-mono text-amber-500">' + starSvg + '<span>' + (q.googleRating || '4.8') + ' (' + q.reviewCount + ' rev)</span></div>' : '') + '</div>';
             }
             const row = document.querySelector('.prospect-row[data-id="' + id + '"]');
             if (row) row.setAttribute('data-qual', q.score);
@@ -1228,7 +1238,7 @@ function renderProspectsHtml(list, authKey = '') {
         } finally {
           if (btnEl) {
             btnEl.disabled = false;
-            btnEl.innerText = '↻ Score';
+            btnEl.innerHTML = '${getSvgIcon('refresh', 'w-3 h-3').replace(/'/g, '"')}<span>Score</span>';
           }
         }
       }
@@ -2225,7 +2235,7 @@ ${escapeHtml(seq.text)}
         } finally {
           if (btn) {
             btn.disabled = false;
-            btn.innerHTML = '${getSvgIcon('bolt', 'w-3.5 h-3.5')}<span>⚡ Run Harvey Engine</span>';
+            btn.innerHTML = '${getSvgIcon('bolt', 'w-3.5 h-3.5')}<span>Run Harvey Engine</span>';
           }
         }
       }
@@ -2234,7 +2244,7 @@ ${escapeHtml(seq.text)}
         const btn = document.getElementById('btnCopySheets');
         if (btn) {
           btn.disabled = true;
-          btn.innerHTML = '<span>⏳ Copying...</span>';
+          btn.innerHTML = '${getSvgIcon('spinner', 'w-3.5 h-3.5 animate-spin')}<span>Copying...</span>';
         }
         try {
           const res = await fetch(getAuthUrl('/outreach/harvey/export-tsv'), {
@@ -2248,7 +2258,7 @@ ${escapeHtml(seq.text)}
         } finally {
           if (btn) {
             btn.disabled = false;
-            btn.innerHTML = '<span>📋 Copy for Google Sheet</span>';
+            btn.innerHTML = '${getSvgIcon('copy', 'w-3.5 h-3.5')}<span>Copy for Google Sheet</span>';
           }
         }
       }
@@ -2277,7 +2287,7 @@ ${escapeHtml(seq.text)}
         } finally {
           if (btn) {
             btn.disabled = false;
-            btn.innerHTML = '<span>📊 Sync to Sheets</span>';
+            btn.innerHTML = '${getSvgIcon('refresh', 'w-3.5 h-3.5')}<span>Sync to Sheets</span>';
           }
         }
       }
@@ -2304,7 +2314,9 @@ ${escapeHtml(seq.text)}
               ? 'bg-amber-500/15 text-amber-300 border-amber-500/30'
               : 'bg-rose-500/15 text-rose-400 border-rose-500/30';
             if (cell) {
-              cell.innerHTML = '<div class="space-y-1"><div class="flex items-center gap-1.5"><span class="px-2 py-0.5 rounded text-[10px] font-bold font-mono border ' + cClass + '">' + q.score + '/100 ' + q.grade + '</span><button type="button" onclick="requalifyProspect(\\'' + id + '\\', this)" class="text-[10px] text-cyan-400 hover:underline font-mono cursor-pointer">↻ Score</button></div>' + (q.reviewCount ? '<div class="text-[10px] font-mono text-amber-300">★ ' + (q.googleRating || '4.8') + ' (' + q.reviewCount + ' rev)</div>' : '') + '</div>';
+              const refreshSvg = '${getSvgIcon('refresh', 'w-3 h-3').replace(/'/g, '"')}';
+              const starSvg = '${getSvgIcon('star', 'w-3 h-3').replace(/'/g, '"')}';
+              cell.innerHTML = '<div class="space-y-1"><div class="flex items-center gap-1.5"><span class="px-2 py-0.5 rounded text-[10px] font-bold font-mono border ' + cClass + '">' + q.score + '/100 ' + q.grade + '</span><button type="button" data-id="' + id + '" onclick="requalifyProspect(this.dataset.id, this)" class="inline-flex items-center gap-1 text-[10px] text-[var(--accent-cyan)] hover:underline font-mono cursor-pointer">' + refreshSvg + '<span>Score</span></button></div>' + (q.reviewCount ? '<div class="inline-flex items-center gap-1 text-[10px] font-mono text-amber-500">' + starSvg + '<span>' + (q.googleRating || '4.8') + ' (' + q.reviewCount + ' rev)</span></div>' : '') + '</div>';
             }
             const row = document.querySelector('.prospect-row[data-id="' + id + '"]');
             if (row) row.setAttribute('data-qual', q.score);
@@ -2317,7 +2329,7 @@ ${escapeHtml(seq.text)}
         } finally {
           if (btnEl) {
             btnEl.disabled = false;
-            btnEl.innerText = '↻ Score';
+            btnEl.innerHTML = '${getSvgIcon('refresh', 'w-3 h-3').replace(/'/g, '"')}<span>Score</span>';
           }
         }
       }

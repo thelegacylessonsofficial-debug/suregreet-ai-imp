@@ -1,15 +1,14 @@
 import * as cheerio from 'cheerio';
-import { fetchJinaMarkdown, runDigitalAudit } from './auditorService.js';
-import { addProspect, getProspectById, updateProspect, getProspects } from './outreachService.js';
+import crypto from 'crypto';
+import { runDigitalAudit } from './auditorService.js';
+import { addProspect, getProspectById, updateProspect, getProspectDedupeIndex } from './outreachService.js';
 import { scrapeClinicWebsite, normalizeUrl } from './scraperService.js';
 import { qualifyLead, getQualificationBadge, DEFAULT_QUALIFY_THRESHOLD } from './qualifierService.js';
 import { sendTelegram } from './telegram.js';
 
-const USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36';
+const USER_AGENT =
+  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36';
 
-/**
- * High-Ticket Search Queries per Trade Niche (Real Contractor Sites > SEO Doorway Farms)
- */
 const NICHE_QUERIES = {
   hvac: [
     'Heating and Air Conditioning HVAC Company',
@@ -18,40 +17,25 @@ const NICHE_QUERIES = {
     'Emergency HVAC Repair',
   ],
   plumbing: [
+    'Family Owned Plumbing Water Heater Contractor',
     '24/7 Emergency Plumbing Repair',
-    'Emergency Drain Cleaning and Sewer Line',
-    'Commercial Water Heater Replacement',
-    'Emergency Burst Pipe Plumber',
+    'Drain Cleaning and Sewer Line Plumber',
   ],
   roofing: [
+    'Local Roofing Replacement Contractor',
     'Emergency Roof Repair Tarping',
-    'Commercial and Residential Roof Replacement',
     'Storm Damage Roof Restoration',
-    'Emergency Roofing Contractor 24/7',
   ],
   electrical: [
+    'Residential Electrical Panel Generator Contractor',
     '24/7 Emergency Electrician Repair',
-    'Commercial Electrical Service Panel Upgrade',
-    'Whole Home Generator Installation',
-    'Emergency Electrical Contractor',
   ],
   water_damage: [
-    '24/7 Emergency Water Damage Restoration',
-    'Flood Extraction and Structural Drying',
-    'Emergency Fire and Water Damage Cleanup',
-  ],
-  medspa: [
-    'MedSpa Morpheus8',
-    'Medical Aesthetics Botox',
+    'Water Damage Restoration Flood Cleanup',
+    '24/7 Emergency Structural Drying',
   ],
 };
 
-/**
- * Archit's Systematic Territory Cascade:
- * Phase 1: PACIFIC TIMEZONE (CA -> WA -> OR -> NV) - Top 5 Cities Each
- * Phase 2: EASTERN TIMEZONE (FL -> NY -> GA) - Top 5 Cities Each
- * Phase 3: Secondary Tier Cities (Exhaust Pacific then Eastern)
- */
 export const TERRITORY_CASCADE = {
   pacific: {
     name: 'Pacific Timezone (PT)',
@@ -60,120 +44,84 @@ export const TERRITORY_CASCADE = {
       CA: {
         name: 'California',
         topTier: ['Los Angeles, CA', 'San Diego, CA', 'San Jose, CA', 'San Francisco, CA', 'Fresno, CA'],
-        secondaryTier: [
-          'Sacramento, CA', 'Long Beach, CA', 'Oakland, CA', 'Bakersfield, CA', 'Anaheim, CA',
-          'Stockton, CA', 'Riverside, CA', 'Irvine, CA', 'Chula Vista, CA', 'Santa Clarita, CA',
-          'San Bernardino, CA', 'Modesto, CA', 'Moreno Valley, CA', 'Oxnard, CA', 'Santa Rosa, CA'
-        ]
+        secondaryTier: ['Sacramento, CA', 'Long Beach, CA', 'Oakland, CA', 'Irvine, CA', 'Anaheim, CA', 'Riverside, CA'],
       },
       WA: {
         name: 'Washington',
         topTier: ['Seattle, WA', 'Spokane, WA', 'Tacoma, WA', 'Vancouver, WA', 'Bellevue, WA'],
-        secondaryTier: [
-          'Kent, WA', 'Everett, WA', 'Spokane Valley, WA', 'Renton, WA', 'Federal Way, WA',
-          'Yakima, WA', 'Kirkland, WA', 'Bellingham, WA', 'Kennewick, WA', 'Auburn, WA',
-          'Pasco, WA', 'Richland, WA', 'Shoreline, WA', 'Sammamish, WA', 'Lakewood, WA'
-        ]
+        secondaryTier: ['Kent, WA', 'Everett, WA', 'Renton, WA', 'Kirkland, WA', 'Bellingham, WA'],
       },
       OR: {
         name: 'Oregon',
         topTier: ['Portland, OR', 'Eugene, OR', 'Salem, OR', 'Gresham, OR', 'Hillsboro, OR'],
-        secondaryTier: [
-          'Beaverton, OR', 'Bend, OR', 'Medford, OR', 'Springfield, OR', 'Corvallis, OR',
-          'Albany, OR', 'Tigard, OR', 'Lake Oswego, OR', 'Keizer, OR', 'Oregon City, OR',
-          'Redmond, OR', 'Grants Pass, OR', 'West Linn, OR', 'Sherwood, OR', 'Newberg, OR'
-        ]
+        secondaryTier: ['Beaverton, OR', 'Bend, OR', 'Medford, OR', 'Lake Oswego, OR'],
       },
       NV: {
         name: 'Nevada',
         topTier: ['Las Vegas, NV', 'Henderson, NV', 'North Las Vegas, NV', 'Reno, NV', 'Sparks, NV'],
-        secondaryTier: [
-          'Enterprise, NV', 'Spring Valley, NV', 'Sunrise Manor, NV', 'Paradise, NV', 'Carson City, NV',
-          'Whitney, NV', 'Pahrump, NV', 'Winchester, NV', 'Summerlin South, NV', 'Fernley, NV',
-          'Sun Valley, NV', 'Mesquite, NV', 'Elko, NV', 'Spanish Springs, NV', 'Dayton, NV'
-        ]
-      }
-    }
+        secondaryTier: ['Carson City, NV', 'Summerlin South, NV'],
+      },
+    },
   },
   eastern: {
-    name: 'Eastern Timezone (ET)',
+    name: 'Eastern / Central Suburbs & Metros',
     order: 2,
     states: {
       FL: {
         name: 'Florida',
         topTier: ['Jacksonville, FL', 'Miami, FL', 'Tampa, FL', 'Orlando, FL', 'St. Petersburg, FL'],
-        secondaryTier: [
-          'Port St. Lucie, FL', 'Cape Coral, FL', 'Hialeah, FL', 'Tallahassee, FL', 'Fort Lauderdale, FL',
-          'Pembroke Pines, FL', 'Hollywood, FL', 'Miramar, FL', 'Gainesville, FL', 'Coral Springs, FL',
-          'Clearwater, FL', 'Palm Bay, FL', 'West Palm Beach, FL'
-        ]
+        secondaryTier: ['Fort Lauderdale, FL', 'Cape Coral, FL', 'West Palm Beach, FL', 'Clearwater, FL'],
       },
       NY: {
         name: 'New York',
         topTier: ['New York City, NY', 'Buffalo, NY', 'Rochester, NY', 'Yonkers, NY', 'Syracuse, NY'],
-        secondaryTier: [
-          'Albany, NY', 'New Rochelle, NY', 'Mount Vernon, NY', 'Schenectady, NY', 'Utica, NY',
-          'White Plains, NY', 'Troy, NY', 'Niagara Falls, NY', 'Binghamton, NY', 'Freeport, NY',
-          'Valley Stream, NY', 'Long Beach, NY', 'Poughkeepsie, NY'
-        ]
+        secondaryTier: ['Albany, NY', 'White Plains, NY'],
       },
       GA: {
         name: 'Georgia',
         topTier: ['Atlanta, GA', 'Augusta, GA', 'Columbus, GA', 'Macon, GA', 'Savannah, GA'],
-        secondaryTier: [
-          'Athens, GA', 'Sandy Springs, GA', 'South Fulton, GA', 'Roswell, GA', 'Warner Robins, GA',
-          'Albany, GA', 'Johns Creek, GA', 'Alpharetta, GA', 'Marietta, GA', 'Stonecrest, GA',
-          'Smyrna, GA', 'Valdosta, GA', 'Dunwoody, GA', 'Brookhaven, GA'
-        ]
+        secondaryTier: ['Roswell, GA', 'Alpharetta, GA', 'Marietta, GA'],
       },
       IN: {
         name: 'Indiana',
         topTier: ['Carmel, IN', 'Zionsville, IN'],
-        secondaryTier: ['Indianapolis, IN', 'Fishers, IN', 'Westfield, IN', 'Noblesville, IN']
+        secondaryTier: ['Indianapolis, IN', 'Fishers, IN', 'Westfield, IN', 'Noblesville, IN'],
       },
       OH: {
         name: 'Ohio',
         topTier: ['Dublin, OH'],
-        secondaryTier: ['Columbus, OH', 'Powell, OH', 'Westerville, OH', 'New Albany, OH']
+        secondaryTier: ['Columbus, OH', 'Powell, OH', 'Westerville, OH', 'New Albany, OH'],
       },
       TX: {
-        name: 'Texas (Affluent Suburbs)',
-        topTier: ['Prosper, TX', 'Celina, TX', 'Fulshear, TX'],
-        secondaryTier: ['Frisco, TX', 'McKinney, TX', 'Allen, TX', 'Katy, TX', 'Sugar Land, TX']
+        name: 'Texas',
+        topTier: ['Prosper, TX', 'Celina, TX', 'Fulshear, TX', 'Dallas, TX', 'Austin, TX', 'Houston, TX'],
+        secondaryTier: ['Frisco, TX', 'McKinney, TX', 'Allen, TX', 'Katy, TX', 'Sugar Land, TX'],
       },
       TN: {
         name: 'Tennessee',
-        topTier: ['Brentwood, TN'],
-        secondaryTier: ['Nashville, TN', 'Franklin, TN', 'Murfreesboro, TN', 'Nolensville, TN']
-      }
-    }
-  }
+        topTier: ['Brentwood, TN', 'Nashville, TN'],
+        secondaryTier: ['Franklin, TN', 'Murfreesboro, TN', 'Nolensville, TN'],
+      },
+    },
+  },
 };
 
-/**
- * Deterministic ordered cascade of top priority cities across Pacific then Eastern
- */
 export const ORDERED_CASCADE_CITIES = [
-  // 1. Pacific Top 5 Each (Total: 20)
   ...TERRITORY_CASCADE.pacific.states.CA.topTier,
   ...TERRITORY_CASCADE.pacific.states.WA.topTier,
   ...TERRITORY_CASCADE.pacific.states.OR.topTier,
   ...TERRITORY_CASCADE.pacific.states.NV.topTier,
-  // 2. Eastern Top 5 Each (Total: 15)
   ...TERRITORY_CASCADE.eastern.states.FL.topTier,
   ...TERRITORY_CASCADE.eastern.states.NY.topTier,
   ...TERRITORY_CASCADE.eastern.states.GA.topTier,
-  // 3. NEW: High-Income Suburban Markets (Phase 3 Priority)
-  ...TERRITORY_CASCADE.eastern.states.IN.topTier,   // Carmel & Zionsville, IN
-  ...TERRITORY_CASCADE.eastern.states.OH.topTier,   // Dublin, OH
-  ...TERRITORY_CASCADE.eastern.states.TX.topTier,   // Prosper, Celina, Fulshear, TX
-  ...TERRITORY_CASCADE.eastern.states.TN.topTier,   // Brentwood, TN
-  // 4. Pacific Secondary Tier
+  ...TERRITORY_CASCADE.eastern.states.IN.topTier,
+  ...TERRITORY_CASCADE.eastern.states.OH.topTier,
+  ...TERRITORY_CASCADE.eastern.states.TX.topTier,
+  ...TERRITORY_CASCADE.eastern.states.TN.topTier,
   ...TERRITORY_CASCADE.pacific.states.CA.secondaryTier,
   ...TERRITORY_CASCADE.pacific.states.WA.secondaryTier,
   ...TERRITORY_CASCADE.pacific.states.OR.secondaryTier,
   ...TERRITORY_CASCADE.pacific.states.NV.secondaryTier,
-  // 5. Eastern Secondary Tier
   ...TERRITORY_CASCADE.eastern.states.FL.secondaryTier,
   ...TERRITORY_CASCADE.eastern.states.NY.secondaryTier,
   ...TERRITORY_CASCADE.eastern.states.GA.secondaryTier,
@@ -185,498 +133,234 @@ export const ORDERED_CASCADE_CITIES = [
 
 export function getNextCascadeCity(currentCity) {
   if (!currentCity) return ORDERED_CASCADE_CITIES[0];
-  const idx = ORDERED_CASCADE_CITIES.findIndex(c => c.toLowerCase().includes(currentCity.toLowerCase()) || currentCity.toLowerCase().includes(c.toLowerCase()));
-  if (idx === -1 || idx === ORDERED_CASCADE_CITIES.length - 1) {
-    return ORDERED_CASCADE_CITIES[0];
-  }
-  return ORDERED_CASCADE_CITIES[idx + 1];
+  const idx = ORDERED_CASCADE_CITIES.findIndex(
+    (c) => c.toLowerCase().includes(currentCity.toLowerCase()) || currentCity.toLowerCase().includes(c.toLowerCase())
+  );
+  return idx === -1 || idx === ORDERED_CASCADE_CITIES.length - 1
+    ? ORDERED_CASCADE_CITIES[0]
+    : ORDERED_CASCADE_CITIES[idx + 1];
 }
 
-/**
- * Fallback Curated High-Ticket Target Domains per Metro (Used if search engine blocks cloud datacenter IP)
- */
+// Verified Trade Contractor Seed Directory (strictly local single/family operators — chains excluded)
 const CURATED_TARGETS = {
-  medspa: {
-    miami: [
-      { title: 'Med Aesthetics Miami', url: 'https://www.medaestheticsmiami.com', city: 'Miami, FL' },
-      { title: 'Aglow Medical & MedSpa Miami Lakes', url: 'https://aglowmiami.com', city: 'Miami, FL' },
-      { title: 'Microneedling & Morpheus8 Miami Center', url: 'https://microneedlingmiamicenter.com', city: 'Miami, FL' },
-      { title: 'Hochstein Medspa Miami Beach', url: 'https://www.lhochsteinmd.com', city: 'Miami, FL' },
-      { title: 'DermaCare Brickell Laser & MedSpa', url: 'https://dermacarebrickell.com', city: 'Miami, FL' },
-    ],
-    dallas: [
-      { title: 'Vitalyc Medspa Dallas', url: 'https://www.vitalyc.com', city: 'Dallas, TX' },
-      { title: 'Rejuve Med-Spa Dallas', url: 'https://www.rejuvemedspa.com', city: 'Dallas, TX' },
-      { title: 'EpiCentre Skin Care & Laser Dallas', url: 'https://www.epicentreskincare.com', city: 'Dallas, TX' },
-      { title: 'Lumea Med Spa Dallas', url: 'https://lumeamedspa.com', city: 'Dallas, TX' },
-      { title: 'Dallas Plastic Surgery Institute MedSpa', url: 'https://dpsi.org', city: 'Dallas, TX' },
-    ],
-    phoenix: [
-      { title: 'Vibrant Skin Bar Phoenix', url: 'https://vibrantskinbar.com', city: 'Phoenix, AZ' },
-      { title: 'Scottsdale Skin & Holistic MedSpa', url: 'https://scottsdalemedspa.com', city: 'Phoenix, AZ' },
-      { title: 'Skin Science Institute Phoenix', url: 'https://skinscienceinstitute.com', city: 'Phoenix, AZ' },
-      { title: 'Sculpted Contours MedSpa Phoenix', url: 'https://sculptedcontours.com', city: 'Phoenix, AZ' },
-      { title: 'Beverly Hills Rejuvenation Center Scottsdale', url: 'https://bhrcenter.com', city: 'Phoenix, AZ' },
-      { title: 'Skin Cabinet MedSpa Phoenix', url: 'https://skincabinet.com', city: 'Phoenix, AZ' },
-    ],
-    scottsdale: [
-      { title: 'Vibrant Skin Bar Scottsdale', url: 'https://vibrantskinbar.com', city: 'Scottsdale, AZ' },
-      { title: 'Scottsdale Skin & Holistic MedSpa', url: 'https://scottsdalemedspa.com', city: 'Scottsdale, AZ' },
-      { title: 'Beverly Hills Rejuvenation Center Scottsdale', url: 'https://bhrcenter.com', city: 'Scottsdale, AZ' },
-      { title: 'Skin Cabinet MedSpa Scottsdale', url: 'https://skincabinet.com', city: 'Scottsdale, AZ' },
-    ],
-    austin: [
-      { title: 'Elevate Body & Face Medspa Austin', url: 'https://www.elevatemedspa.com', city: 'Austin, TX' },
-      { title: 'Viva Day Spa + Med Spa Austin', url: 'https://www.vivadayspa.com', city: 'Austin, TX' },
-      { title: 'Beleza Surgery & Medspa Austin', url: 'https://belezasurgery.com', city: 'Austin, TX' },
-      { title: 'Austin Medspa', url: 'https://austinmedspa.com', city: 'Austin, TX' },
-      { title: 'Restoration MedSpa Austin', url: 'https://restorationmedspa.com', city: 'Austin, TX' },
-    ],
-    atlanta: [
-      { title: 'ELLEMES Medical Spa Atlanta', url: 'https://www.ellemesmedspa.com', city: 'Atlanta, GA' },
-      { title: 'Atlanta Skin & Beauty Clinic', url: 'https://www.atlantaskinwellnesscenter.com', city: 'Atlanta, GA' },
-      { title: 'Skin IQ Medspa Atlanta', url: 'https://skiniqmedspa.com', city: 'Atlanta, GA' },
-      { title: 'Aya Medical Spa Atlanta', url: 'https://ayaskincare.com', city: 'Atlanta, GA' },
-    ],
-    houston: [
-      { title: 'SkinCeuticals SkinLab Houston', url: 'https://skinlabhouston.com', city: 'Houston, TX' },
-      { title: 'Clinic 45 Medical Spa Houston', url: 'https://clinic45.com', city: 'Houston, TX' },
-      { title: 'Heights Med Spa Houston', url: 'https://heightsmedspa.com', city: 'Houston, TX' },
-      { title: 'DermaTouch RN MedSpa Houston', url: 'https://dermatouchrn.com', city: 'Houston, TX' },
-    ],
+  hvac: {
     'los angeles': [
-      { title: 'Beverly Hills Rejuvenation Center LA', url: 'https://bhrcenter.com', city: 'Los Angeles, CA' },
-      { title: 'Westside Aesthetics Los Angeles', url: 'https://westsideaesthetics.com', city: 'Los Angeles, CA' },
-      { title: 'Motykie Med Spa Beverly Hills', url: 'https://motykiemedspa.com', city: 'Los Angeles, CA' },
-    ],
-    orlando: [
-      { title: 'LightTouch Med Spa Orlando', url: 'https://lighttouchmedspa.com', city: 'Orlando, FL' },
-      { title: 'Fiala Aesthetics Medical Spa Orlando', url: 'https://medspaorlando.com', city: 'Orlando, FL' },
-      { title: 'Winter Park Laser & MedSpa Orlando', url: 'https://winterparklaser.com', city: 'Orlando, FL' },
-    ],
-    tampa: [
-      { title: 'Tampa Bay Body Sculpting MedSpa', url: 'https://tampabaybodysculpting.com', city: 'Tampa, FL' },
-      { title: 'Academic Alliance Medspa Tampa', url: 'https://academicaesthetics.com', city: 'Tampa, FL' },
-    ],
-    denver: [
-      { title: 'Atagi Plastic Surgery & Skin Denver', url: 'https://atagimd.com', city: 'Denver, CO' },
-      { title: 'The Med Spa at Cherry Creek Denver', url: 'https://cherrycreekmedspa.com', city: 'Denver, CO' },
-    ],
-    chicago: [
-      { title: 'Gold Coast Plastic Surgery & Medspa Chicago', url: 'https://goldcoastplasticsurgery.com', city: 'Chicago, IL' },
-      { title: 'Whole Beauty Medical Spa Chicago', url: 'https://wholebeauty.com', city: 'Chicago, IL' },
-    ],
-    'new york': [
-      { title: 'Tribeca MedSpa NYC', url: 'https://tribecamedspa.com', city: 'New York, NY' },
-      { title: 'Skin Spa New York', url: 'https://skinspanewyork.com', city: 'New York, NY' },
+      { title: 'JW Plumbing Heating and Air', url: 'https://jwheatingandair.com', city: 'Los Angeles, CA' },
+      { title: 'Brody Pennell Heating & Air Conditioning', url: 'https://www.brodypennell.com', city: 'Los Angeles, CA' },
     ],
     'san diego': [
-      { title: 'San Diego Cosmetic Laser Clinic', url: 'https://sandiegolaserclinic.com', city: 'San Diego, CA' },
-      { title: 'Siti Med Spa San Diego', url: 'https://sitimedspa.com', city: 'San Diego, CA' },
-      { title: 'Laser Clinique San Diego', url: 'https://laser-clinique.com', city: 'San Diego, CA' },
-      { title: 'SD Body Contouring & Medspa', url: 'https://sdbody.com', city: 'San Diego, CA' },
+      { title: 'Anderson Plumbing Heating & Air', url: 'https://andersonpha.com', city: 'San Diego, CA' },
+      { title: 'Bill Howe Plumbing Heating & Air', url: 'https://billhowe.com', city: 'San Diego, CA' },
     ],
     'san francisco': [
-      { title: 'Epi Center MedSpa San Francisco', url: 'https://epicenter.com', city: 'San Francisco, CA' },
-      { title: 'SkinSpirit San Francisco', url: 'https://skinspirit.com', city: 'San Francisco, CA' },
-      { title: 'Uptown Medical Aesthetics SF', url: 'https://uptownmedicalaesthetics.com', city: 'San Francisco, CA' },
-    ],
-    'las vegas': [
-      { title: 'Chic La Vie Med Spa Las Vegas', url: 'https://chiclavie.com', city: 'Las Vegas, NV' },
-      { title: 'Nuance Aesthetics & MedSpa Las Vegas', url: 'https://nuancemedspa.com', city: 'Las Vegas, NV' },
-    ],
-    seattle: [
-      { title: 'Vida Aesthetic Medicine Seattle', url: 'https://thinkvida.com', city: 'Seattle, WA' },
-      { title: 'Penelope and the Beauty Bar Seattle', url: 'https://penelopeandthebeautybar.com', city: 'Seattle, WA' },
-    ],
-    nashville: [
-      { title: 'Kaya Med Spa Nashville', url: 'https://kayamedspa.com', city: 'Nashville, TN' },
-      { title: 'The Lotus Room Medspa Nashville', url: 'https://thelotusroomnashville.com', city: 'Nashville, TN' },
-    ],
-    charlotte: [
-      { title: 'Carolina Facial Plastics MedSpa Charlotte', url: 'https://carolinafacialplasticsurgery.com', city: 'Charlotte, NC' },
-    ],
-    boston: [
-      { title: 'Luminosity Medspa Boston', url: 'https://luminositymedspa.com', city: 'Boston, MA' },
-      { title: 'Skin Spa New York Boston', url: 'https://skinspanewyork.com', city: 'Boston, MA' },
-      { title: 'Boston Medical Aesthetics', url: 'https://bostonmedicalaesthetics.com', city: 'Boston, MA' },
-    ],
-    philadelphia: [
-      { title: 'Ringpfeil Advanced Dermatology Medspa Philly', url: 'https://ringpfeildermatology.com', city: 'Philadelphia, PA' },
-      { title: 'Subbio Plastic Surgery & MedSpa Philly', url: 'https://drsubbio.com', city: 'Philadelphia, PA' },
-      { title: 'About Face Skin Care Philadelphia', url: 'https://aboutfaceskincare.com', city: 'Philadelphia, PA' },
-    ],
-    'washington dc': [
-      { title: 'Bruno Plastic Surgery & MedSpa Washington DC', url: 'https://brunoplasticsurgery.com', city: 'Washington, DC' },
-    ],
-    portland: [
-      { title: 'Portland Face Doctor & MedSpa', url: 'https://portlandfacedoctor.com', city: 'Portland, OR' },
-      { title: 'The Fix Clinic MedSpa Portland', url: 'https://thefixclinic.com', city: 'Portland, OR' },
-      { title: 'Skin by Lovely Portland', url: 'https://skinbylovely.com', city: 'Portland, OR' },
-    ],
-    jacksonville: [
-      { title: 'First Coast Medical MedSpa Jacksonville', url: 'https://firstcoastmed.com', city: 'Jacksonville, FL' },
-      { title: 'Pure Med Spa Jacksonville', url: 'https://puremedspajax.com', city: 'Jacksonville, FL' },
+      { title: 'Atlas Heating & Air Conditioning', url: 'https://atlasheating.com', city: 'San Francisco, CA' },
+      { title: 'Bellows Plumbing Heating & Air', url: 'https://bellowsservice.com', city: 'San Francisco, CA' },
     ],
     'san jose': [
-      { title: 'San Jose Medical Spa', url: 'https://sanjosemedspa.com', city: 'San Jose, CA' },
-      { title: 'Silicon Valley Aesthetic Dermatology', url: 'https://siliconvalleyderm.com', city: 'San Jose, CA' },
+      { title: 'Pelle Heating & Air Conditioning', url: 'https://pellehvac.com', city: 'San Jose, CA' },
     ],
-    fresno: [
-      { title: 'Fresno Medical Aesthetics & Laser', url: 'https://fresnomedaesthetics.com', city: 'Fresno, CA' },
-      { title: 'Valley Skin Care & MedSpa Fresno', url: 'https://valleyskincarefresno.com', city: 'Fresno, CA' },
+    seattle: [
+      { title: "Bob's Heating & Air Conditioning", url: 'https://bobsheating.com', city: 'Seattle, WA' },
+      { title: 'BelRed Energy Solutions', url: 'https://belred.com', city: 'Seattle, WA' },
     ],
     spokane: [
-      { title: 'Spokane Plastic Surgery & MedSpa', url: 'https://spokaneplasticsurgery.com', city: 'Spokane, WA' },
-      { title: 'Craft Medical Aesthetics Spokane', url: 'https://craftmedicalaesthetics.com', city: 'Spokane, WA' },
+      { title: 'Holiday Heating & Air Conditioning', url: 'https://holidayheating.com', city: 'Spokane, WA' },
+    ],
+    portland: [
+      { title: 'Sky Heating AC & Plumbing', url: 'https://skyheating.com', city: 'Portland, OR' },
+      { title: 'Pyramid Heating & Cooling', url: 'https://pyramidheating.com', city: 'Portland, OR' },
+    ],
+    'las vegas': [
+      { title: 'Sierra Air Conditioning & Plumbing', url: 'https://sierraairconditioning.com', city: 'Las Vegas, NV' },
     ],
     reno: [
-      { title: 'Reno Tahoe Plastic Surgery & MedSpa', url: 'https://renotahoeplasticsurgery.com', city: 'Reno, NV' },
-      { title: 'Sierra Aesthetics MedSpa Reno', url: 'https://sierraaestheticsreno.com', city: 'Reno, NV' },
+      { title: 'Lincoln Heating & Air Conditioning', url: 'https://lincolnheating.com', city: 'Reno, NV' },
     ],
-    buffalo: [
-      { title: 'Buffalo Aesthetics & Laser Clinic', url: 'https://buffalomedspa.com', city: 'Buffalo, NY' },
-    ],
-    savannah: [
-      { title: 'Savannah Plastic Surgery & MedSpa', url: 'https://savannahplasticsurgery.com', city: 'Savannah, GA' },
-      { title: 'Glow Medical Spa Savannah', url: 'https://glowmedspasavannah.com', city: 'Savannah, GA' },
-    ],
-  },
-  hvac: {
     phoenix: [
-      { title: 'Champion Air 24/7 Emergency AC Phoenix', url: 'https://www.championair.com', city: 'Phoenix, AZ' },
-      { title: 'George Brazil HVAC Phoenix', url: 'https://georgebrazilhvac.com', city: 'Phoenix, AZ' },
-      { title: 'Morehart Air Conditioning & Heating Phoenix', url: 'https://morehartac.com', city: 'Phoenix, AZ' },
+      { title: 'Morehart Air Conditioning & Heating', url: 'https://morehartac.com', city: 'Phoenix, AZ' },
       { title: 'Compass Air Conditioning & Furnace Repair', url: 'https://azcompassair.com', city: 'Phoenix, AZ' },
     ],
     dallas: [
-      { title: 'Lex Air Conditioning & Heating 24/7 Emergency Dallas', url: 'https://www.lexairconditioning.com', city: 'Dallas, TX' },
-      { title: 'Total Air & Heat 24/7 Emergency Dallas', url: 'https://www.totalair.com', city: 'Dallas, TX' },
-      { title: 'Berkeys Air Conditioning & Plumbing', url: 'https://www.berkeys.com', city: 'Dallas, TX' },
-      { title: 'Baker Brothers Plumbing & HVAC Dallas', url: 'https://www.bakerbrothersplumbing.com', city: 'Dallas, TX' },
-    ],
-    miami: [
-      { title: 'Direct Air Conditioning & Emergency HVAC Miami', url: 'https://www.directairfl.com', city: 'Miami, FL' },
-      { title: 'Air Around the Clock 24/7 HVAC South Florida', url: 'https://www.airaroundtheclock.com', city: 'Miami, FL' },
-      { title: 'Freezing Mechanical Air Conditioning Miami', url: 'https://freezingmechanical.com', city: 'Miami, FL' },
-      { title: 'All Year Cooling & Heating South Florida', url: 'https://allyearcooling.com', city: 'Miami, FL' },
+      { title: 'Lex Air Conditioning & Heating', url: 'https://www.lexairconditioning.com', city: 'Dallas, TX' },
+      { title: 'Total Air & Heat', url: 'https://www.totalair.com', city: 'Dallas, TX' },
     ],
     austin: [
-      { title: 'Fox Service Company 24/7 HVAC Austin', url: 'https://foxservice.com', city: 'Austin, TX' },
-      { title: 'Totally Cool AC 24/7 Emergency Austin', url: 'https://www.totallycoolac.com', city: 'Austin, TX' },
-      { title: 'McCullough Heating & Air Austin', url: 'https://www.mcculloughair.com', city: 'Austin, TX' },
-    ],
-    atlanta: [
-      { title: 'PV Heating, Cooling & Plumbing Atlanta', url: 'https://pvhvac.com', city: 'Atlanta, GA' },
-      { title: 'Anchor Heating & Air 24/7 Emergency Atlanta', url: 'https://www.anchorac.com', city: 'Atlanta, GA' },
-      { title: 'Reliable Heating & Air Atlanta', url: 'https://reliableair.com', city: 'Atlanta, GA' },
-    ],
-    tampa: [
-      { title: 'Cornerstone Pros Air Conditioning Tampa', url: 'https://cornerstonepros.com', city: 'Tampa, FL' },
-      { title: 'Air Hawk Heating and Cooling Tampa', url: 'https://airhawkac.com', city: 'Tampa, FL' },
+      { title: 'Fox Service Company', url: 'https://foxservice.com', city: 'Austin, TX' },
+      { title: 'Totally Cool AC', url: 'https://www.totallycoolac.com', city: 'Austin, TX' },
+      { title: 'McCullough Heating & Air', url: 'https://www.mcculloughair.com', city: 'Austin, TX' },
     ],
     houston: [
-      { title: 'Airteam HVAC Houston', url: 'https://airteam.com', city: 'Houston, TX' },
-      { title: 'Custom Comfort Air Houston', url: 'https://customcomfortair.com', city: 'Houston, TX' },
-      { title: 'John Moore Services HVAC Houston', url: 'https://johnmooreservices.com', city: 'Houston, TX' },
+      { title: 'Airteam HVAC', url: 'https://airteam.com', city: 'Houston, TX' },
+      { title: 'Custom Comfort Air', url: 'https://customcomfortair.com', city: 'Houston, TX' },
     ],
-    'los angeles': [
-      { title: 'Around the Clock Heating & Air Conditioning LA', url: 'https://aroundtheclockair.com', city: 'Los Angeles, CA' },
-      { title: 'JW Plumbing, Heating and Air Los Angeles', url: 'https://jwheatingandair.com', city: 'Los Angeles, CA' },
+    miami: [
+      { title: 'Direct Air Conditioning', url: 'https://www.directairfl.com', city: 'Miami, FL' },
+      { title: 'Air Around the Clock', url: 'https://www.airaroundtheclock.com', city: 'Miami, FL' },
+      { title: 'Freezing Mechanical', url: 'https://freezingmechanical.com', city: 'Miami, FL' },
+      { title: 'All Year Cooling & Heating', url: 'https://allyearcooling.com', city: 'Miami, FL' },
     ],
-    'san diego': [
-      { title: 'Anderson Plumbing Heating & Air San Diego', url: 'https://andersonpha.com', city: 'San Diego, CA' },
-      { title: 'Bill Howe Plumbing Heating & Air San Diego', url: 'https://billhowe.com', city: 'San Diego, CA' },
-    ],
-    'san francisco': [
-      { title: 'Atlas Heating & Air Conditioning SF', url: 'https://atlasheating.com', city: 'San Francisco, CA' },
-      { title: 'Bellows Plumbing, Heating & Air', url: 'https://bellowsservice.com', city: 'San Francisco, CA' },
-    ],
-    'las vegas': [
-      { title: 'Sierra Air Conditioning & Plumbing Las Vegas', url: 'https://sierraairconditioning.com', city: 'Las Vegas, NV' },
-      { title: 'Goettl Air Conditioning & Plumbing Las Vegas', url: 'https://goettl.com', city: 'Las Vegas, NV' },
-    ],
-    seattle: [
-      { title: 'Bob\'s Heating & Air Conditioning Seattle', url: 'https://bobsheating.com', city: 'Seattle, WA' },
-      { title: 'BelRed Energy Solutions Seattle', url: 'https://belred.com', city: 'Seattle, WA' },
-    ],
-    denver: [
-      { title: 'AAA Heating & Air Conditioning Denver', url: 'https://aaaheating.com', city: 'Denver, CO' },
-      { title: 'Swan Heating & Air Denver', url: 'https://swanheating.com', city: 'Denver, CO' },
+    tampa: [
+      { title: 'Cornerstone Pros Air Conditioning', url: 'https://cornerstonepros.com', city: 'Tampa, FL' },
+      { title: 'Air Hawk Heating and Cooling', url: 'https://airhawkac.com', city: 'Tampa, FL' },
     ],
     orlando: [
-      { title: 'Del-Air Heating & Air Conditioning Orlando', url: 'https://delair.com', city: 'Orlando, FL' },
-      { title: 'Ferran Services Air Conditioning Orlando', url: 'https://ferran-services.com', city: 'Orlando, FL' },
-    ],
-    nashville: [
-      { title: 'Lee Company 24/7 HVAC Nashville', url: 'https://leecompany.com', city: 'Nashville, TN' },
-      { title: 'Hiller Plumbing, Heating & Air Nashville', url: 'https://happyhiller.com', city: 'Nashville, TN' },
-    ],
-    charlotte: [
-      { title: 'Morris-Jenkins 24/7 HVAC Charlotte', url: 'https://morrisjenkins.com', city: 'Charlotte, NC' },
-      { title: 'Brother Heating & Air Charlotte', url: 'https://brotherair.com', city: 'Charlotte, NC' },
-    ],
-    chicago: [
-      { title: 'Four Seasons Heating & Cooling Chicago', url: 'https://www.fourseasonsheatingcooling.com', city: 'Chicago, IL' },
-      { title: 'Deljo Heating & Cooling Chicago', url: 'https://deljoheating.com', city: 'Chicago, IL' },
-    ],
-    boston: [
-      { title: 'Boston Standard Plumbing & HVAC', url: 'https://bostonstandardplumbing.com', city: 'Boston, MA' },
-      { title: '128 Plumbing Heating Cooling Boston', url: 'https://call128.com', city: 'Boston, MA' },
-    ],
-    philadelphia: [
-      { title: 'Oliver Heating & Cooling Philadelphia', url: 'https://oliverheatcool.com', city: 'Philadelphia, PA' },
-      { title: 'Eby Emergency HVAC Philadelphia', url: 'https://ebyhvac.com', city: 'Philadelphia, PA' },
-    ],
-    'new york': [
-      { title: 'Manhattan Cooling & Heating NYC', url: 'https://manhattancooling.com', city: 'New York, NY' },
-      { title: 'Air Repair Queens & NYC', url: 'https://airrepair.com', city: 'New York, NY' },
-    ],
-    'washington dc': [
-      { title: 'F.H. Furr Plumbing, Heating & Air DC', url: 'https://fhfurr.com', city: 'Washington, DC' },
-      { title: 'Magnolia Plumbing, Heating & Cooling DC', url: 'https://magnoliacompanies.com', city: 'Washington, DC' },
-    ],
-    portland: [
-      { title: 'Sky Heating, AC & Plumbing Portland', url: 'https://skyheating.com', city: 'Portland, OR' },
-      { title: 'Pyramid Heating & Cooling Portland', url: 'https://pyramidheating.com', city: 'Portland, OR' },
+      { title: 'Ferran Services Air Conditioning', url: 'https://ferran-services.com', city: 'Orlando, FL' },
     ],
     jacksonville: [
-      { title: 'Snyder Air Conditioning & Plumbing Jax', url: 'https://snyderac.com', city: 'Jacksonville, FL' },
-      { title: 'Von\'s Heating and Air Jacksonville', url: 'https://vonsheatingandair.com', city: 'Jacksonville, FL' },
+      { title: 'Snyder Air Conditioning & Plumbing', url: 'https://snyderac.com', city: 'Jacksonville, FL' },
+      { title: "Von's Heating and Air", url: 'https://vonsheatingandair.com', city: 'Jacksonville, FL' },
     ],
-    'san jose': [
-      { title: 'Pelle Heating & Air Conditioning San Jose', url: 'https://pellehvac.com', city: 'San Jose, CA' },
-    ],
-    spokane: [
-      { title: 'Holiday Heating & Air Conditioning Spokane', url: 'https://holidayheating.com', city: 'Spokane, WA' },
-    ],
-    reno: [
-      { title: 'Lincoln Heating & Air Conditioning Reno', url: 'https://lincolnheating.com', city: 'Reno, NV' },
-    ],
-    buffalo: [
-      { title: 'Roy\'s Plumbing, Heating & Cooling Buffalo', url: 'https://callroys.com', city: 'Buffalo, NY' },
+    atlanta: [
+      { title: 'PV Heating Cooling & Plumbing', url: 'https://pvhvac.com', city: 'Atlanta, GA' },
+      { title: 'Anchor Heating & Air', url: 'https://www.anchorac.com', city: 'Atlanta, GA' },
+      { title: 'Reliable Heating & Air', url: 'https://reliableair.com', city: 'Atlanta, GA' },
     ],
     savannah: [
-      { title: 'Canady\'s Heating & Air Savannah', url: 'https://canadys.com', city: 'Savannah, GA' },
+      { title: "Canady's Heating & Air", url: 'https://canadys.com', city: 'Savannah, GA' },
     ],
-    // ── NEW HIGH-INCOME SUBURBAN MARKETS (Verified Family-Owned Contractors) ────────────────
+    buffalo: [
+      { title: "Roy's Plumbing Heating & Cooling", url: 'https://callroys.com', city: 'Buffalo, NY' },
+    ],
+    // Affluent Suburb Targets
     carmel: [
-      { title: 'Family Heating & Air Conditioning Carmel IN', url: 'https://www.familyhvac.net', city: 'Carmel, IN' },
-      { title: 'Paul Henderson Plumbing Heating Air Carmel IN', url: 'https://paulhendersonplumbing.com', city: 'Carmel, IN' },
-      { title: 'Godby Heating Plumbing Electrical Carmel IN', url: 'https://www.godbyhpe.com', city: 'Carmel, IN' },
+      { title: 'Family Heating & Air Conditioning', url: 'https://www.familyhvac.net', city: 'Carmel, IN' },
+      { title: 'Paul Henderson Plumbing HVAC', url: 'https://paulhendersonplumbing.com', city: 'Carmel, IN' },
+      { title: 'Godby Heating Plumbing Electrical', url: 'https://www.godbyhpe.com', city: 'Carmel, IN' },
     ],
     zionsville: [
-      { title: 'Earl Russell Heating & Cooling Zionsville IN', url: 'https://www.russellheatingandcooling.com', city: 'Zionsville, IN' },
-      { title: 'Family Heating & Air Zionsville IN', url: 'https://www.familyhvac.net', city: 'Zionsville, IN' },
-      { title: 'Paul Henderson Plumbing HVAC Zionsville IN', url: 'https://paulhendersonplumbing.com', city: 'Zionsville, IN' },
+      { title: 'Earl Russell Heating & Cooling', url: 'https://www.russellheatingandcooling.com', city: 'Zionsville, IN' },
+      { title: 'Family Heating & Air', url: 'https://www.familyhvac.net', city: 'Zionsville, IN' },
+      { title: 'Paul Henderson Plumbing HVAC', url: 'https://paulhendersonplumbing.com', city: 'Zionsville, IN' },
     ],
     dublin: [
-      { title: 'Wind Bender Heating Cooling & Plumbing Dublin OH', url: 'https://windbenderohio.com', city: 'Dublin, OH' },
-      { title: 'TTM Mechanical HVAC Dublin OH', url: 'https://www.ttmmechanical.com', city: 'Dublin, OH' },
-      { title: 'Trinity Heating & Cooling Dublin OH', url: 'https://trinityheatcool.com', city: 'Dublin, OH' },
-      { title: 'Kendawgs Heating & Cooling Dublin OH', url: 'https://kdhvacair.com', city: 'Dublin, OH' },
-      { title: 'Five Star Heating & Cooling Group Dublin OH', url: 'https://fivestarheatingandcoolinggroup.com', city: 'Dublin, OH' },
+      { title: 'Wind Bender Heating Cooling Plumbing', url: 'https://windbenderohio.com', city: 'Dublin, OH' },
+      { title: 'TTM Mechanical HVAC', url: 'https://www.ttmmechanical.com', city: 'Dublin, OH' },
+      { title: 'Trinity Heating & Cooling', url: 'https://trinityheatcool.com', city: 'Dublin, OH' },
+      { title: 'Kendawgs Heating & Cooling', url: 'https://kdhvacair.com', city: 'Dublin, OH' },
+      { title: 'Five Star Heating & Cooling Group', url: 'https://fivestarheatingandcoolinggroup.com', city: 'Dublin, OH' },
     ],
     prosper: [
-      { title: 'Crows Heat & Air Prosper TX', url: 'https://crowsheatandair.com', city: 'Prosper, TX' },
-      { title: 'Prosper Air Heating & Cooling Prosper TX', url: 'https://prosperair.com', city: 'Prosper, TX' },
-      { title: 'Matco Services Heating & Air Prosper TX', url: 'https://matcoservices.com', city: 'Prosper, TX' },
-      { title: 'Airmax Air Conditioning Prosper TX', url: 'https://www.airmaxac.com', city: 'Prosper, TX' },
+      { title: "Crow's Heat & Air", url: 'https://crowsheatandair.com', city: 'Prosper, TX' },
+      { title: 'Prosper Air Heating & Cooling', url: 'https://prosperair.com', city: 'Prosper, TX' },
+      { title: 'Matco Services Heating & Air', url: 'https://matcoservices.com', city: 'Prosper, TX' },
+      { title: 'Airmax Air Conditioning', url: 'https://www.airmaxac.com', city: 'Prosper, TX' },
     ],
     celina: [
-      { title: 'Crows Heat & Air Celina TX', url: 'https://crowsheatandair.com', city: 'Celina, TX' },
-      { title: 'Prosper Air Celina TX', url: 'https://prosperair.com', city: 'Celina, TX' },
-      { title: 'Bill Joplins Air Conditioning Celina TX', url: 'https://www.billjoplins.com', city: 'Celina, TX' },
+      { title: "Crow's Heat & Air", url: 'https://crowsheatandair.com', city: 'Celina, TX' },
+      { title: 'Prosper Air Heating & Cooling', url: 'https://prosperair.com', city: 'Celina, TX' },
+      { title: "Bill Joplin's Air Conditioning", url: 'https://www.billjoplins.com', city: 'Celina, TX' },
     ],
     fulshear: [
-      { title: 'Vance Air & Heat Fulshear TX', url: 'https://vanceairandheat.com', city: 'Fulshear, TX' },
-      { title: 'AC Comfort Fulshear TX', url: 'https://accomfort.us', city: 'Fulshear, TX' },
+      { title: 'Vance Air & Heat', url: 'https://vanceairandheat.com', city: 'Fulshear, TX' },
+      { title: 'AC Comfort', url: 'https://accomfort.us', city: 'Fulshear, TX' },
     ],
     brentwood: [
-      { title: 'Rapid Response Heating & Cooling Brentwood TN', url: 'https://rapidhvactn.com', city: 'Brentwood, TN' },
-      { title: 'Brentwood Comfort Control Brentwood TN', url: 'https://brentwoodcomfort.net', city: 'Brentwood, TN' },
-      { title: 'Covenant Heating & Cooling Brentwood TN', url: 'https://www.covenantheatingandcooling.com', city: 'Brentwood, TN' },
-      { title: 'Airstream Services Brentwood TN', url: 'https://airstreamteam.com', city: 'Brentwood, TN' },
+      { title: 'Rapid Response Heating & Cooling', url: 'https://rapidhvactn.com', city: 'Brentwood, TN' },
+      { title: 'Brentwood Comfort Control', url: 'https://brentwoodcomfort.net', city: 'Brentwood, TN' },
+      { title: 'Covenant Heating & Cooling', url: 'https://www.covenantheatingandcooling.com', city: 'Brentwood, TN' },
+      { title: 'Airstream Services', url: 'https://airstreamteam.com', city: 'Brentwood, TN' },
     ],
   },
 };
 
-const DIRECTORY_OR_SPAM_DOMAINS = /(yelp\.com|groupon\.com|healthgrades\.com|yellowpages\.com|angi\.com|angieslist\.com|mapquest\.com|bbb\.org|facebook\.com|instagram\.com|tripadvisor\.com|expertise\.com|thumbtack\.com|indeed\.com|duckduckgo\.com|bing\.com|homeadvisor\.com|networx\.com|bark\.com|porch\.com|modernize\.com|threebestrated\.com|houzz\.com|nextdoor\.com|emergencyhvacservices\.com|emergency-hvac-repair\.com|hvacacrepair\.org|zaptheory\.com|topchoiceheatingairconditioningusa\.com|ama-hvac\.com|brentwoodhvacrepair\.com|near-me)/i;
+const DIRECTORY_OR_SPAM_DOMAINS =
+  /(yelp\.com|groupon\.com|healthgrades\.com|yellowpages\.com|angi\.com|angieslist\.com|mapquest\.com|bbb\.org|facebook\.com|instagram\.com|tripadvisor\.com|expertise\.com|thumbtack\.com|indeed\.com|duckduckgo\.com|bing\.com|homeadvisor\.com|networx\.com|bark\.com|porch\.com|modernize\.com|threebestrated\.com|houzz\.com|nextdoor\.com|emergencyhvacservices\.com|emergency-hvac-repair\.com|hvacacrepair\.org|zaptheory\.com|topchoiceheatingairconditioningusa\.com|ama-hvac\.com|brentwoodhvacrepair\.com|near-me)/i;
 
-/**
- * Query search engines (Verified City Targets + DuckDuckGo HTML -> DuckDuckGo Lite -> Regional Pool)
- */
-export async function searchLocalBusinesses({ query, city = 'Los Angeles, CA', niche = 'hvac', limit = 5 }) {
-  const defaultQuery = NICHE_QUERIES[niche]?.[0] || 'Heating and Air Conditioning HVAC Company';
+function resolveCityKey(city = '') {
+  let key = (city.toLowerCase().split(',')[0] || '').trim();
+  const aliases = {
+    nyc: 'new york',
+    manhattan: 'new york',
+    la: 'los angeles',
+    dfw: 'dallas',
+    'fort worth': 'dallas',
+    scottsdale: 'phoenix',
+    sf: 'san francisco',
+    'bay area': 'san francisco',
+    philly: 'philadelphia',
+    dc: 'washington dc',
+    washington: 'washington dc',
+    vegas: 'las vegas',
+    'carmel & zionsville': 'carmel',
+    'prosper & celina': 'prosper',
+  };
+  return aliases[key] || key;
+}
+
+export async function searchLocalBusinesses({ query, city = 'Los Angeles, CA', niche = 'hvac', limit = 10 }) {
+  const defaultQuery = NICHE_QUERIES[niche]?.[0] || NICHE_QUERIES.hvac[0];
   const fullQuery = `${query || defaultQuery} ${city}`.trim();
-  console.log(`[LeadHunter] Searching local businesses: "${fullQuery}" (Limit: ${limit})...`);
-
   const rawResults = [];
+  const cityKey = resolveCityKey(city);
 
-  // Resolve normalized cityKey upfront so curated verified local businesses are always prioritized
-  let cityKey = (city.toLowerCase().split(',')[0] || '').trim();
-  if (cityKey === 'nyc' || cityKey === 'manhattan') cityKey = 'new york';
-  if (cityKey === 'la') cityKey = 'los angeles';
-  if (cityKey === 'dfw' || cityKey === 'fort worth') cityKey = 'dallas';
-  if (cityKey === 'scottsdale') cityKey = 'phoenix';
-  if (cityKey === 'sf' || cityKey === 'bay area') cityKey = 'san francisco';
-  if (cityKey === 'philly') cityKey = 'philadelphia';
-  if (cityKey === 'dc' || cityKey === 'washington') cityKey = 'washington dc';
-  if (cityKey === 'vegas') cityKey = 'las vegas';
-  if (cityKey === 'carmel' || cityKey === 'carmel & zionsville') cityKey = 'carmel';
-  if (cityKey === 'zionsville') cityKey = 'zionsville';
-  if (cityKey === 'dublin') cityKey = 'dublin';
-  if (cityKey === 'prosper' || cityKey === 'prosper & celina') cityKey = 'prosper';
-  if (cityKey === 'celina') cityKey = 'celina';
-  if (cityKey === 'fulshear') cityKey = 'fulshear';
-  if (cityKey === 'brentwood') cityKey = 'brentwood';
+  const targetsDict = CURATED_TARGETS[niche] || CURATED_TARGETS.hvac || {};
+  const primaryCityList = targetsDict[cityKey] || CURATED_TARGETS.hvac?.[cityKey] || [];
 
-  const targetsDict = CURATED_TARGETS[niche] || CURATED_TARGETS['hvac'] || {};
-  const primaryCityList = targetsDict[cityKey] || CURATED_TARGETS['hvac']?.[cityKey] || [];
-
-  // Seed verified city-matched targets first so SEO spam farms never crowd out real contractors
   for (const c of primaryCityList) {
     if (rawResults.length >= limit) break;
     const norm = normalizeUrl(c.url);
     if (norm && !rawResults.some((r) => r.url === norm)) {
-      rawResults.push({
-        title: c.title,
-        url: norm,
-        snippet: `${c.title} - Verified Local Contractor in ${c.city}`,
-        city: c.city,
-        niche,
-      });
+      rawResults.push({ title: c.title.trim(), url: norm, snippet: `Verified local contractor in ${c.city}`, city: c.city, niche });
     }
   }
 
-  // Strategy 1: Standard DuckDuckGo HTML (filtered against directories & doorway spam)
+  // Live DuckDuckGo HTML discovery (filtered against aggregator/doorway spam)
   if (rawResults.length < limit) {
     try {
-      const searchUrl = `https://html.duckduckgo.com/html/?q=${encodeURIComponent(fullQuery)}`;
       const controller = new AbortController();
       const timer = setTimeout(() => controller.abort(), 3500);
-
-      const res = await fetch(searchUrl, {
+      const res = await fetch(`https://html.duckduckgo.com/html/?q=${encodeURIComponent(fullQuery)}`, {
         signal: controller.signal,
-        headers: {
-          'User-Agent': USER_AGENT,
-          Accept: 'text/html,application/xhtml+xml',
-          'Accept-Language': 'en-US,en;q=0.9',
-        },
+        headers: { 'User-Agent': USER_AGENT, Accept: 'text/html' },
       });
-
       clearTimeout(timer);
       if (res.ok) {
         const html = await res.text();
         const $ = cheerio.load(html);
-
-        $('.result').each((i, el) => {
+        $('.result').each((_, el) => {
           if (rawResults.length >= limit * 2) return;
-
           const title = $(el).find('.result__title a').text().trim();
           let rawHref = $(el).find('.result__title a').attr('href') || '';
-          const snippet = $(el).find('.result__snippet').text().trim();
-
           if (rawHref.includes('uddg=')) {
-            try {
-              const match = rawHref.match(/uddg=([^&]+)/);
-              if (match) rawHref = decodeURIComponent(match[1]);
-            } catch (e) {}
+            const match = rawHref.match(/uddg=([^&]+)/);
+            if (match) rawHref = decodeURIComponent(match[1]);
           }
-
-          if (!rawHref.startsWith('http')) return;
-          if (DIRECTORY_OR_SPAM_DOMAINS.test(rawHref)) return;
-
-          const normalized = normalizeUrl(rawHref);
-          if (!normalized) return;
-
-          if (!rawResults.some((r) => r.url === normalized)) {
-            rawResults.push({ title, url: normalized, snippet, city, niche });
-          }
-        });
-      }
-    } catch (err) {
-      console.warn('[LeadHunter] DDG standard search warning:', err.message);
-    }
-  }
-
-  // Strategy 2: DuckDuckGo Lite Fallback if still below limit
-  if (rawResults.length < limit) {
-    console.log('[LeadHunter] Trying DuckDuckGo Lite for additional local contractors...');
-    try {
-      const controllerLite = new AbortController();
-      const timerLite = setTimeout(() => controllerLite.abort(), 3500);
-      const liteRes = await fetch('https://lite.duckduckgo.com/lite/', {
-        signal: controllerLite.signal,
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/x-www-form-urlencoded',
-          'User-Agent': USER_AGENT,
-          Accept: 'text/html',
-        },
-        body: `q=${encodeURIComponent(fullQuery)}`,
-      });
-      clearTimeout(timerLite);
-
-      if (liteRes.ok) {
-        const liteHtml = await liteRes.text();
-        const $lite = cheerio.load(liteHtml);
-
-        $lite('.result-link').each((i, el) => {
-          if (rawResults.length >= limit * 2) return;
-          let href = $lite(el).attr('href') || '';
-          const title = $lite(el).text().trim();
-
-          if (href.includes('uddg=')) {
-            const m = href.match(/uddg=([^&]+)/);
-            if (m) href = decodeURIComponent(m[1]);
-          }
-
-          if (!href.startsWith('http')) return;
-          if (DIRECTORY_OR_SPAM_DOMAINS.test(href)) return;
-
-          const norm = normalizeUrl(href);
+          if (!rawHref.startsWith('http') || DIRECTORY_OR_SPAM_DOMAINS.test(rawHref)) return;
+          const norm = normalizeUrl(rawHref);
           if (norm && !rawResults.some((r) => r.url === norm)) {
             rawResults.push({ title, url: norm, snippet: title, city, niche });
           }
         });
       }
     } catch (err) {
-      console.warn('[LeadHunter] DDG Lite warning:', err.message);
+      console.warn('[LeadHunter] DDG search warning:', err.message);
     }
   }
 
-  // Strategy 3: Regional Curated Overflow Pool if needed to fulfill target candidate buffer
+  // Regional overflow pool only if candidate count still below target
   if (rawResults.length < limit) {
-    console.log(`[LeadHunter] Pooling regional targets to reach ${limit} candidates...`);
-    const allKeys = Object.keys(targetsDict);
-    for (const k of allKeys) {
-      if (rawResults.length >= limit) break;
-      if (k === cityKey) continue;
-      const extra = targetsDict[k] || [];
-      for (const item of extra) {
+    for (const k of Object.keys(targetsDict)) {
+      if (rawResults.length >= limit || k === cityKey) continue;
+      for (const item of targetsDict[k] || []) {
         const norm = normalizeUrl(item.url);
         if (norm && !rawResults.some((r) => r.url === norm)) {
-          rawResults.push({
-            title: item.title,
-            url: norm,
-            snippet: `${item.title} - High-Ticket Service Center in ${item.city}`,
-            city: item.city,
-            niche,
-          });
+          rawResults.push({ title: item.title.trim(), url: norm, snippet: `Regional target in ${item.city}`, city: item.city, niche });
           if (rawResults.length >= limit) break;
         }
       }
     }
   }
 
-  console.log(`[LeadHunter] Found ${rawResults.length} prospective domains.`);
   return rawResults.slice(0, limit);
 }
 
-/**
- * Enrich a raw scraped lead, run digital audit, and evaluate 100-pt qualification gate
- */
+function detectFallbackChain(url = '', name = '') {
+  const hit = /(ars\.com|rescue rooter|serviceexperts|rotorooter|roto-rooter|happyhiller|leecompany|onehour|benjaminfranklin|mistersparky|mrrooter|aireserv|goettl|fourseasonsheatingcooling|morrisjenkins|summersphc|premierishere)/i.test(
+    `${url} ${name}`.toLowerCase()
+  );
+  return { isMultiLocation: hit, reason: hit ? 'National / PE chain domain' : 'Unverified domain' };
+}
+
 export async function huntAndEnrichLead({
   url,
   city,
@@ -687,14 +371,10 @@ export async function huntAndEnrichLead({
   fast = false,
   minScore = DEFAULT_QUALIFY_THRESHOLD,
 }) {
-  console.log(`[LeadHunter] Enriching & Qualifying: ${url} (${niche})...`);
-
-  // 1. Scrape domain (direct HTML -> www swap -> Jina fallback + /about subpage)
   let scraped = null;
   try {
     scraped = await scrapeClinicWebsite(url, { fast, niche });
-  } catch (scrapeErr) {
-    console.warn(`[LeadHunter] scrapeClinicWebsite exception for ${url}:`, scrapeErr.message);
+  } catch (err) {
     scraped = null;
   }
 
@@ -702,41 +382,33 @@ export async function huntAndEnrichLead({
     let fallbackName = businessNameOverride;
     if (!fallbackName) {
       try {
-        const hostname = new URL(url).hostname.replace(/^www\./, '');
-        fallbackName = hostname.split('.')[0].replace(/[-_]/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+        fallbackName = new URL(url).hostname.replace(/^www\./, '').split('.')[0].replace(/[-_]/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
       } catch (e) {
         fallbackName = 'Local Service Center';
       }
     }
     fallbackName = fallbackName.split(/[-|•–]/)[0].trim();
-
-    const isTradeSite = niche !== 'medspa';
-    const fallbackTitle = isTradeSite ? `Owner / Operations Lead at ${fallbackName}` : `Medical Director at ${fallbackName}`;
-    const fallbackTreatment = isTradeSite ? 'Emergency AC & Heating Repair' : 'Morpheus8 & Injectables';
+    const isTrade = niche !== 'medspa';
     let fallbackEmail = '';
     try {
-      const hostname = new URL(url).hostname.replace(/^www\./, '');
-      fallbackEmail = `info@${hostname}`;
+      fallbackEmail = `info@${new URL(url).hostname.replace(/^www\./, '')}`;
     } catch (e) {}
-
-    // Even when unreachable, check domain against PE chain patterns so chains never sneak through
-    const chainCheck = detectFallbackChain(url, fallbackName);
 
     scraped = {
       success: true,
       url,
-      dataSource: 'unreachable_fallback',
+      dataSource: 'unreachable',
       clinicName: fallbackName,
-      doctorName: doctorOverride || fallbackTitle,
+      doctorName: doctorOverride || (isTrade ? `Owner / Operations Lead at ${fallbackName}` : `Medical Director at ${fallbackName}`),
       email: fallbackEmail,
       allEmails: fallbackEmail ? [fallbackEmail] : [],
       phone: null,
       city: city || 'US',
-      treatment: treatmentOverride || fallbackTreatment,
-      allTreatments: [fallbackTreatment],
-      adSignals: { hasPaidAds: false, metaPixel: false, googleAds: false, tikTokPixel: false, source: 'fallback_unverified' },
-      multiLocation: chainCheck,
-      rawHtml: null,
+      treatment: treatmentOverride || (isTrade ? 'Emergency AC & Heating Repair' : 'Morpheus8'),
+      allTreatments: [],
+      adSignals: { hasPaidAds: false, metaPixel: false, googleAds: false, tikTokPixel: false },
+      multiLocation: detectFallbackChain(url, fallbackName),
+      socialSignals: { hasGmb: false, hasInstagram: false, hasFacebook: false, summary: 'Unreachable' },
       visibleText: '',
       hasHtmlForm: false,
       hasLiveScheduler: false,
@@ -744,76 +416,54 @@ export async function huntAndEnrichLead({
     };
   }
 
-  // 2. Decision Maker resolution
   let decisionMaker = doctorOverride || scraped.doctorName;
   const isTradeSite = niche !== 'medspa';
   if (!decisionMaker || decisionMaker === 'Doctor' || (isTradeSite && (decisionMaker.includes('Medical Director') || decisionMaker.includes('Doctor')))) {
-    decisionMaker = isTradeSite
-      ? `Owner / Operations Lead at ${scraped.clinicName || 'Company'}`
-      : `Medical Director at ${scraped.clinicName || 'Clinic'}`;
+    decisionMaker = isTradeSite ? `Owner / Operations Lead at ${scraped.clinicName || 'Company'}` : `Medical Director at ${scraped.clinicName || 'Clinic'}`;
   }
 
-  // 3. Run The Auditor using already-downloaded HTML or visible text (0 extra latency when available)
   const audit = await runDigitalAudit({
     url,
     niche,
     businessName: scraped.clinicName,
     doctorName: decisionMaker,
-    htmlContent: scraped.rawHtml || scraped.visibleText || null,
+    htmlContent: scraped.visibleText || null,
   });
 
   let primaryTreatment = treatmentOverride || audit.primaryService || scraped.treatment;
-  const TRADE_VALID_SERVICES = [
-    'Emergency AC Repair', 'HVAC Replacement', 'HVAC System Replacement', 'Heat Pump Repair', 'Furnace Maintenance',
-    'Furnace Installation', 'Ductless Mini-Split', 'Commercial Refrigeration', 'Emergency Plumbing', 'Emergency AC & Heating Repair',
-    'AC Replacement & Installation', 'Water Heater Replacement', 'Drain Cleaning', 'Emergency Roof Repair',
-    'Roof Replacement', 'Emergency Electrician', 'Panel Upgrade', 'Backup Generator Installation', 'Water Damage Restoration', 'Emergency Service Calls'
-  ];
-  if (isTradeSite) {
-    const isValid = TRADE_VALID_SERVICES.some((t) => primaryTreatment && primaryTreatment.toLowerCase().includes(t.toLowerCase()));
-    if (!primaryTreatment || !isValid) {
-      primaryTreatment =
-        niche === 'plumbing'
-          ? 'Emergency Plumbing & Water Heater Repair'
-          : niche === 'roofing'
-          ? 'Emergency Roof Repair & Replacement'
-          : niche === 'electrical'
-          ? '24/7 Emergency Electrical Service'
-          : niche === 'water_damage'
-          ? 'Emergency Water Damage Restoration'
-          : 'Emergency AC & Heating Repair';
-    }
+  if (isTradeSite && (!primaryTreatment || /morpheus8|botox|juvederm/i.test(primaryTreatment))) {
+    primaryTreatment =
+      niche === 'plumbing' ? 'Emergency Plumbing & Water Heater Repair'
+        : niche === 'roofing' ? 'Emergency Roof Repair & Replacement'
+        : niche === 'electrical' ? '24/7 Emergency Electrical Service'
+        : niche === 'water_damage' ? 'Emergency Water Damage Restoration'
+        : 'Emergency AC & Heating Repair';
   }
 
-  // 4. Construct direct email (or fallback domain email if phone is verified)
   let finalEmail = scraped.email;
   if (!finalEmail && scraped.phone && scraped.url) {
     try {
-      const hostname = new URL(scraped.url).hostname.replace(/^www\./, '');
-      finalEmail = `info@${hostname}`;
+      finalEmail = `info@${new URL(scraped.url).hostname.replace(/^www\./, '')}`;
     } catch (e) {}
   }
 
-  // 5. Run 10-Second Eye Test + 100-Point Rate Qualification Engine
-  const enrichedForQual = {
-    url: scraped.url,
-    dataSource: scraped.dataSource,
-    clinicName: scraped.clinicName,
-    doctorName: decisionMaker,
-    phone: scraped.phone,
-    email: finalEmail,
-    treatment: primaryTreatment,
-    allTreatments: scraped.allTreatments || [],
-    adSignals: scraped.adSignals,
-    multiLocation: scraped.multiLocation || { isMultiLocation: false },
-    jsonLd: scraped.jsonLd || null,
-    hasHtmlForm: scraped.hasHtmlForm,
-    hasLiveScheduler: scraped.hasLiveScheduler,
-    visibleText: scraped.visibleText || '',
-    rawHtml: scraped.rawHtml || null,
-  };
   const qualification = qualifyLead(
-    enrichedForQual,
+    {
+      url: scraped.url,
+      dataSource: scraped.dataSource,
+      clinicName: scraped.clinicName,
+      doctorName: decisionMaker,
+      phone: scraped.phone,
+      email: finalEmail,
+      treatment: primaryTreatment,
+      allTreatments: scraped.allTreatments || [],
+      adSignals: scraped.adSignals,
+      multiLocation: scraped.multiLocation || { isMultiLocation: false },
+      jsonLd: scraped.jsonLd || null,
+      hasHtmlForm: scraped.hasHtmlForm,
+      hasLiveScheduler: scraped.hasLiveScheduler,
+      visibleText: scraped.visibleText || '',
+    },
     {
       hasStaticForm: audit.hasStaticForm || (scraped.hasHtmlForm && !scraped.hasLiveScheduler),
       hasVoicemailComplaint: audit.hasVoicemailComplaint,
@@ -822,11 +472,7 @@ export async function huntAndEnrichLead({
     minScore
   );
 
-  const badge = getQualificationBadge(qualification);
-  console.log(`[Qualifier] ${scraped.clinicName} (${scraped.url}): ${badge}`);
-  if (!qualification.qualified) {
-    console.log(`[Qualifier] REJECTED — Reasons: ${qualification.disqualifyReasons.join(' | ')}`);
-  }
+  console.log(`[Qualifier] ${scraped.clinicName} (${scraped.url}): ${getQualificationBadge(qualification)}`);
 
   return {
     success: true,
@@ -842,8 +488,8 @@ export async function huntAndEnrichLead({
     treatment: primaryTreatment,
     niche,
     adSignals: scraped.adSignals,
-    multiLocation: scraped.multiLocation || { isMultiLocation: false, reason: 'Single practice' },
-    socialSignals: scraped.socialSignals || { hasGmb: false, hasInstagram: false, hasFacebook: false, summary: 'Organic Direct' },
+    multiLocation: scraped.multiLocation || { isMultiLocation: false, reason: 'Single location' },
+    socialSignals: scraped.socialSignals || { hasGmb: false, hasInstagram: false, hasFacebook: false, summary: 'Direct' },
     specificObservation: audit.specificObservation,
     recommendedAngle: audit.recommendedAngle,
     hasStaticForm: audit.hasStaticForm || scraped.hasHtmlForm,
@@ -851,23 +497,7 @@ export async function huntAndEnrichLead({
   };
 }
 
-function detectFallbackChain(url = '', name = '') {
-  const s = `${url} ${name}`.toLowerCase();
-  const hit = /(ars\.com|rescue rooter|serviceexperts|rotorooter|roto-rooter|happyhiller|leecompany|onehour|benjaminfranklin|mistersparky|mrrooter|aireserv|goettl|fourseasonsheatingcooling|morrisjenkins|summersphc|premierishere)/i.test(
-    s
-  );
-  return {
-    isMultiLocation: hit,
-    reason: hit ? 'National / multi-location PE chain domain' : 'Unverified domain',
-  };
-}
-
-/**
- * Deduplicate against Supabase and save enriched lead as RAW_LEAD (pending) in 1 round-trip.
- * STRICT QUALIFICATION GATE: Only commits leads with qualification.qualified === true.
- */
 export async function commitLeadToSupabase(enrichedLead, existingProspectsMap) {
-  // ── QUALIFICATION GATE (Runs first so rejected chains/junk are always tagged disqualified) ──
   const qual = enrichedLead?.qualification;
   if (!qual || !qual.qualified) {
     return {
@@ -875,30 +505,16 @@ export async function commitLeadToSupabase(enrichedLead, existingProspectsMap) {
       disqualified: true,
       score: qual?.score ?? 0,
       grade: qual?.grade ?? 'F',
-      message: `Lead REJECTED (${qual?.score ?? 0}/100 — ${qual?.grade ?? 'F'}): ${(qual?.disqualifyReasons || ['Failed qualification gate']).join('; ')}`,
-      lead: enrichedLead,
-    };
-  }
-
-  if (!enrichedLead || (!enrichedLead.email && !enrichedLead.phone)) {
-    return {
-      success: false,
-      message: 'Cannot commit to Supabase: No email or phone found.',
+      message: `Lead rejected (${qual?.score ?? 0}/100 — ${qual?.grade ?? 'F'}): ${(qual?.disqualifyReasons || ['Failed gate']).join('; ')}`,
       lead: enrichedLead,
     };
   }
 
   if (!enrichedLead.email) {
-    return {
-      success: false,
-      message: 'Qualified lead has phone only; domain email unavailable.',
-      lead: enrichedLead,
-    };
+    return { success: false, message: 'No email found to store in CRM.', lead: enrichedLead };
   }
 
   const normalizedEmail = enrichedLead.email.toLowerCase().trim();
-
-  // Deduplication check: in-memory map or query
   const existing = existingProspectsMap ? existingProspectsMap.get(normalizedEmail) : await getProspectById(normalizedEmail);
   if (existing) {
     const patch = {};
@@ -917,25 +533,19 @@ export async function commitLeadToSupabase(enrichedLead, existingProspectsMap) {
       patch.google_rating = qual.googleRating;
       patch.fleet_size = qual.fleetSize;
     }
-    if (Object.keys(patch).length > 0) {
-      await updateProspect(existing.id, patch);
-    }
+    if (Object.keys(patch).length > 0) await updateProspect(existing.id, patch);
 
     return {
       success: false,
       alreadyExists: true,
-      message: `Prospect ${normalizedEmail} already exists in Supabase (${qual.score}/100 ${qual.grade}).`,
+      message: `Prospect ${normalizedEmail} already exists in CRM.`,
       prospect: existing,
     };
   }
 
-  // Insert into Supabase public.prospects in 1 single round-trip
   const chainTag = qual.isFamilyOwned ? 'Family-Owned' : 'Single-Location';
-  const gmbTag = enrichedLead.socialSignals?.hasGmb ? 'GMB:✓' : 'GMB:○';
-  const revTag = qual.reviewCount ? `${qual.reviewCount} revs${qual.googleRating ? ` (${qual.googleRating}★)` : ''}` : 'Revs:N/A';
-  const notes = `Hunter: ${chainTag} | ${gmbTag} | ${revTag} | Ads: ${qual.breakdown?.adSpend?.pass ? 'ACTIVE' : 'Organic'} | Phone: ${
-    enrichedLead.phone || 'N/A'
-  } | Qual:${qual.score}/100(${qual.grade})`;
+  const revTag = qual.reviewCount ? `${qual.reviewCount} revs${qual.googleRating ? ` (${qual.googleRating}*)` : ''}` : 'Revs:N/A';
+  const notes = `Hunter: ${chainTag} | ${revTag} | Ads: ${qual.breakdown?.adSpend?.pass ? 'ACTIVE' : 'Organic'} | Phone: ${enrichedLead.phone || 'N/A'} | Qual:${qual.score}/100(${qual.grade})`;
 
   const addResult = await addProspect({
     doctorName: enrichedLead.doctorName,
@@ -958,59 +568,80 @@ export async function commitLeadToSupabase(enrichedLead, existingProspectsMap) {
     fleet_size: qual.fleetSize,
   });
 
-  if (!addResult.success) {
-    return { success: false, error: addResult.error || 'Failed to insert lead' };
-  }
-
-  if (existingProspectsMap) {
-    existingProspectsMap.set(normalizedEmail, addResult.prospect);
-  }
-
-  return {
-    success: true,
-    prospect: addResult.prospect,
-  };
+  if (!addResult.success) return { success: false, error: addResult.error || 'Insert failed' };
+  if (existingProspectsMap) existingProspectsMap.set(normalizedEmail, addResult.prospect);
+  return { success: true, prospect: addResult.prospect };
 }
 
-/**
- * Full Autonomous Lead Hunter Execution: Search -> Enrich -> Qualify (Eye Test + 100-Pt Gate) -> Deduplicate -> Commit
- */
-export async function runAutonomousHunt({
-  city = 'Los Angeles, CA',
-  niche = 'hvac',
-  query,
-  limit = 5,
-  minScore = DEFAULT_QUALIFY_THRESHOLD,
-  notifyTelegram = true,
-}) {
-  const targetLimit = Math.min(Math.max(Number(limit) || 5, 1), 40);
-  const threshold = Math.min(Math.max(Number(minScore) || DEFAULT_QUALIFY_THRESHOLD, 0), 100);
-  console.log(`[LeadHunter] Starting Qualified Hunt for ${niche} in ${city} (Target Qualified: ${targetLimit}, Min Score: ${threshold}/100)...`);
+// ─── Async Streaming Hunt Job Store (Prevents HTTP 502 Timeouts & OOM) ──────
 
-  // Fetch extra candidates so rejecting unqualified leads still reaches qualified quota
-  const candidateTarget = Math.min(Math.max(targetLimit * 3, targetLimit + 8), 45);
-  const businesses = await searchLocalBusinesses({ query, city, niche, limit: candidateTarget });
+const huntJobs = new Map();
+const MAX_ACTIVE_JOBS = 10;
+const JOB_TTL_MS = 15 * 60 * 1000;
+
+function pruneOldJobs() {
+  const now = Date.now();
+  for (const [id, job] of huntJobs.entries()) {
+    if (now - job.updatedAt > JOB_TTL_MS && job.status !== 'running') {
+      huntJobs.delete(id);
+    }
+  }
+  while (huntJobs.size > MAX_ACTIVE_JOBS) {
+    const oldestKey = huntJobs.keys().next().value;
+    huntJobs.delete(oldestKey);
+  }
+}
+
+export function getHuntJob(jobId) {
+  return huntJobs.get(jobId) || null;
+}
+
+export function cancelHuntJob(jobId) {
+  const job = huntJobs.get(jobId);
+  if (job && job.status === 'running') {
+    job.cancelled = true;
+    job.status = 'cancelled';
+    job.updatedAt = Date.now();
+    return true;
+  }
+  return false;
+}
+
+async function executeHuntPipeline({ city, niche, query, limit, minScore, notifyTelegram, job = null }) {
+  const targetLimit = Math.min(Math.max(Number(limit) || 5, 1), 40);
+  const threshold = Math.min(Math.max(Number(minScore) ?? DEFAULT_QUALIFY_THRESHOLD, 0), 100);
+  const candidateLimit = Math.min(Math.max(targetLimit * 2 + 4, 8), 36);
+
+  const businesses = await searchLocalBusinesses({ query, city, niche, limit: candidateLimit });
+  if (job) {
+    job.totalCandidates = businesses.length;
+    job.stage = businesses.length ? `Evaluating ${businesses.length} verified candidate domains...` : 'No eligible candidate domains found.';
+    job.updatedAt = Date.now();
+  }
+
   if (!businesses || businesses.length === 0) {
-    return {
+    const empty = {
       success: false,
-      message: `No eligible non-directory domains found for ${city} query.`,
+      message: `No eligible contractor domains found for ${city}.`,
       city,
       niche,
       minScore: threshold,
+      totalSearched: 0,
+      evaluatedCount: 0,
+      committedCount: 0,
+      disqualifiedCount: 0,
+      duplicateCount: 0,
       leads: [],
     };
+    if (job) Object.assign(job, { ...empty, status: 'completed', stage: empty.message, updatedAt: Date.now() });
+    return empty;
   }
 
-  // Pre-load all existing prospect emails in 1 single Supabase call
   let existingEmailMap = null;
   try {
-    const allExisting = await getProspects({ limit: 1000 });
-    existingEmailMap = new Map();
-    for (const p of allExisting) {
-      if (p.email) existingEmailMap.set(p.email.toLowerCase().trim(), p);
-    }
+    existingEmailMap = await getProspectDedupeIndex(1000);
   } catch (e) {
-    console.warn('[LeadHunter] Pre-load map warning:', e.message);
+    console.warn('[LeadHunter] Dedupe preload warning:', e.message);
   }
 
   const enrichedLeads = [];
@@ -1019,76 +650,84 @@ export async function runAutonomousHunt({
   let duplicateCount = 0;
   let evaluatedCount = 0;
 
-  // Evaluate in clean waves of 5 concurrent domains until targetLimit NEW qualified leads committed or pool exhausted
-  const WAVE_SIZE = 5;
+  // Bounded waves of 3 concurrent scrapes to stay well below Render 256-384MB heap ceiling
+  const WAVE_SIZE = 3;
   for (let i = 0; i < businesses.length; i += WAVE_SIZE) {
     if (committedCount >= targetLimit) break;
+    if (job?.cancelled) break;
 
     const wave = businesses.slice(i, i + WAVE_SIZE);
-    const waveResults = await Promise.allSettled(
-      wave.map(async (item) => {
-        try {
-          const enriched = await Promise.race([
-            huntAndEnrichLead({
-              url: item.url,
-              city: item.city,
-              niche: item.niche,
-              businessNameOverride: item.title,
-              fast: false,
-              minScore: threshold,
-            }),
-            new Promise((_, reject) => setTimeout(() => reject(new Error('Domain timeout (14s)')), 14000)),
-          ]);
+    if (job) {
+      job.stage = `Crawling & scoring candidates ${i + 1}–${Math.min(i + WAVE_SIZE, businesses.length)} of ${businesses.length}...`;
+      job.updatedAt = Date.now();
+    }
 
-          if (enriched && enriched.success) {
-            const commitRes = await commitLeadToSupabase(enriched, existingEmailMap);
-            enriched.savedToDb = commitRes.success;
-            enriched.dbStatus = commitRes.alreadyExists
-              ? 'duplicate'
-              : commitRes.disqualified
-              ? 'disqualified'
-              : commitRes.success
-              ? 'saved'
-              : 'no_email';
-            return { success: true, lead: enriched, committed: commitRes.success, disqualified: !!commitRes.disqualified, duplicate: !!commitRes.alreadyExists };
-          }
-        } catch (err) {
-          console.warn(`[LeadHunter] Failed to process ${item.url}:`, err.message);
+    const settled = await Promise.allSettled(
+      wave.map(async (item) => {
+        const enriched = await Promise.race([
+          huntAndEnrichLead({
+            url: item.url,
+            city: item.city,
+            niche: item.niche,
+            businessNameOverride: item.title,
+            fast: targetLimit > 10,
+            minScore: threshold,
+          }),
+          new Promise((_, reject) => setTimeout(() => reject(new Error('Domain timeout (10s)')), 10000)),
+        ]);
+
+        if (enriched && enriched.success) {
+          const commitRes = await commitLeadToSupabase(enriched, existingEmailMap);
+          enriched.savedToDb = commitRes.success;
+          enriched.dbStatus = commitRes.alreadyExists
+            ? 'duplicate'
+            : commitRes.disqualified
+            ? 'disqualified'
+            : commitRes.success
+            ? 'saved'
+            : 'no_email';
+          return {
+            success: true,
+            lead: enriched,
+            committed: commitRes.success,
+            disqualified: !!commitRes.disqualified,
+            duplicate: !!commitRes.alreadyExists,
+          };
         }
-        return { success: false, url: item.url };
+        return { success: false };
       })
     );
 
-    for (const res of waveResults) {
+    for (const r of settled) {
       evaluatedCount++;
-      if (res.status === 'fulfilled' && res.value?.success && res.value.lead) {
-        enrichedLeads.push(res.value.lead);
-        if (res.value.committed) committedCount++;
-        if (res.value.disqualified) disqualifiedCount++;
-        if (res.value.duplicate) duplicateCount++;
+      if (r.status === 'fulfilled' && r.value?.success && r.value.lead) {
+        enrichedLeads.push(r.value.lead);
+        if (r.value.committed) committedCount++;
+        if (r.value.disqualified) disqualifiedCount++;
+        if (r.value.duplicate) duplicateCount++;
       }
+    }
+
+    if (job) {
+      job.evaluatedCount = evaluatedCount;
+      job.committedCount = committedCount;
+      job.disqualifiedCount = disqualifiedCount;
+      job.duplicateCount = duplicateCount;
+      job.leads = enrichedLeads;
+      job.updatedAt = Date.now();
     }
   }
 
-  // Send Telegram summary when new qualified leads are committed
   if (committedCount > 0 && notifyTelegram) {
     const qualifiedList = enrichedLeads.filter((l) => l.savedToDb);
-    const avgScore = Math.round(
-      qualifiedList.reduce((acc, l) => acc + (l.qualification?.score || 0), 0) / Math.max(qualifiedList.length, 1)
-    );
-    const topLines = qualifiedList
-      .slice(0, 5)
-      .map((l) => `• *${l.clinicName}* — ${l.qualification?.score}/100 (${l.qualification?.grade})`)
-      .join('\n');
+    const avgScore = Math.round(qualifiedList.reduce((acc, l) => acc + (l.qualification?.score || 0), 0) / Math.max(qualifiedList.length, 1));
+    const topLines = qualifiedList.slice(0, 5).map((l) => `• *${l.clinicName}* — ${l.qualification?.score}/100 (${l.qualification?.grade})`).join('\n');
     sendTelegram(
-      `🎯 *Lead Hunter Qualified Batch (${city})*\n\n` +
-        `✅ Committed to CRM: *${committedCount}* (Avg Score: ${avgScore}/100)\n` +
-        `❌ Rejected by Qualifier: ${disqualifiedCount}\n` +
-        `♻️ Already in CRM: ${duplicateCount}\n\n${topLines}`
+      `🎯 *Lead Hunter Batch (${city})*\n\nCommitted to CRM: *${committedCount}* (Avg ${avgScore}/100)\nRejected: ${disqualifiedCount} | Duplicates: ${duplicateCount}\n\n${topLines}`
     ).catch(() => {});
   }
 
-  return {
+  const finalResult = {
     success: true,
     city,
     niche,
@@ -1100,4 +739,60 @@ export async function runAutonomousHunt({
     duplicateCount,
     leads: enrichedLeads,
   };
+
+  if (job) {
+    Object.assign(job, {
+      ...finalResult,
+      status: job.cancelled ? 'cancelled' : 'completed',
+      stage: job.cancelled ? 'Hunt cancelled by user.' : `Completed: ${committedCount} qualified leads added to CRM.`,
+      updatedAt: Date.now(),
+    });
+  }
+  return finalResult;
+}
+
+/**
+ * Starts a non-blocking background hunt job and returns jobId immediately (<50ms)
+ */
+export function startHuntJob({ city = 'Los Angeles, CA', niche = 'hvac', query, limit = 5, minScore = DEFAULT_QUALIFY_THRESHOLD, notifyTelegram = true }) {
+  pruneOldJobs();
+  const jobId = crypto.randomBytes(8).toString('hex');
+  const job = {
+    jobId,
+    status: 'running',
+    cancelled: false,
+    city,
+    niche,
+    minScore: Number(minScore) ?? DEFAULT_QUALIFY_THRESHOLD,
+    targetLimit: Math.min(Math.max(Number(limit) || 5, 1), 40),
+    totalCandidates: 0,
+    evaluatedCount: 0,
+    committedCount: 0,
+    disqualifiedCount: 0,
+    duplicateCount: 0,
+    leads: [],
+    stage: `Discovering local ${niche} contractors in ${city}...`,
+    error: null,
+    createdAt: Date.now(),
+    updatedAt: Date.now(),
+  };
+  huntJobs.set(jobId, job);
+
+  executeHuntPipeline({ city, niche, query, limit, minScore, notifyTelegram, job }).catch((err) => {
+    console.error(`[LeadHunter Job ${jobId}] Failed:`, err);
+    job.status = 'failed';
+    job.error = err.message || 'Unknown error during hunt';
+    job.stage = `Failed: ${job.error}`;
+    job.updatedAt = Date.now();
+  });
+
+  return job;
+}
+
+/**
+ * Synchronous API runner (safely bounded to max 10 leads so direct API callers never hit Render proxy timeout)
+ */
+export async function runAutonomousHunt({ city = 'Los Angeles, CA', niche = 'hvac', query, limit = 5, minScore = DEFAULT_QUALIFY_THRESHOLD, notifyTelegram = true }) {
+  const safeSyncLimit = Math.min(Math.max(Number(limit) || 5, 1), 10);
+  return await executeHuntPipeline({ city, niche, query, limit: safeSyncLimit, minScore, notifyTelegram });
 }

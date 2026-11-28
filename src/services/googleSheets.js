@@ -1,13 +1,12 @@
-import { google } from 'googleapis';
 import fs from 'fs';
 import path from 'path';
 import { config } from '../config.js';
 import { formatSalutation } from '../templates/outreachTemplates.js';
 
-let sheetsClient = null;
+let cachedAuthClient = null;
 
 /**
- * Returns Google Sheets connection status
+ * Returns Google Sheets connection status (zero heavy googleapis import at boot)
  */
 export function getSheetsStatus() {
   const hasWebhook = Boolean(config.googleSheets.webhookUrl || process.env.GOOGLE_SHEETS_WEBHOOK_URL);
@@ -25,57 +24,79 @@ export function getSheetsStatus() {
     leadsTab: config.googleSheets.leadsTabName,
     callLogsTab: config.googleSheets.tabName,
     connected: mode !== 'mock',
-    description: mode === 'webhook_url'
-      ? 'Google Apps Script Webhook (Direct HTTP POST)'
-      : mode === 'service_account_env'
-      ? 'Google Cloud Service Account (From Environment JSON)'
-      : mode === 'service_account_file'
-      ? 'Google Cloud Service Account (From Local Key File)'
-      : 'Mock Mode (Ready for Webhook or Service Account)',
+    description:
+      mode === 'webhook_url'
+        ? 'Google Apps Script Webhook (Direct HTTP POST)'
+        : mode === 'service_account_env'
+        ? 'Google Cloud Service Account (From Environment JSON)'
+        : mode === 'service_account_file'
+        ? 'Google Cloud Service Account (From Local Key File)'
+        : 'Mock Mode (Ready for Webhook or Service Account)',
   };
 }
 
-async function getSheetsClient() {
-  if (sheetsClient) return sheetsClient;
-
-  // Option 1: Parse service account JSON directly from environment variable
+/**
+ * Lazy-load google-auth-library ONLY if Service Account auth is actually configured (~2MB vs 78MB googleapis)
+ */
+async function getAccessToken() {
   const jsonEnv = config.googleSheets.serviceAccountJson || process.env.GOOGLE_SERVICE_ACCOUNT_JSON;
-  if (jsonEnv) {
-    try {
-      const credentials = typeof jsonEnv === 'string' ? JSON.parse(jsonEnv) : jsonEnv;
-      const auth = new google.auth.GoogleAuth({
-        credentials,
-        scopes: ['https://www.googleapis.com/auth/spreadsheets'],
-      });
-      sheetsClient = google.sheets({ version: 'v4', auth });
-      return sheetsClient;
-    } catch (err) {
-      console.warn('[Google Sheets] Failed to parse GOOGLE_SERVICE_ACCOUNT_JSON:', err.message);
-    }
-  }
-
-  // Option 2: Read key file from disk
   const keyPath = path.resolve(config.googleSheets.serviceAccountPath);
-  if (fs.existsSync(keyPath)) {
-    try {
-      const auth = new google.auth.GoogleAuth({
-        keyFile: keyPath,
-        scopes: ['https://www.googleapis.com/auth/spreadsheets'],
-      });
-      sheetsClient = google.sheets({ version: 'v4', auth });
-      return sheetsClient;
-    } catch (err) {
-      console.error('[Google Sheets] Key file auth error:', err.message);
-    }
-  }
 
-  return null;
+  if (!jsonEnv && !fs.existsSync(keyPath)) return null;
+
+  try {
+    if (!cachedAuthClient) {
+      const { GoogleAuth } = await import('google-auth-library');
+      const authOpts = jsonEnv
+        ? {
+            credentials: typeof jsonEnv === 'string' ? JSON.parse(jsonEnv) : jsonEnv,
+            scopes: ['https://www.googleapis.com/auth/spreadsheets'],
+          }
+        : {
+            keyFile: keyPath,
+            scopes: ['https://www.googleapis.com/auth/spreadsheets'],
+          };
+      const auth = new GoogleAuth(authOpts);
+      cachedAuthClient = await auth.getClient();
+    }
+    const tokenRes = await cachedAuthClient.getAccessToken();
+    return tokenRes?.token || null;
+  } catch (err) {
+    console.warn('[Google Sheets] Auth error:', err.message);
+    return null;
+  }
+}
+
+/**
+ * Direct REST append to Google Sheets v4 API without loading heavy googleapis bundle
+ */
+async function appendValuesRest(range, values) {
+  const token = await getAccessToken();
+  if (!token) return null;
+
+  const sheetId = config.googleSheets.sheetId;
+  const encodedRange = encodeURIComponent(range);
+  const url = `https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values/${encodedRange}:append?valueInputOption=USER_ENTERED&insertDataOption=INSERT_ROWS`;
+
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ values }),
+  });
+
+  if (!res.ok) {
+    const errText = await res.text();
+    throw new Error(`Sheets REST ${res.status}: ${errText.slice(0, 200)}`);
+  }
+  return await res.json();
 }
 
 /**
  * Append a verified lead to Google Sheets
- * Exact Row Format: [Company | Owner | Phone | City | Full Harvey Email]
- * Supports both Google Apps Script Webhook and Google Sheets API v4
+ * Columns: [Company | Owner | Phone | City | Full Harvey Email | Email | Website | Date | Qual Score]
  */
 export async function appendProspectToSheet(prospect) {
   if (!prospect) return { success: false, error: 'No prospect data provided' };
@@ -88,23 +109,13 @@ export async function appendProspectToSheet(prospect) {
   const email = prospect.email || '';
   const website = prospect.website_url || prospect.url || '';
   const dateAdded = new Date().toLocaleDateString('en-US');
-  const qualScore = prospect.qual_score !== undefined && prospect.qual_score !== null ? `${prospect.qual_score}/100 (${prospect.qual_grade || ''})` : 'Legacy';
+  const qualScore =
+    prospect.qual_score !== undefined && prospect.qual_score !== null
+      ? `${prospect.qual_score}/100 (${prospect.qual_grade || ''})`
+      : 'Legacy';
 
-  // Exact 5 columns requested by Archit: [Company | Owner | Phone | City | Full Harvey Email]
-  // followed by contact email, website, date added, and qualification rate score
-  const row = [
-    company,
-    owner,
-    phone,
-    city,
-    fullHarveyEmail,
-    email,
-    website,
-    dateAdded,
-    qualScore,
-  ];
+  const row = [company, owner, phone, city, fullHarveyEmail, email, website, dateAdded, qualScore];
 
-  // 1. Try Google Apps Script Webhook
   const webhookUrl = config.googleSheets.webhookUrl || process.env.GOOGLE_SHEETS_WEBHOOK_URL;
   if (webhookUrl) {
     try {
@@ -119,7 +130,6 @@ export async function appendProspectToSheet(prospect) {
         }),
       });
       if (res.ok) {
-        console.log(`[Google Sheets:Webhook] Synced prospect ${prospect.email || company} to sheet successfully.`);
         return { success: true, provider: 'webhook' };
       }
     } catch (webhookErr) {
@@ -127,34 +137,21 @@ export async function appendProspectToSheet(prospect) {
     }
   }
 
-  // 2. Try Google Sheets API client
-  const client = await getSheetsClient();
-  if (client) {
-    try {
-      const range = `${config.googleSheets.leadsTabName}!A:I`;
-      const response = await client.spreadsheets.values.append({
-        spreadsheetId: config.googleSheets.sheetId,
-        range,
-        valueInputOption: 'USER_ENTERED',
-        insertDataOption: 'INSERT_ROWS',
-        requestBody: { values: [row] },
-      });
-      console.log(`[Google Sheets:API] Appended lead "${company}" to "${config.googleSheets.leadsTabName}" successfully.`);
-      return { success: true, updatedRange: response.data.updates?.updatedRange, provider: 'api' };
-    } catch (err) {
-      console.error('[Google Sheets:API] Append error:', err.message);
-      return { success: false, error: err.message };
+  try {
+    const restRes = await appendValuesRest(`${config.googleSheets.leadsTabName}!A:I`, [row]);
+    if (restRes) {
+      return { success: true, updatedRange: restRes.updates?.updatedRange, provider: 'api_rest' };
     }
+  } catch (err) {
+    console.error('[Google Sheets:REST] Append error:', err.message);
+    return { success: false, error: err.message };
   }
 
-  // 3. Fallback to mock log
-  console.log('[Google Sheets Mock Lead Append]:', row);
   return { mock: true, success: true, row };
 }
 
 /**
- * Format prospects for direct 1-click clipboard paste into Google Sheets (TSV format)
- * Columns: [Company | Owner | Phone | City | Full Harvey Email]
+ * Format prospects for direct clipboard paste into Google Sheets (TSV format)
  */
 export function formatProspectsTsv(prospects = []) {
   const header = ['Company', 'Owner', 'Phone', 'City', 'Full Harvey Email'].join('\t');
@@ -174,7 +171,9 @@ export function formatProspectsTsv(prospects = []) {
  */
 export function formatProspectsCsv(prospects = []) {
   const escapeCsv = (val) => `"${String(val || '').replace(/"/g, '""')}"`;
-  const header = ['Company', 'Owner', 'Phone', 'City', 'Full Harvey Email', 'Email', 'Website', 'Date Added', 'Qual Score', 'Reviews'].map(escapeCsv).join(',');
+  const header = ['Company', 'Owner', 'Phone', 'City', 'Full Harvey Email', 'Email', 'Website', 'Date Added', 'Qual Score', 'Reviews']
+    .map(escapeCsv)
+    .join(',');
   const rows = prospects.map((p) => {
     const company = p.clinic_name || p.clinicName || '';
     const owner = formatSalutation(p.doctor_name || p.doctorName, company, p.niche || 'hvac');
@@ -184,7 +183,8 @@ export function formatProspectsCsv(prospects = []) {
     const email = p.email || '';
     const website = p.website_url || p.url || '';
     const dateAdded = new Date().toLocaleDateString('en-US');
-    const qualScore = p.qual_score !== undefined && p.qual_score !== null ? `${p.qual_score}/100 (${p.qual_grade || ''})` : 'Legacy';
+    const qualScore =
+      p.qual_score !== undefined && p.qual_score !== null ? `${p.qual_score}/100 (${p.qual_grade || ''})` : 'Legacy';
     const reviews = p.review_count ? `${p.review_count}${p.google_rating ? ` (${p.google_rating}★)` : ''}` : '';
     return [company, owner, phone, city, emailDraft, email, website, dateAdded, qualScore, reviews].map(escapeCsv).join(',');
   });
@@ -192,21 +192,18 @@ export function formatProspectsCsv(prospects = []) {
 }
 
 /**
- * Batch synchronize an array of prospects to Google Sheets
+ * Batch synchronize prospects to Google Sheets
  */
 export async function syncAllProspectsToSheet(prospects = []) {
   if (!Array.isArray(prospects) || prospects.length === 0) {
     return { success: false, message: 'No prospects to synchronize' };
   }
 
-  // Filter to trade contractor prospects
   const tradeProspects = prospects.filter((p) => p.niche !== 'medspa');
   const targetList = tradeProspects.length > 0 ? tradeProspects : prospects;
 
-  console.log(`[Google Sheets] Synchronizing ${targetList.length} prospects to Google Sheets...`);
   let synced = 0;
   let errors = 0;
-
   for (const p of targetList) {
     const res = await appendProspectToSheet(p);
     if (res.success) synced++;
@@ -242,11 +239,10 @@ export async function appendCallLogToSheet({
     callOutcome,
     sentiment,
     callSummary,
-    recordingUrl ? `=HYPERLINK("${recordingUrl}", "▶️ Listen")` : 'No recording',
+    recordingUrl ? `=HYPERLINK("${recordingUrl}", "Listen")` : 'No recording',
     callId,
   ];
 
-  // Try webhook first
   const webhookUrl = config.googleSheets.webhookUrl || process.env.GOOGLE_SHEETS_WEBHOOK_URL;
   if (webhookUrl) {
     try {
@@ -254,34 +250,27 @@ export async function appendCallLogToSheet({
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          action: 'append_call',
+          action: 'append_call_log',
           sheet: config.googleSheets.tabName,
           row,
+          callData: { callDate, callerPhone, duration, callOutcome, sentiment, callSummary, recordingUrl, callId },
         }),
       });
       if (res.ok) return { success: true, provider: 'webhook' };
-    } catch (e) {}
-  }
-
-  // Try API client
-  const client = await getSheetsClient();
-  if (client) {
-    try {
-      const range = `${config.googleSheets.tabName}!A:H`;
-      const response = await client.spreadsheets.values.append({
-        spreadsheetId: config.googleSheets.sheetId,
-        range,
-        valueInputOption: 'USER_ENTERED',
-        insertDataOption: 'INSERT_ROWS',
-        requestBody: { values: [row] },
-      });
-      return { success: true, updatedRange: response.data.updates?.updatedRange, provider: 'api' };
-    } catch (err) {
-      console.error('[Google Sheets] Append error:', err.message);
-      return { success: false, error: err.message };
+    } catch (webhookErr) {
+      console.warn('[Google Sheets:Webhook] Call log dispatch failed:', webhookErr.message);
     }
   }
 
-  console.log('[Google Sheets Mock Call Log Append]:', row);
-  return { mock: true, success: true };
+  try {
+    const restRes = await appendValuesRest(`${config.googleSheets.tabName}!A:H`, [row]);
+    if (restRes) {
+      return { success: true, updatedRange: restRes.updates?.updatedRange, provider: 'api_rest' };
+    }
+  } catch (err) {
+    console.error('[Google Sheets:REST] Call log append error:', err.message);
+    return { success: false, error: err.message };
+  }
+
+  return { mock: true, success: true, row };
 }
