@@ -178,9 +178,9 @@ scraperRouter.post('/ingest', async (req, res) => {
         if (existing.qual_score == null && qualScore != null) patch.qual_score = qualScore;
         if (!existing.qual_grade && qualGrade) patch.qual_grade = qualGrade;
 
-        const updRes = Object.keys(patch).length ? await updateProspect(existing.id, patch) : { success: true, prospect: existing };
-        if (!updRes || !updRes.success) {
-          const errMsg = (updRes && (updRes.error || updRes.message)) || 'Failed to sync existing prospect in CRM';
+        const updatedRow = Object.keys(patch).length ? await updateProspect(existing.id, patch) : existing;
+        if (!updatedRow) {
+          const errMsg = 'Failed to sync existing prospect in CRM';
           return res.status(500).json({ status: 'failed', error: errMsg, message: errMsg });
         }
         return res.json({
@@ -188,7 +188,7 @@ scraperRouter.post('/ingest', async (req, res) => {
           alreadyExists: true,
           synced: true,
           message: `Prospect ${finalEmail} is already in Pipeline CRM (synced).`,
-          prospect: updRes.prospect || existing,
+          prospect: updatedRow,
           qualification: qualObj,
         });
       }

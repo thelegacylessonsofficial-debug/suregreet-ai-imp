@@ -739,9 +739,9 @@ export async function scrapeAndIngestLead({
       }
       if (existing.qual_score == null && qualification.score != null) patch.qual_score = qualification.score;
       if (!existing.qual_grade && qualification.grade) patch.qual_grade = qualification.grade;
-      const updRes = Object.keys(patch).length ? await updateProspect(existing.id, patch) : { success: true, prospect: existing };
-      if (!updRes || !updRes.success) {
-        const errMsg = (updRes && (updRes.error || updRes.message)) || 'Failed to sync existing prospect in CRM';
+      const updatedRow = Object.keys(patch).length ? await updateProspect(existing.id, patch) : existing;
+      if (!updatedRow) {
+        const errMsg = 'Failed to sync existing prospect in CRM';
         return { success: false, error: errMsg, message: errMsg, qualification, scrapedData: result };
       }
       return {
@@ -749,7 +749,7 @@ export async function scrapeAndIngestLead({
         alreadyExists: true,
         synced: true,
         message: `Prospect ${finalEmail} is already in Pipeline CRM (${qualification.score}/100 ${qualification.grade}).`,
-        prospect: updRes.prospect || existing,
+        prospect: updatedRow,
         qualification,
         scrapedData: result,
       };
