@@ -4,7 +4,7 @@ import { config } from '../config.js';
 let transporter = null;
 let rotationIndex = 0;
 
-function parseDisplayAndEmail(fromStr, fallbackName = 'SureGreet AI') {
+function parseDisplayAndEmail(fromStr, fallbackName = 'Archit Deshmukh') {
   const raw = String(fromStr || '').trim();
   const m = raw.match(/^(.*?)\s*<([^>]+)>$/);
   if (m) {
@@ -16,8 +16,50 @@ function parseDisplayAndEmail(fromStr, fallbackName = 'SureGreet AI') {
   return { name: fallbackName, email: raw };
 }
 
+/**
+ * Parses Hostinger Business Mail accounts from env:
+ * - HOSTINGER_MAIL_ACCOUNTS JSON array: [{"email":"archit@suregreet.com","mailboxId":"AC...","displayName":"Archit Deshmukh","token":"..."}]
+ * - Or single-mailbox fallback: HOSTINGER_MAIL_TOKEN + HOSTINGER_MAILBOX_ID (+ HOSTINGER_MAIL_FROM)
+ */
+export function getHostingerMailAccounts() {
+  const accounts = [];
+  const rawJson = process.env.HOSTINGER_MAIL_ACCOUNTS;
+  if (rawJson && rawJson.trim()) {
+    try {
+      const parsed = JSON.parse(rawJson);
+      if (Array.isArray(parsed)) {
+        for (const item of parsed) {
+          if (item && item.token && item.mailboxId && item.email) {
+            accounts.push({
+              email: String(item.email).trim(),
+              mailboxId: String(item.mailboxId).trim(),
+              displayName: String(item.displayName || config.senderName || 'Archit Deshmukh').trim(),
+              token: String(item.token).trim(),
+            });
+          }
+        }
+      }
+    } catch (err) {
+      console.warn('[Mailer:Hostinger] Invalid HOSTINGER_MAIL_ACCOUNTS JSON:', err.message);
+    }
+  }
+
+  if (accounts.length === 0 && process.env.HOSTINGER_MAIL_TOKEN && process.env.HOSTINGER_MAILBOX_ID) {
+    accounts.push({
+      email: (process.env.HOSTINGER_MAIL_FROM || process.env.BUSINESS_EMAIL || config.businessEmail || 'archit@suregreet.com').trim(),
+      mailboxId: process.env.HOSTINGER_MAILBOX_ID.trim(),
+      displayName: (process.env.HOSTINGER_DISPLAY_NAME || config.senderName || 'Archit Deshmukh').trim(),
+      token: process.env.HOSTINGER_MAIL_TOKEN.trim(),
+    });
+  }
+
+  return accounts;
+}
+
 function getConfiguredProviders() {
+  const hostingerAccounts = getHostingerMailAccounts();
   return {
+    hostinger: hostingerAccounts.length > 0,
     resend: Boolean(process.env.RESEND_API_KEY),
     gmailBridge: Boolean(process.env.GMAIL_WEBHOOK_URL),
     brevo: Boolean(process.env.BREVO_API_KEY),
@@ -27,6 +69,7 @@ function getConfiguredProviders() {
 
 function getActiveTransportName() {
   const p = getConfiguredProviders();
+  if (p.hostinger) return 'hostinger';
   if (p.resend) return 'resend';
   if (p.gmailBridge) return 'gmail_bridge';
   if (p.brevo) return 'brevo';
@@ -38,6 +81,11 @@ function getActiveTransportName() {
  * Returns configured sending inboxes accurately based on active transport
  */
 export function getSenderInboxes() {
+  const hostingerAccounts = getHostingerMailAccounts();
+  if (hostingerAccounts.length > 0) {
+    return hostingerAccounts.map((a) => `${a.displayName} <${a.email}>`);
+  }
+
   const rotRaw = process.env.ROTATION_FROM_EMAILS || '';
   if (rotRaw.trim()) {
     const parsed = rotRaw
@@ -56,21 +104,35 @@ export function getSenderInboxes() {
     const sf = process.env.EMAIL_FROM || config.smtp?.from || config.smtp?.user || config.ownerEmail;
     return [sf];
   }
-  return [process.env.EMAIL_FROM || config.ownerEmail || 'architd062@gmail.com'];
+  return [process.env.EMAIL_FROM || config.ownerEmail || 'archit@suregreet.com'];
 }
 
 /**
  * Round-robin selector across registered sending inboxes
  */
 export function getNextSenderInbox() {
+  const hostingerAccounts = getHostingerMailAccounts();
+  if (hostingerAccounts.length > 0) {
+    const index = rotationIndex % hostingerAccounts.length;
+    const acc = hostingerAccounts[index];
+    rotationIndex++;
+    return {
+      selected: `${acc.displayName} <${acc.email}>`,
+      index,
+      totalInboxes: hostingerAccounts.length,
+      hostingerAccount: acc,
+    };
+  }
+
   const inboxes = getSenderInboxes();
-  const selected = inboxes[rotationIndex % inboxes.length];
   const index = rotationIndex % inboxes.length;
+  const selected = inboxes[index];
   rotationIndex++;
   return {
     selected,
     index,
     totalInboxes: inboxes.length,
+    hostingerAccount: null,
   };
 }
 
@@ -78,10 +140,11 @@ export function getMailerStatus() {
   const inboxes = getSenderInboxes();
   const providers = getConfiguredProviders();
   const activeTransport = getActiveTransportName();
-  const port443Ready = providers.resend || providers.gmailBridge || providers.brevo;
+  const port443Ready = providers.hostinger || providers.resend || providers.gmailBridge || providers.brevo;
   const isRender = Boolean(process.env.RENDER || process.env.RENDER_SERVICE_ID);
 
   const labelMap = {
+    hostinger: 'Hostinger Mail API (Port 443)',
     resend: 'Resend HTTP API (Port 443)',
     gmail_bridge: 'Gmail HTTPS Bridge (Port 443)',
     brevo: 'Brevo HTTP API (Port 443)',
@@ -128,6 +191,67 @@ function getTransporter() {
     });
   }
   return transporter;
+}
+
+async function sendViaHostingerMail({ account, to, subject, html, text, inReplyTo }) {
+  if (!account || !account.token || !account.mailboxId) return null;
+
+  const baseUrl = (process.env.HOSTINGER_MAIL_API_BASE || 'https://api.mail.hostinger.com').replace(/\/+$/, '');
+  const endpoint = `${baseUrl}/api/v1/mailboxes/${encodeURIComponent(account.mailboxId)}/send`;
+
+  const recipients = (Array.isArray(to) ? to : [to]).map((e) => String(e).trim()).filter(Boolean);
+  const payload = {
+    to: recipients,
+    displayName: account.displayName || config.senderName || 'Archit Deshmukh',
+    subject: String(subject || '').trim(),
+    text: String(text || ''),
+  };
+  if (html) payload.html = html;
+  if (inReplyTo && typeof inReplyTo === 'object' && inReplyTo.uid && inReplyTo.folder) {
+    payload.inReplyTo = { folder: String(inReplyTo.folder), uid: Number(inReplyTo.uid) };
+  }
+
+  try {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 12000);
+    const res = await fetch(endpoint, {
+      method: 'POST',
+      signal: controller.signal,
+      headers: {
+        Authorization: `Bearer ${account.token}`,
+        'Content-Type': 'application/json',
+        Accept: 'application/json',
+      },
+      body: JSON.stringify(payload),
+    });
+    clearTimeout(timer);
+
+    const rawText = await res.text();
+    let data = {};
+    try {
+      data = rawText ? JSON.parse(rawText) : {};
+    } catch (_) {
+      data = { raw: rawText };
+    }
+
+    if (res.ok) {
+      const fromHeader = `${payload.displayName} <${account.email}>`;
+      console.log(`[Mailer:Hostinger] Sent from ${account.email} to ${recipients.join(', ')} (HTTP ${res.status})`);
+      return {
+        success: true,
+        provider: 'hostinger_mail_api',
+        from: fromHeader,
+        mailboxId: account.mailboxId,
+        messageId: data?.messageId || data?.id || `<hostinger-${Date.now()}@${account.email.split('@')[1] || 'suregreet.com'}>`,
+      };
+    }
+
+    const errMsg = data?.message || data?.error || (data?.errors ? JSON.stringify(data.errors) : `Hostinger HTTP ${res.status}`);
+    console.warn(`[Mailer:Hostinger] Send rejected for ${account.email}:`, errMsg);
+    return { success: false, provider: 'hostinger_mail_api', error: errMsg };
+  } catch (err) {
+    return { success: false, provider: 'hostinger_mail_api', error: err.message };
+  }
 }
 
 async function sendViaResend({ to, subject, html, text, effectiveFrom, replyTo, customHeaders }) {
@@ -183,7 +307,7 @@ async function sendViaGmailBridge({ to, subject, html, text, effectiveFrom, repl
     html: html || '',
     name: senderMeta.name,
     replyTo: replyTo || senderMeta.email || config.ownerEmail,
-    inReplyTo: inReplyTo || '',
+    inReplyTo: typeof inReplyTo === 'string' ? inReplyTo : '',
   };
 
   try {
@@ -275,6 +399,37 @@ export async function verifyMailerConnection() {
   const status = getMailerStatus();
   const checks = [];
 
+  const hostingerAccounts = getHostingerMailAccounts();
+  if (hostingerAccounts.length > 0) {
+    const baseUrl = (process.env.HOSTINGER_MAIL_API_BASE || 'https://api.mail.hostinger.com').replace(/\/+$/, '');
+    for (const acc of hostingerAccounts) {
+      try {
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), 7000);
+        const res = await fetch(`${baseUrl}/api/v1/mailboxes/${encodeURIComponent(acc.mailboxId)}/quota`, {
+          signal: controller.signal,
+          headers: {
+            Authorization: `Bearer ${acc.token}`,
+            Accept: 'application/json',
+          },
+        });
+        clearTimeout(timer);
+        const data = await res.json().catch(() => ({}));
+        checks.push({
+          provider: `hostinger (${acc.email})`,
+          reachable: res.ok,
+          mailboxId: acc.mailboxId,
+          quota: data,
+          note: res.ok
+            ? `Hostinger Mail API ready for ${acc.email} (Port 443 HTTP)`
+            : data?.message || data?.error || `Hostinger HTTP ${res.status}`,
+        });
+      } catch (err) {
+        checks.push({ provider: `hostinger (${acc.email})`, reachable: false, note: err.message });
+      }
+    }
+  }
+
   if (process.env.RESEND_API_KEY) {
     try {
       const controller = new AbortController();
@@ -347,25 +502,28 @@ export async function verifyMailerConnection() {
     }
   }
 
-  const smtpClient = getTransporter();
-  if (smtpClient) {
-    try {
-      await smtpClient.verify();
-      checks.push({
-        provider: 'smtp',
-        reachable: true,
-        note: `SMTP handshake verified on ${config.smtp.host}:${config.smtp.port}`,
-      });
-    } catch (err) {
-      const isTimeout = /timeout|ETIMEDOUT|ECONNREFUSED|ENETUNREACH/i.test(err.message);
-      checks.push({
-        provider: 'smtp',
-        reachable: false,
-        renderFreeSmtpBlocked: isTimeout,
-        note: isTimeout
-          ? `SMTP blocked (${err.message}). Render Free Tier drops outbound TCP on ports 25/465/587 — connect GMAIL_WEBHOOK_URL, RESEND_API_KEY, or BREVO_API_KEY for Port 443 HTTPS.`
-          : err.message,
-      });
+  // Only test SMTP if no Port 443 HTTP provider is active (avoids slow 5s timeout noise when Hostinger HTTP is active)
+  if (!status.port443Ready) {
+    const smtpClient = getTransporter();
+    if (smtpClient) {
+      try {
+        await smtpClient.verify();
+        checks.push({
+          provider: 'smtp',
+          reachable: true,
+          note: `SMTP handshake verified on ${config.smtp.host}:${config.smtp.port}`,
+        });
+      } catch (err) {
+        const isTimeout = /timeout|ETIMEDOUT|ECONNREFUSED|ENETUNREACH/i.test(err.message);
+        checks.push({
+          provider: 'smtp',
+          reachable: false,
+          renderFreeSmtpBlocked: isTimeout,
+          note: isTimeout
+            ? `SMTP blocked (${err.message}). Render Free Tier drops outbound TCP on ports 25/465/587 — connect Hostinger Mail API, Resend, or Gmail HTTPS Bridge for Port 443.`
+            : err.message,
+        });
+      }
     }
   }
 
@@ -380,33 +538,56 @@ export async function verifyMailerConnection() {
 
 export async function sendEmail({ to, subject, html, text, from, replyTo, headers = {}, inReplyTo, references, messageId }) {
   const customHeaders = { ...headers };
-  if (inReplyTo) customHeaders['In-Reply-To'] = inReplyTo;
+  if (typeof inReplyTo === 'string' && inReplyTo) customHeaders['In-Reply-To'] = inReplyTo;
   if (references) customHeaders['References'] = references;
 
-  const { selected: selectedFrom } = getNextSenderInbox();
+  const { selected: selectedFrom, hostingerAccount } = getNextSenderInbox();
   const effectiveFrom = from || selectedFrom;
   const errors = [];
 
-  // 1. Port 443 HTTPS transports first (never blocked by Render firewall)
+  // 1. Hostinger Business Mail HTTP API (Port 443 — rotates across configured suregreet.com / suregreetai.com mailboxes)
+  const hostingerAccounts = getHostingerMailAccounts();
+  if (hostingerAccounts.length > 0) {
+    const explicitMatch = from
+      ? hostingerAccounts.find((a) => String(from).toLowerCase().includes(a.email.toLowerCase()))
+      : null;
+    const chosenAccount = explicitMatch || hostingerAccount || hostingerAccounts[0];
+    const hRes = await sendViaHostingerMail({
+      account: chosenAccount,
+      to,
+      subject,
+      html,
+      text,
+      inReplyTo,
+    });
+    if (hRes) {
+      if (hRes.success) return hRes;
+      errors.push(`Hostinger(${chosenAccount.email}): ${hRes.error}`);
+    }
+  }
+
+  // 2. Resend HTTP API (Port 443)
   const resendRes = await sendViaResend({ to, subject, html, text, effectiveFrom, replyTo, customHeaders });
   if (resendRes) {
     if (resendRes.success) return resendRes;
     errors.push(`Resend: ${resendRes.error}`);
   }
 
+  // 3. Gmail Apps Script Bridge (Port 443)
   const gmailRes = await sendViaGmailBridge({ to, subject, html, text, effectiveFrom, replyTo, inReplyTo });
   if (gmailRes) {
     if (gmailRes.success) return gmailRes;
     errors.push(`GmailBridge: ${gmailRes.error}`);
   }
 
+  // 4. Brevo HTTP API (Port 443)
   const brevoRes = await sendViaBrevo({ to, subject, html, text, effectiveFrom, replyTo, customHeaders });
   if (brevoRes) {
     if (brevoRes.success) return brevoRes;
     errors.push(`Brevo: ${brevoRes.error}`);
   }
 
-  // 2. Fallback to Nodemailer SMTP (only works on paid Render / local dev / VPS)
+  // 5. Fallback to Nodemailer SMTP (only works on paid Render / local dev / VPS)
   const mailClient = getTransporter();
   if (mailClient) {
     try {
@@ -420,7 +601,7 @@ export async function sendEmail({ to, subject, html, text, from, replyTo, header
         headers: customHeaders,
       };
       if (replyTo) mailOptions.replyTo = replyTo;
-      if (inReplyTo) mailOptions.inReplyTo = inReplyTo;
+      if (typeof inReplyTo === 'string' && inReplyTo) mailOptions.inReplyTo = inReplyTo;
       if (references) mailOptions.references = references;
       if (messageId) mailOptions.messageId = messageId;
 
@@ -429,14 +610,13 @@ export async function sendEmail({ to, subject, html, text, from, replyTo, header
       return { success: true, messageId: info.messageId, provider: 'smtp', from: smtpFrom };
     } catch (err) {
       const hint = /timeout|ETIMEDOUT|ECONNREFUSED/i.test(err.message)
-        ? ' (Render Free Tier blocks SMTP ports 25/465/587 — set GMAIL_WEBHOOK_URL, RESEND_API_KEY, or BREVO_API_KEY for Port 443 HTTPS)'
+        ? ' (Render Free Tier blocks SMTP ports 25/465/587 — use Hostinger Mail API, Resend, or Gmail Bridge over Port 443)'
         : '';
       console.error(`[Mailer:SMTP] Error sending email to ${to}:`, err.message);
       errors.push(`SMTP: ${err.message}${hint}`);
     }
   }
 
-  // Explicit opt-in dev mock mode only (never fake sent status in production)
   if (process.env.MOCK_EMAIL === 'true') {
     console.log(`[Mailer Mock] Email to: ${to} | Subject: "${subject}" | From: ${effectiveFrom}`);
     return { mock: true, success: true, messageId: messageId || `<mock-${Date.now()}@suregreet.ai>`, from: effectiveFrom };
@@ -446,6 +626,6 @@ export async function sendEmail({ to, subject, html, text, from, replyTo, header
     success: false,
     error: errors.length > 0
       ? errors.join(' | ')
-      : 'No email transport configured (set GMAIL_WEBHOOK_URL, RESEND_API_KEY, or BREVO_API_KEY on Render)',
+      : 'No Port 443 or reachable SMTP email transport configured',
   };
 }

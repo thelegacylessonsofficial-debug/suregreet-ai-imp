@@ -1369,16 +1369,16 @@ function renderProspectsHtml(list, authKey = '') {
         </div>
 
         <div class="bg-[var(--bg-surface)] border border-[var(--border-subtle)] rounded-xl p-4 space-y-3">
-          <div class="flex items-center justify-between gap-2">
-            <h4 class="font-bold text-[var(--text-primary)]">Free Port 443 Setup (Gmail Apps Script Bridge)</h4>
-            <button type="button" onclick="copyAppsScriptBridge()" class="px-3 py-1.5 rounded-lg bg-emerald-500/15 hover:bg-emerald-500/25 text-[var(--accent-emerald)] border border-emerald-500/30 font-semibold text-[11px] inline-flex items-center gap-1.5 cursor-pointer">${getSvgIcon('copy', 'w-3 h-3')}<span>Copy Apps Script</span></button>
+          <div class="flex items-center justify-between gap-2 flex-wrap">
+            <h4 class="font-bold text-[var(--text-primary)]">Port 443 Email Transport Setup</h4>
+            <button type="button" onclick="copyAppsScriptBridge()" class="px-3 py-1.5 rounded-lg bg-emerald-500/15 hover:bg-emerald-500/25 text-[var(--accent-emerald)] border border-emerald-500/30 font-semibold text-[11px] inline-flex items-center gap-1.5 cursor-pointer">${getSvgIcon('copy', 'w-3 h-3')}<span>Copy Gmail Bridge Script</span></button>
           </div>
-          <ol class="list-decimal list-inside space-y-1 text-[var(--text-secondary)] leading-relaxed">
-            <li>Open <span class="font-mono text-[var(--text-primary)]">script.google.com</span> under <span class="font-mono text-[var(--text-primary)]">${escapeHtml(config.ownerEmail)}</span> and paste the copied script into <span class="font-mono">Code.gs</span>.</li>
-            <li>Deploy as <strong class="text-[var(--text-primary)]">Web app</strong> (Execute as: <strong class="text-[var(--text-primary)]">Me</strong>, Who has access: <strong class="text-[var(--text-primary)]">Anyone</strong>) and copy the <span class="font-mono">/exec</span> URL.</li>
-            <li>Add <span class="font-mono text-[var(--text-primary)]">GMAIL_WEBHOOK_URL</span> in Render Env Vars, then click <strong class="text-[var(--text-primary)]">Send Test Email</strong> above.</li>
-          </ol>
-          <p class="text-[11px] text-[var(--text-muted)]">Scaling option: add <span class="font-mono">RESEND_API_KEY</span> + verified custom domain DNS in Resend for multi-inbox cold campaigns.</p>
+          <p class="text-[var(--text-secondary)] leading-relaxed">
+            Active Inboxes: <span class="font-mono text-[var(--text-primary)]">${escapeHtml(mailerState.activeInboxes.join(' | '))}</span>
+          </p>
+          <p class="text-[11px] text-[var(--text-muted)] leading-relaxed">
+            Supports <span class="font-mono text-[var(--text-primary)]">HOSTINGER_MAIL_ACCOUNTS</span> (Business Email Port 443), <span class="font-mono text-[var(--text-primary)]">RESEND_API_KEY</span>, <span class="font-mono text-[var(--text-primary)]">GMAIL_WEBHOOK_URL</span>, or <span class="font-mono text-[var(--text-primary)]">BREVO_API_KEY</span>.
+          </p>
         </div>
       </div>
     </div>

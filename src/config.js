@@ -4,8 +4,8 @@ dotenv.config();
 export const config = {
   port: process.env.PORT || 3000,
   ownerEmail: process.env.OWNER_EMAIL || 'architd062@gmail.com',
-  businessEmail: process.env.BUSINESS_EMAIL || process.env.OWNER_EMAIL || 'architd062@gmail.com',
-  senderName: process.env.EMAIL_SENDER_NAME || 'Archit | SureGreet AI',
+  businessEmail: process.env.BUSINESS_EMAIL || 'archit@suregreet.com',
+  senderName: process.env.EMAIL_SENDER_NAME || 'Archit Deshmukh',
   timezone: process.env.TIMEZONE || 'America/New_York',
 
   // Email / SMTP or HTTP API (Easily switchable to custom business domain)
