@@ -13,7 +13,7 @@ import {
 } from '../services/leadHunterService.js';
 import { DEFAULT_QUALIFY_THRESHOLD } from '../services/qualifierService.js';
 import { runDigitalAudit, auditAndSaveProspect } from '../services/auditorService.js';
-import { deleteProspect } from '../services/outreachService.js';
+import { deleteProspect, getProspectById, addProspect, updateProspect } from '../services/outreachService.js';
 import { renderSaasShell, getSvgIcon } from '../views/saasLayout.js';
 
 export const scraperRouter = Router();
@@ -125,12 +125,108 @@ scraperRouter.post('/qualify', async (req, res) => {
 
 // 2. Scrape a website, qualify it, and ingest ONLY if qualified (unless force=true)
 scraperRouter.post('/ingest', async (req, res) => {
-  const { url, city, treatment, doctorName, niche, minScore, force } = req.body || {};
+  const {
+    url,
+    city,
+    treatment,
+    doctorName,
+    clinicName,
+    email,
+    phone,
+    specificObservation,
+    recommendedAngle,
+    qualification: preQualification,
+    niche,
+    minScore,
+    force,
+  } = req.body || {};
   if (!url) {
     return res.status(400).json({ status: 'error', message: 'Field "url" is required' });
   }
 
   try {
+    // Fast deterministic Force-Add path when Lead Hunter / Single-Test already extracted card data
+    const hasPreScraped = Boolean(force && (clinicName || email || phone || preQualification));
+    if (hasPreScraped) {
+      const normalizedUrl = /^https?:\/\//i.test(String(url).trim()) ? String(url).trim() : `https://${String(url).trim()}`;
+      let hostname = 'contractor.com';
+      try {
+        hostname = new URL(normalizedUrl).hostname.replace(/^www\./, '');
+      } catch (_) {}
+
+      const finalEmail = email && String(email).includes('@') ? String(email).trim().toLowerCase() : `info@${hostname}`;
+      const qualObj = preQualification && typeof preQualification === 'object' ? preQualification : {};
+      const qualScore = Number.isFinite(Number(qualObj.score)) ? Number(qualObj.score) : null;
+      const qualGrade = qualObj.grade || (qualScore != null ? (qualScore >= 80 ? 'A' : qualScore >= 60 ? 'B' : 'C') : 'C');
+      const qualPassed = Boolean(qualObj.qualified);
+      const resolvedClinic = clinicName || hostname;
+      const resolvedDoctor = doctorName || `Owner / Operations Lead at ${resolvedClinic}`;
+      const resolvedCity = city || 'US';
+      const resolvedTreatment = treatment || 'Emergency Service';
+      const resolvedNiche = niche || 'hvac';
+
+      const existing = await getProspectById(finalEmail);
+      if (existing) {
+        const patch = {};
+        if (!existing.phone && phone) patch.phone = phone;
+        if ((!existing.city || existing.city === 'US') && resolvedCity && resolvedCity !== 'US') patch.city = resolvedCity;
+        if (!existing.website_url && normalizedUrl) patch.website_url = normalizedUrl;
+        if (!existing.specific_observation && specificObservation) patch.specific_observation = specificObservation;
+        if (!existing.recommended_angle && recommendedAngle) patch.recommended_angle = recommendedAngle;
+        if (existing.clinic_name && /^bot verification|kevin whelan site/i.test(existing.clinic_name) && clinicName) patch.clinic_name = clinicName;
+        if (existing.qual_status !== 'qualified') patch.qual_status = qualPassed ? 'qualified' : 'manual_override';
+        if (existing.qual_score == null && qualScore != null) patch.qual_score = qualScore;
+        if (!existing.qual_grade && qualGrade) patch.qual_grade = qualGrade;
+
+        const updRes = Object.keys(patch).length ? await updateProspect(existing.id, patch) : { success: true, prospect: existing };
+        if (!updRes || !updRes.success) {
+          const errMsg = (updRes && (updRes.error || updRes.message)) || 'Failed to sync existing prospect in CRM';
+          return res.status(500).json({ status: 'failed', error: errMsg, message: errMsg });
+        }
+        return res.json({
+          status: 'success',
+          alreadyExists: true,
+          synced: true,
+          message: `Prospect ${finalEmail} is already in Pipeline CRM (synced).`,
+          prospect: updRes.prospect || existing,
+          qualification: qualObj,
+        });
+      }
+
+      const addRes = await addProspect({
+        doctorName: resolvedDoctor,
+        clinicName: resolvedClinic,
+        email: finalEmail,
+        city: resolvedCity,
+        treatment: resolvedTreatment,
+        phone: phone || '',
+        website_url: normalizedUrl,
+        niche: resolvedNiche,
+        specific_observation: specificObservation || '',
+        recommended_angle: recommendedAngle || '',
+        notes: `Force Added from Lead Hunter: ${normalizedUrl} | Qual: ${qualScore != null ? qualScore : 'N/A'}/100 (${qualGrade}) | Phone: ${phone || 'N/A'}`,
+        qual_score: qualScore,
+        qual_grade: qualGrade,
+        qual_status: qualPassed ? 'qualified' : 'manual_override',
+        qual_breakdown: Object.keys(qualObj).length ? qualObj : null,
+        review_count: qualObj.reviewCount ?? null,
+        google_rating: qualObj.googleRating ?? null,
+        fleet_size: qualObj.fleetSize ?? null,
+      });
+
+      if (!addRes || !addRes.success) {
+        const errMsg = (addRes && (addRes.error || addRes.message)) || 'Failed to save lead into Pipeline CRM';
+        return res.status(500).json({ status: 'failed', error: errMsg, message: errMsg });
+      }
+
+      return res.json({
+        status: 'success',
+        message: 'Lead force-added to Pipeline CRM',
+        prospect: addRes.prospect,
+        qualification: qualObj,
+      });
+    }
+
     const result = await scrapeAndIngestLead({
       url,
       cityOverride: city,
@@ -142,7 +238,7 @@ scraperRouter.post('/ingest', async (req, res) => {
     });
 
     if (result.success) {
-      res.json({ status: 'success', message: 'Qualified prospect added to Pipeline CRM', ...result });
+      res.json({ status: 'success', message: result.message || 'Qualified prospect added to Pipeline CRM', ...result });
     } else if (result.disqualified) {
       res.status(200).json({ status: 'disqualified', ...result });
     } else {
@@ -718,7 +814,11 @@ scraperRouter.get('/dashboard', (req, res) => {
       const mh = q.mustHaves || {};
       const stackTag = q.schedulingStack && q.schedulingStack.stackName ? q.schedulingStack.stackName : '';
 
-      const forceBtn = (!passed || lead.dbStatus === 'disqualified' || lead.dbStatus === 'no_email') && lead.email && lead.dbStatus !== 'saved' && lead.dbStatus !== 'duplicate'
+      window.__suregreetLeadMap = window.__suregreetLeadMap || {};
+      const leadKey = String(href || lead.url || '').toLowerCase();
+      if (leadKey) window.__suregreetLeadMap[leadKey] = lead;
+
+      const forceBtn = (!passed || lead.dbStatus === 'disqualified' || lead.dbStatus === 'no_email') && (lead.email || href || lead.url) && lead.dbStatus !== 'saved' && lead.dbStatus !== 'duplicate'
         ? '<button type="button" onclick="forceAddLead(this)" data-url="' + esc(href || lead.url) + '" data-city="' + esc(lead.city || '') + '" data-niche="' + esc(lead.niche || 'hvac') + '" class="inline-flex items-center gap-1 px-3 py-1.5 rounded-xl bg-[var(--bg-surface)] hover:bg-[var(--bg-hover)] border border-[var(--border-subtle)] text-[11px] font-semibold text-[var(--text-primary)] cursor-pointer transition">' + SVG.plus + '<span>Force Add to CRM</span></button>'
         : '';
 
@@ -1044,21 +1144,51 @@ scraperRouter.get('/dashboard', (req, res) => {
       const niche = btn.dataset.niche || 'hvac';
       if (!url) return;
 
+      const leadMap = window.__suregreetLeadMap || {};
+      const cachedLead =
+        leadMap[String(url).toLowerCase()] ||
+        currentLeads.find((l) => l.url === url || safeUrl(l.url) === url) ||
+        null;
+
       btn.disabled = true;
       btn.textContent = 'Saving...';
 
       try {
+        const payload = {
+          url,
+          city: city || (cachedLead && cachedLead.city) || '',
+          niche: niche || (cachedLead && cachedLead.niche) || 'hvac',
+          force: true,
+        };
+        if (cachedLead) {
+          if (cachedLead.clinicName) payload.clinicName = cachedLead.clinicName;
+          if (cachedLead.doctorName) payload.doctorName = cachedLead.doctorName;
+          if (cachedLead.email) payload.email = cachedLead.email;
+          if (cachedLead.phone) payload.phone = cachedLead.phone;
+          if (cachedLead.treatment) payload.treatment = cachedLead.treatment;
+          if (cachedLead.specificObservation) payload.specificObservation = cachedLead.specificObservation;
+          if (cachedLead.recommendedAngle) payload.recommendedAngle = cachedLead.recommendedAngle;
+          if (cachedLead.qualification) payload.qualification = cachedLead.qualification;
+        }
+
         const res = await fetch(getAuthUrl('/scraper/ingest'), {
           method: 'POST',
           headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
-          body: JSON.stringify({ url, city, niche, force: true }),
+          body: JSON.stringify(payload),
         });
         const data = await res.json();
         if (data.status === 'success') {
-          showToast('Added to CRM', 'Lead force-committed to Pipeline CRM.', 'success');
-          const match = currentLeads.find((l) => l.url === url || safeUrl(l.url) === url);
-          if (match) match.dbStatus = 'saved';
-          btn.outerHTML = '<span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-semibold bg-[var(--accent-emerald-subtle)] text-[var(--accent-emerald)] border border-emerald-500/30">Added Manually</span>';
+          const crmBase = getAuthUrl('/outreach/prospects');
+          const crmHref = crmBase + (crmBase.includes('?') ? '&' : '?') + 't=' + Date.now();
+          const badgeLabel = data.alreadyExists ? 'Synced in CRM' : 'Added to CRM';
+          const leadTitle = (data.prospect && data.prospect.clinic_name) || (cachedLead && cachedLead.clinicName) || url;
+          showToast(badgeLabel, leadTitle + ' saved to Pipeline CRM.', 'success');
+          if (cachedLead) cachedLead.dbStatus = 'saved';
+          btn.outerHTML =
+            '<div class="inline-flex items-center gap-1.5 flex-wrap">' +
+              '<span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-semibold bg-[var(--accent-emerald-subtle)] text-[var(--accent-emerald)] border border-emerald-500/30">' + badgeLabel + '</span>' +
+              '<a href="' + crmHref + '" class="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-semibold bg-cyan-500/15 text-[var(--accent-cyan)] border border-cyan-500/30 hover:bg-cyan-500/25 transition">Open CRM</a>' +
+            '</div>';
         } else {
           throw new Error(data.message || data.error || 'Unable to force add');
         }

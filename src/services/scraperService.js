@@ -1,5 +1,5 @@
 import * as cheerio from 'cheerio';
-import { addProspect, getProspectById } from './outreachService.js';
+import { addProspect, getProspectById, updateProspect } from './outreachService.js';
 import { qualifyLead, HARD_BLOCKED_CHAIN_PATTERNS, getCityClimateProfile } from './qualifierService.js';
 import { getShortBusinessName, formatSalutation } from '../templates/outreachTemplates.js';
 
@@ -729,6 +729,31 @@ export async function scrapeAndIngestLead({
 
   const existing = await getProspectById(finalEmail);
   if (existing) {
+    if (force) {
+      const patch = {};
+      if (!existing.phone && result.phone) patch.phone = result.phone;
+      if ((!existing.city || existing.city === 'US') && (cityOverride || result.city)) patch.city = cityOverride || result.city;
+      if (!existing.website_url && result.url) patch.website_url = result.url;
+      if (existing.qual_status !== 'qualified' && existing.qual_status !== 'manual_override') {
+        patch.qual_status = qualification.qualified ? 'qualified' : 'manual_override';
+      }
+      if (existing.qual_score == null && qualification.score != null) patch.qual_score = qualification.score;
+      if (!existing.qual_grade && qualification.grade) patch.qual_grade = qualification.grade;
+      const updRes = Object.keys(patch).length ? await updateProspect(existing.id, patch) : { success: true, prospect: existing };
+      if (!updRes || !updRes.success) {
+        const errMsg = (updRes && (updRes.error || updRes.message)) || 'Failed to sync existing prospect in CRM';
+        return { success: false, error: errMsg, message: errMsg, qualification, scrapedData: result };
+      }
+      return {
+        success: true,
+        alreadyExists: true,
+        synced: true,
+        message: `Prospect ${finalEmail} is already in Pipeline CRM (${qualification.score}/100 ${qualification.grade}).`,
+        prospect: updRes.prospect || existing,
+        qualification,
+        scrapedData: result,
+      };
+    }
     return {
       success: false,
       alreadyExists: true,
@@ -759,6 +784,17 @@ export async function scrapeAndIngestLead({
     google_rating: qualification.googleRating,
     fleet_size: qualification.fleetSize,
   });
+
+  if (!addRes || !addRes.success) {
+    const errMsg = (addRes && (addRes.error || addRes.message)) || 'Database insert failed while saving lead to CRM';
+    return {
+      success: false,
+      error: errMsg,
+      message: errMsg,
+      qualification,
+      scrapedData: result,
+    };
+  }
 
   return {
     success: true,

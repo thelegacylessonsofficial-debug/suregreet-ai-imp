@@ -1073,6 +1073,9 @@ function renderProspectsHtml(list, authKey = '') {
         applyCombinedFilter();
       }
       setTimeout(applyCombinedFilter, 50);
+      window.addEventListener('pageshow', (event) => {
+        if (event.persisted) window.location.reload();
+      });
 
       // ===== BATCH HARVEY PIPELINE =====
       async function runBatchHarvey() {
@@ -2539,6 +2542,9 @@ outreachRouter.get('/prospects', async (req, res) => {
   }
 
   res.setHeader('Content-Type', 'text/html; charset=utf-8');
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+  res.setHeader('Pragma', 'no-cache');
+  res.setHeader('Expires', '0');
   res.send(renderProspectsHtml(prospects, authKey));
 });
 
