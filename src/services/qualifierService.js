@@ -32,6 +32,32 @@
 
 export const DEFAULT_QUALIFY_THRESHOLD = 60;
 
+export const GENERIC_EMAIL_LOCALS = new Set([
+  'info', 'service', 'services', 'sales', 'office', 'support', 'contact', 'admin',
+  'help', 'hello', 'dispatch', 'dispatcher', 'billing', 'jobs', 'careers', 'team', 'general',
+  'mail', 'enquiries', 'inquiry', 'inquiries', 'appointment', 'appointments',
+  'estimating', 'webmaster', 'noreply', 'no-reply', 'customerservice', 'customercare',
+  'marketing', 'privacy', 'hvac', 'plumbing', 'roofing', 'electrical', 'schedule',
+  'quotes', 'quote', 'estimates', 'estimate', 'frontdesk', 'reception',
+]);
+
+// Bounded scheduler patterns: avoids substring false-positives like "missionmechanical.com" matching "cal.com"
+export const LIVE_SCHEDULER_PATTERNS = [
+  /(?<![a-z0-9-])(?:app\.)?cal\.com(?![a-z0-9-])/i,
+  /(?<![a-z0-9-])calendly\.com(?![a-z0-9-])/i,
+  /(?<![a-z0-9-])acuityscheduling\.com(?![a-z0-9-])/i,
+  /housecallpro\.com\/book/i,
+  /clienthub\.getjobber\.com/i,
+  /servicetitan\.com\/web/i,
+  /scheduleengine\.(?:com|net)/i,
+  /schedule-now/i,
+];
+
+export function hasLiveSchedulerInText(text = '') {
+  const s = String(text || '');
+  return LIVE_SCHEDULER_PATTERNS.some((re) => re.test(s));
+}
+
 export const HARD_BLOCKED_CHAIN_PATTERNS = [
   /\bapex\s+service\s+partners\b/i,
   /\bturnpoint\b/i,
@@ -52,9 +78,21 @@ export const HARD_BLOCKED_CHAIN_PATTERNS = [
   /\bleecompany\.com\b/i,
   /\blee\s+company\b/i,
   /\bonehourheatandair\.com\b/i,
-  /\bone\s+hour\s+heating\b/i,
+  /\bonehourair\b/i,
+  /\bone\s+hour\s+(?:heating|air|ac|cooling)\b/i,
+  /\bbluefrog\s*plumb/i,
+  /\bbluefrogplumbing/i,
   /\bbenjaminfranklinplumbing\b/i,
   /\bmister\s*sparky\b/i,
+  /\bmr\.?\s*electric\b/i,
+  /\bmr\.?\s*appliance\b/i,
+  /\bauthority\s*brands\b/i,
+  /\bneighborly\b/i,
+  /\bservpro\b/i,
+  /\bservicemaster\b/i,
+  /\bpaul\s+davis\s+restoration\b/i,
+  /\bbelfor\b/i,
+  /\badeedo\.com\b/i,
   /\bmr\.?\s*rooter\b/i,
   /\baireserv\.com\b/i,
   /\baire\s+serv\b/i,
@@ -183,9 +221,16 @@ export function detectSchedulingStack(visibleText = '', rawSignals = {}, lead = 
   const detected = [];
 
   if (/housecallpro\.com|housecall\s*pro/i.test(hay) || explicit === 'Housecall Pro') detected.push('Housecall Pro');
-  if (/getjobber\.com|jobber\.com|clienthub\.getjobber/i.test(hay) || explicit === 'Jobber') detected.push('Jobber');
+  if (/getjobber\.com|clienthub\.getjobber|\bjobber\b/i.test(hay) || explicit === 'Jobber') detected.push('Jobber');
   if (/leadconnectorhq\.com|msgsndr\.com|gohighlevel/i.test(hay) || explicit === 'GoHighLevel') detected.push('GoHighLevel');
-  if (/calendly\.com|cal\.com|calendar\.google\.com|google\s+calendar|scheduleonce/i.test(hay) || explicit === 'Google Calendar') detected.push('Google Calendar');
+  if (
+    /(?<![a-z0-9-])calendly\.com(?![a-z0-9-])|(?<![a-z0-9-])(?:app\.)?cal\.com(?![a-z0-9-])|calendar\.google\.com|google\s+calendar|scheduleonce/i.test(
+      hay
+    ) ||
+    explicit === 'Google Calendar'
+  ) {
+    detected.push('Google Calendar');
+  }
   if (/outlook\.office365\.com|outlook\.office\.com|bookings\.microsoft\.com|microsoft\s+bookings/i.test(hay) || explicit === 'Outlook') detected.push('Outlook');
   const hasServiceTitan = /servicetitan\.com|scheduleengine/i.test(hay) || explicit === 'ServiceTitan';
   if (hasServiceTitan) detected.push('ServiceTitan');
@@ -242,15 +287,18 @@ export function detectSchedulingStack(visibleText = '', rawSignals = {}, lead = 
 function extractFleetSize(visibleText) {
   if (!visibleText) return null;
   const patterns = [
-    /\b(\d{1,3})\s+(?:fully\s+stocked\s+)?(?:service\s+)?trucks?\b/i,
+    /(?<![#no.\s]\d?\s*)\b(\d{1,3})\s+(?:fully\s+stocked\s+)?(?:service\s+)?trucks?\b/i,
     /\b(\d{1,3})\s+(?:service\s+)?vans?\b/i,
     /\b(\d{1,3})\s+(?:service\s+)?vehicles?\b/i,
     /\bfleet\s+of\s+(?:over\s+)?(\d{1,3})\b/i,
-    /\b(\d{1,2})\s+(?:certified\s+|nates?-certified\s+|licensed\s+)?technicians?\b/i,
+    /(?<![#.])\b(\d{1,2})\s+(?:certified\s+|nates?-certified\s+|licensed\s+)?technicians?\b/i,
   ];
   for (const p of patterns) {
     const m = visibleText.match(p);
     if (m) {
+      const idx = m.index ?? 0;
+      const before = visibleText.slice(Math.max(0, idx - 8), idx).toLowerCase();
+      if (/#$|no\.?\s*$|number\s*$/i.test(before)) continue;
       const val = parseInt(m[1], 10);
       if (val >= 1 && val <= 200) return val;
     }
@@ -297,6 +345,10 @@ function extractReviewMetrics(visibleText, jsonLd = null, explicitReviews = null
         const m = visibleText.match(p);
         if (m) {
           const val = parseInt(m[1].replace(/,/g, ''), 10);
+          // Skip obvious calendar years like "2024 reviews" or "2025 reviews"
+          if (val >= 2015 && val <= 2030 && !/(?:google|customer|five[- ]star|5[- ]star|over|based\s+on)/i.test(m[0])) {
+            continue;
+          }
           if (val >= 1 && val <= 50000) {
             reviewCount = val;
             break;
@@ -403,9 +455,8 @@ function detectHighTicket(visibleText, lead) {
 function evaluateOwnerIdentity(lead) {
   const doc = (lead.doctorName || '').trim();
   const email = (lead.email || '').trim().toLowerCase();
-  const isGenericEmail = /^(info|service|services|sales|office|support|contact|admin|help|hello|dispatch|dispatcher|team|general|mail|quotes|estimates)@/i.test(
-    email
-  );
+  const emailLocal = email.includes('@') ? email.split('@')[0] : '';
+  const isGenericEmail = !emailLocal || GENERIC_EMAIL_LOCALS.has(emailLocal);
   const isPlaceholderDoc =
     !doc ||
     doc.length < 3 ||
@@ -628,10 +679,21 @@ export function qualifyLead(lead, auditData = null, minScore = DEFAULT_QUALIFY_T
     familyOwned: mustHaves.independentOwnership,
     painConfirmed: mustHaves.verifiableIntakeFriction,
     activeAds: {
-      pass: Boolean(lead.adSignals?.lsaVerified || lead.adSignals?.confirmedGoogleAds || lead.adSignals?.gtmOrGtag || lead.adSignals?.metaPixel),
+      pass: Boolean(
+        lead.adSignals?.lsaVerified ||
+          lead.adSignals?.confirmedGoogleAds ||
+          lead.adSignals?.googleAds ||
+          lead.adSignals?.gtmOrGtag ||
+          lead.adSignals?.metaPixel ||
+          lead.adSignals?.hasPaidAds
+      ),
       label: lead.adSignals?.lsaVerified
         ? 'Google Screened / LSA active'
-        : lead.adSignals?.confirmedGoogleAds || lead.adSignals?.gtmOrGtag || lead.adSignals?.metaPixel
+        : lead.adSignals?.confirmedGoogleAds ||
+          lead.adSignals?.googleAds ||
+          lead.adSignals?.gtmOrGtag ||
+          lead.adSignals?.metaPixel ||
+          lead.adSignals?.hasPaidAds
         ? 'Active Paid Ads / Tracking'
         : 'No paid acquisition tags detected',
     },
@@ -658,8 +720,12 @@ export function qualifyLead(lead, auditData = null, minScore = DEFAULT_QUALIFY_T
   // B. Fit & Urgency (25 pts max)
   const fitFleet = fleetInRange && residential.pass ? 10 : 0;
   const lsa = lead.adSignals?.lsaVerified === true;
-  const gAds = lead.adSignals?.confirmedGoogleAds === true;
-  const gtmOrMeta = lead.adSignals?.gtmOrGtag === true || lead.adSignals?.metaPixel === true || lead.adSignals?.tikTokPixel === true;
+  const gAds = lead.adSignals?.confirmedGoogleAds === true || (lead.adSignals?.googleAds === true && lead.adSignals?.gtmOrGtag !== true);
+  const gtmOrMeta =
+    lead.adSignals?.gtmOrGtag === true ||
+    lead.adSignals?.metaPixel === true ||
+    lead.adSignals?.tikTokPixel === true ||
+    lead.adSignals?.hasPaidAds === true;
   const fitAds = lsa || gAds ? 10 : gtmOrMeta ? 7 : 0;
   const climate = getCityClimateProfile(lead.city);
   const fitUrgency = climate.activeUrgency ? 5 : 2;
@@ -718,7 +784,8 @@ export function qualifyLead(lead, auditData = null, minScore = DEFAULT_QUALIFY_T
   breakdown.ownerContact = { label: 'Owner Identity', max: 10, earned: easeOwner, pass: owner.passesMustHave, detail: owner.detail };
 
   const totalScore = painEarned + fitEarned + abilityEarned + easeEarned;
-  const threshold = Number(minScore) || DEFAULT_QUALIFY_THRESHOLD;
+  const parsedMin = minScore !== undefined && minScore !== null && minScore !== '' ? Number(minScore) : DEFAULT_QUALIFY_THRESHOLD;
+  const threshold = Number.isFinite(parsedMin) ? Math.min(Math.max(parsedMin, 0), 100) : DEFAULT_QUALIFY_THRESHOLD;
 
   const failedMustHaves = Object.values(mustHaves)
     .filter((m) => !m.pass)

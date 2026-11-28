@@ -1,4 +1,6 @@
 import { updateProspect, getProspectById } from './outreachService.js';
+import { hasLiveSchedulerInText } from './qualifierService.js';
+import { isSafePublicHttpUrl } from './scraperService.js';
 
 const JINA_BASE = 'https://r.jina.ai';
 
@@ -31,6 +33,7 @@ const HVAC_SERVICES = [
  * Fetches clean markdown of a website via Jina AI Reader (Zero-Cost)
  */
 export async function fetchJinaMarkdown(url, timeoutMs = 8000) {
+  if (!isSafePublicHttpUrl(url)) return null;
   try {
     const targetUrl = url.trim();
     const endpoint = `${JINA_BASE}/${targetUrl}`;
@@ -105,7 +108,7 @@ export async function runDigitalAudit({ url, niche = 'hvac', businessName, docto
   // 2. Detect Booking Friction (Static Forms vs Instant Scheduling)
   const hasStaticForm =
     /request (an? )?(appointment|quote|estimate|service)|fill out (the |our )?form|contact form|schedule consultation/i.test(markdown) &&
-    !/cal\.com|calendly|acuityscheduling|servicetitan\.com\/web|housecallpro\.com\/book|zocdoc/i.test(markdown);
+    !hasLiveSchedulerInText(markdown);
 
   // 3. Detect Speed-to-Lead & After-Hours Gaps
   const mentionsHours = /hours|open monday|mon[\s-]+fri|8:00 am|9:00 am|5:00 pm|6:00 pm/i.test(markdown);
@@ -183,7 +186,7 @@ export async function auditAndSaveProspect(idOrEmail) {
 
   const auditResult = await runDigitalAudit({
     url: targetUrl,
-    niche: prospect.niche || 'medspa',
+    niche: prospect.niche || 'hvac',
     businessName: prospect.clinic_name,
     doctorName: prospect.doctor_name,
   });

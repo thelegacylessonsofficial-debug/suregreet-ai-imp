@@ -223,7 +223,7 @@ const CURATED_TARGETS = {
 };
 
 const DIRECTORY_OR_SPAM_DOMAINS =
-  /(yelp\.com|groupon\.com|healthgrades\.com|yellowpages\.com|angi\.com|angieslist\.com|mapquest\.com|bbb\.org|facebook\.com|instagram\.com|tripadvisor\.com|expertise\.com|thumbtack\.com|indeed\.com|duckduckgo\.com|bing\.com|homeadvisor\.com|networx\.com|bark\.com|porch\.com|modernize\.com|threebestrated\.com|houzz\.com|nextdoor\.com|emergency-[a-z0-9-]+\.|[a-z0-9-]+-pros\.|airconditioneremergency\.com|emergencyhvacservices\.com|emergency-hvac-repair\.com|hvacacrepair\.org|zaptheory\.com|topchoiceheatingairconditioningusa\.com|ama-hvac\.com|brentwoodhvacrepair\.com|near-me)/i;
+  /(yelp\.com|groupon\.com|healthgrades\.com|yellowpages\.com|angi\.com|angieslist\.com|mapquest\.com|bbb\.org|facebook\.com|instagram\.com|tripadvisor\.com|expertise\.com|thumbtack\.com|indeed\.com|duckduckgo\.com|bing\.com|homeadvisor\.com|networx\.com|bark\.com|porch\.com|modernize\.com|threebestrated\.com|houzz\.com|nextdoor\.com|emergency-[a-z0-9-]+\.|[a-z0-9-]+-pros\.|airconditioneremergency\.com|emergencyhvacservices\.com|emergency-hvac-repair\.com|hvacacrepair\.org|zaptheory\.com|topchoiceheatingairconditioningusa\.com|ama-hvac\.com|brentwoodhvacrepair\.com|onehourair|onehourheatandair|bluefrogplumbing|benjaminfranklinplumbing|mistersparky|mrrooter|mrelectric|rotorooter|servpro|servicemaster|belfor|pauldavis|adeedo\.com|near-me)/i;
 
 const US_STATE_ABBR = {
   alabama: 'al', alaska: 'ak', arizona: 'az', arkansas: 'ar', california: 'ca',
@@ -421,7 +421,11 @@ async function fetchExpertiseDirectory({ stateCode, citySlug, cityLabel, niche, 
         const parsed = JSON.parse(rawJson);
         const items = Array.isArray(parsed) ? parsed : [parsed];
         for (const item of items) {
-          if (!item || item['@type'] !== 'LocalBusiness' || !item.url) continue;
+          if (!item || !item.url) continue;
+          const schemaType = Array.isArray(item['@type']) ? item['@type'].join(' ') : String(item['@type'] || '');
+          if (!/(LocalBusiness|HomeAndConstructionBusiness|HVACBusiness|Plumber|RoofingContractor|Electrician)/i.test(schemaType)) {
+            continue;
+          }
           const norm = normalizeUrl(item.url);
           const title = decodeHtmlEntities(item.name || '');
           if (!norm || DIRECTORY_OR_SPAM_DOMAINS.test(norm)) continue;
@@ -532,18 +536,24 @@ export async function searchLocalBusinesses({ query, city = 'Carmel, IN', niche 
       clearTimeout(timer);
       if (res.ok && res.status === 200) {
         const html = await res.text();
-        const $ = cheerio.load(html);
-        $('.result').each((_, el) => {
-          if (rawResults.length >= limit) return;
-          const title = $(el).find('.result__title a').text().trim();
-          let rawHref = $(el).find('.result__title a').attr('href') || '';
-          if (rawHref.includes('uddg=')) {
-            const match = rawHref.match(/uddg=([^&]+)/);
-            if (match) rawHref = decodeURIComponent(match[1]);
-          }
-          if (!rawHref.startsWith('http') || DIRECTORY_OR_SPAM_DOMAINS.test(rawHref)) return;
-          pushUnique({ title, url: rawHref, snippet: title, city: displayCity, niche });
-        });
+        if (/anomaly\.js|challenge|captcha/i.test(html)) {
+          console.warn('[LeadHunter] DDG HTML returned bot/CAPTCHA challenge page.');
+        } else {
+          const $ = cheerio.load(html);
+          $('.result').each((_, el) => {
+            if (rawResults.length >= limit) return;
+            const title = $(el).find('.result__title a').text().trim();
+            let rawHref = $(el).find('.result__title a').attr('href') || '';
+            if (rawHref.includes('uddg=')) {
+              const match = rawHref.match(/uddg=([^&]+)/);
+              if (match) rawHref = decodeURIComponent(match[1]);
+            }
+            if (!rawHref.startsWith('http') || DIRECTORY_OR_SPAM_DOMAINS.test(rawHref)) return;
+            pushUnique({ title, url: rawHref, snippet: title, city: displayCity, niche });
+          });
+        }
+      } else {
+        console.warn(`[LeadHunter] DDG search returned HTTP ${res.status}`);
       }
     } catch (err) {
       console.warn('[LeadHunter] DDG search warning:', err.message);
@@ -590,10 +600,6 @@ export async function huntAndEnrichLead({
     }
     fallbackName = fallbackName.split(/[-|•–]/)[0].trim();
     const isTrade = niche !== 'medspa';
-    let fallbackEmail = '';
-    try {
-      fallbackEmail = `info@${new URL(url).hostname.replace(/^www\./, '')}`;
-    } catch (e) {}
 
     scraped = {
       success: true,
@@ -601,8 +607,8 @@ export async function huntAndEnrichLead({
       dataSource: 'unreachable',
       clinicName: fallbackName,
       doctorName: doctorOverride || (isTrade ? `Owner / Operations Lead at ${fallbackName}` : `Medical Director at ${fallbackName}`),
-      email: fallbackEmail,
-      allEmails: fallbackEmail ? [fallbackEmail] : [],
+      email: null,
+      allEmails: [],
       phone: phoneOverride || null,
       city: city || 'US',
       treatment: treatmentOverride || (isTrade ? 'Emergency AC & Heating Repair' : 'Morpheus8'),
@@ -650,12 +656,7 @@ export async function huntAndEnrichLead({
     primaryTreatment = 'Emergency AC Repair';
   }
 
-  let finalEmail = scraped.email;
-  if (!finalEmail && effectivePhone && scraped.url) {
-    try {
-      finalEmail = `info@${new URL(scraped.url).hostname.replace(/^www\./, '')}`;
-    } catch (e) {}
-  }
+  const finalEmail = scraped.email || null;
 
   const qualification = qualifyLead(
     {
@@ -781,7 +782,7 @@ export async function commitLeadToSupabase(enrichedLead, existingProspectsMap) {
   }
 
   if (!normalizedEmail) {
-    return { success: false, message: 'No email found to store in CRM.', lead: enrichedLead };
+    return { success: false, noEmail: true, message: 'No verified email found on website to store in CRM.', lead: enrichedLead };
   }
 
   const chainTag = qual.isFamilyOwned ? 'Family-Owned' : 'Single-Location';
@@ -850,7 +851,8 @@ export function cancelHuntJob(jobId) {
 
 async function executeHuntPipeline({ city, niche, query, limit, minScore, notifyTelegram, job = null }) {
   const targetLimit = Math.min(Math.max(Number(limit) || 5, 1), 40);
-  const threshold = Math.min(Math.max(Number(minScore) ?? DEFAULT_QUALIFY_THRESHOLD, 0), 100);
+  const parsedMin = minScore !== undefined && minScore !== null && minScore !== '' ? Number(minScore) : DEFAULT_QUALIFY_THRESHOLD;
+  const threshold = Number.isFinite(parsedMin) ? Math.min(Math.max(parsedMin, 0), 100) : DEFAULT_QUALIFY_THRESHOLD;
   const candidateLimit = Math.min(Math.max(targetLimit * 2 + 4, 8), 36);
 
   const businesses = await searchLocalBusinesses({ query, city, niche, limit: candidateLimit });

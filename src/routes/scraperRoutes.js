@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { scrapeClinicWebsite, scrapeAndIngestLead, scrapeBulkLeads } from '../services/scraperService.js';
+import { scrapeClinicWebsite, scrapeAndIngestLead, scrapeBulkLeads, isSafePublicHttpUrl } from '../services/scraperService.js';
 import {
   runAutonomousHunt,
   startHuntJob,
@@ -73,6 +73,9 @@ scraperRouter.post('/inspect', async (req, res) => {
   if (!url) {
     return res.status(400).json({ status: 'error', message: 'Field "url" is required' });
   }
+  if (!isSafePublicHttpUrl(url)) {
+    return res.status(400).json({ status: 'error', message: 'Invalid or restricted internal/private URL' });
+  }
 
   try {
     const data = await scrapeClinicWebsite(url, { niche: niche || 'hvac' });
@@ -90,6 +93,9 @@ scraperRouter.post('/qualify', async (req, res) => {
   const { url, city, niche, minScore, autoCommit } = req.body || {};
   if (!url) {
     return res.status(400).json({ success: false, message: 'Field "url" is required' });
+  }
+  if (!isSafePublicHttpUrl(url)) {
+    return res.status(400).json({ success: false, message: 'Invalid or restricted internal/private URL' });
   }
 
   try {
@@ -148,6 +154,9 @@ scraperRouter.post('/ingest', async (req, res) => {
   if (!url) {
     return res.status(400).json({ status: 'error', message: 'Field "url" is required' });
   }
+  if (!isSafePublicHttpUrl(url)) {
+    return res.status(400).json({ status: 'failed', error: 'Invalid or restricted internal/private URL', message: 'Invalid or restricted internal/private URL' });
+  }
 
   try {
     // Fast deterministic Force-Add path when Lead Hunter / Single-Test already extracted card data
@@ -160,6 +169,7 @@ scraperRouter.post('/ingest', async (req, res) => {
       } catch (_) {}
 
       const emailMatch = email ? String(email).trim().toLowerCase().match(/[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}/) : null;
+      const syntheticEmail = !emailMatch;
       const finalEmail = emailMatch ? emailMatch[0] : `info@${hostname}`;
       const qualObj = preQualification && typeof preQualification === 'object' ? preQualification : {};
       const qualScore = Number.isFinite(Number(qualObj.score)) ? Number(qualObj.score) : null;
@@ -212,7 +222,7 @@ scraperRouter.post('/ingest', async (req, res) => {
         niche: resolvedNiche,
         specific_observation: specificObservation || '',
         recommended_angle: recommendedAngle || '',
-        notes: `Force Added from Lead Hunter: ${normalizedUrl} | Qual: ${qualScore != null ? qualScore : 'N/A'}/100 (${qualGrade}) | Phone: ${phone || 'N/A'}`,
+        notes: `Force Added from Lead Hunter: ${normalizedUrl} | Qual: ${qualScore != null ? qualScore : 'N/A'}/100 (${qualGrade}) | Phone: ${phone || 'N/A'}${syntheticEmail ? ' | [SYNTHETIC FALLBACK EMAIL - VERIFY BEFORE OUTREACH]' : ''}`,
         qual_score: qualScore,
         qual_grade: qualGrade,
         qual_status: qualPassed ? 'qualified' : 'manual_override',
@@ -231,19 +241,21 @@ scraperRouter.post('/ingest', async (req, res) => {
       console.log(`[ScraperIngest] Force Add created prospect ${finalEmail} (ID: ${addRes.prospect?.id})`);
       return res.json({
         status: 'success',
-        message: 'Lead force-added to Pipeline CRM',
+        syntheticEmail,
+        message: syntheticEmail ? 'Lead force-added (no verified email found — verify before activating outreach)' : 'Lead force-added to Pipeline CRM',
         prospect: addRes.prospect,
         qualification: qualObj,
       });
     }
 
+    const parsedMinScore = minScore !== undefined && minScore !== null && minScore !== '' ? Number(minScore) : DEFAULT_QUALIFY_THRESHOLD;
     const result = await scrapeAndIngestLead({
       url,
       cityOverride: city,
       treatmentOverride: treatment,
       doctorOverride: doctorName,
       nicheOverride: niche || 'hvac',
-      minScore: minScore || DEFAULT_QUALIFY_THRESHOLD,
+      minScore: Number.isFinite(parsedMinScore) ? parsedMinScore : DEFAULT_QUALIFY_THRESHOLD,
       force: Boolean(force),
     });
 
@@ -277,8 +289,9 @@ scraperRouter.post('/bulk', async (req, res) => {
   const batch = urls.slice(0, 15);
 
   try {
+    const parsedMinScore = minScore !== undefined && minScore !== null && minScore !== '' ? Number(minScore) : DEFAULT_QUALIFY_THRESHOLD;
     const summary = await scrapeBulkLeads(batch, {
-      minScore: minScore || DEFAULT_QUALIFY_THRESHOLD,
+      minScore: Number.isFinite(parsedMinScore) ? parsedMinScore : DEFAULT_QUALIFY_THRESHOLD,
       force: Boolean(force),
       nicheOverride: niche || 'hvac',
     });
@@ -363,6 +376,9 @@ scraperRouter.post('/audit', async (req, res) => {
 
     if (!url) {
       return res.status(400).json({ success: false, error: 'Provide "url" or "prospectId"' });
+    }
+    if (!isSafePublicHttpUrl(url)) {
+      return res.status(400).json({ success: false, error: 'Invalid or restricted internal/private URL' });
     }
 
     const result = await runDigitalAudit({ url, niche: niche || 'hvac' });
@@ -869,8 +885,8 @@ scraperRouter.get('/dashboard', (req, res) => {
           '</div>'
         : forceState === 'saving'
         ? '<button type="button" disabled data-force-key="' + esc(leadKey) + '" data-url="' + esc(href || lead.url) + '" data-city="' + esc(lead.city || '') + '" data-niche="' + esc(lead.niche || 'hvac') + '" class="inline-flex items-center gap-1 px-3 py-1.5 rounded-xl bg-[var(--bg-surface)] border border-[var(--border-subtle)] text-[11px] font-semibold text-[var(--text-secondary)] opacity-75">Saving...</button>'
-        : (!passed || lead.dbStatus === 'disqualified' || lead.dbStatus === 'no_email') && (lead.email || href || lead.url) && lead.dbStatus !== 'saved' && lead.dbStatus !== 'duplicate'
-        ? '<button type="button" onclick="forceAddLead(this)" data-force-key="' + esc(leadKey) + '" data-url="' + esc(href || lead.url) + '" data-city="' + esc(lead.city || '') + '" data-niche="' + esc(lead.niche || 'hvac') + '" class="inline-flex items-center gap-1 px-3 py-1.5 rounded-xl bg-[var(--bg-surface)] hover:bg-[var(--bg-hover)] border border-[var(--border-subtle)] text-[11px] font-semibold text-[var(--text-primary)] cursor-pointer transition">' + SVG.plus + '<span>Force Add to CRM</span></button>'
+        : (lead.dbStatus !== 'saved' && lead.dbStatus !== 'duplicate') && (lead.email || href || lead.url)
+        ? '<button type="button" onclick="forceAddLead(this)" data-force-key="' + esc(leadKey) + '" data-url="' + esc(href || lead.url) + '" data-city="' + esc(lead.city || '') + '" data-niche="' + esc(lead.niche || 'hvac') + '" class="inline-flex items-center gap-1 px-3 py-1.5 rounded-xl bg-[var(--bg-surface)] hover:bg-[var(--bg-hover)] border border-[var(--border-subtle)] text-[11px] font-semibold text-[var(--text-primary)] cursor-pointer transition">' + SVG.plus + '<span>' + (passed && !lead.dbStatus ? 'Add to CRM' : 'Force Add to CRM') + '</span></button>'
         : '';
 
       const headerTag = isSinglePreview
@@ -1230,6 +1246,9 @@ scraperRouter.get('/dashboard', (req, res) => {
       const lbl = document.getElementById('btnTestSingleLabel');
       btn.disabled = true;
       lbl.textContent = 'Auditing...';
+      const normalizedTestKey = (safeUrl(rawUrl) || rawUrl).toLowerCase();
+      if (window.__suregreetForceSavedUrls) delete window.__suregreetForceSavedUrls[normalizedTestKey];
+      if (window.__suregreetForceSavedHrefs) delete window.__suregreetForceSavedHrefs[normalizedTestKey];
 
       try {
         const res = await fetch(getAuthUrl('/scraper/qualify'), {
@@ -1317,9 +1336,14 @@ scraperRouter.get('/dashboard', (req, res) => {
           const crmBase = getAuthUrl('/outreach/prospects');
           const pid = data.prospect && data.prospect.id ? '&highlight=' + encodeURIComponent(data.prospect.id) : '';
           const crmHref = crmBase + (crmBase.includes('?') ? '&' : '?') + 't=' + Date.now() + pid;
-          const badgeLabel = data.alreadyExists ? 'Synced in CRM' : 'Added to CRM';
+          const badgeLabel = data.alreadyExists ? 'Synced in CRM' : data.syntheticEmail ? 'Added (Verify Email)' : 'Added to CRM';
           const leadTitle = (data.prospect && data.prospect.clinic_name) || (cachedLead && (cachedLead.clinicName || cachedLead.businessName)) || url;
-          showToast(badgeLabel, leadTitle + (data.alreadyExists ? ' synced cleanly in Pipeline CRM.' : ' added to Pipeline CRM.'), 'success');
+          const toastBody = data.alreadyExists
+            ? ' synced cleanly in Pipeline CRM.'
+            : data.syntheticEmail
+            ? ' added to CRM with synthetic info@ fallback — verify email before outreach.'
+            : ' added to Pipeline CRM.';
+          showToast(badgeLabel, leadTitle + toastBody, 'success');
           if (cachedLead) cachedLead.dbStatus = 'saved';
           window.__suregreetForceSavedUrls[forceKey] = data.alreadyExists ? 'synced' : 'saved';
           window.__suregreetForceSavedHrefs = window.__suregreetForceSavedHrefs || {};

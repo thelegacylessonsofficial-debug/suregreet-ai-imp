@@ -1,6 +1,12 @@
 import * as cheerio from 'cheerio';
 import { addProspect, getProspectById, updateProspect } from './outreachService.js';
-import { qualifyLead, HARD_BLOCKED_CHAIN_PATTERNS, getCityClimateProfile } from './qualifierService.js';
+import {
+  qualifyLead,
+  HARD_BLOCKED_CHAIN_PATTERNS,
+  getCityClimateProfile,
+  GENERIC_EMAIL_LOCALS,
+  hasLiveSchedulerInText,
+} from './qualifierService.js';
 import { getShortBusinessName, formatSalutation } from '../templates/outreachTemplates.js';
 
 const USER_AGENT =
@@ -66,17 +72,43 @@ const JUNK_EMAIL_DOMAINS = [
   'secureserver.net',
 ];
 
-const GENERIC_EMAIL_LOCALS = new Set([
-  'info', 'service', 'services', 'sales', 'office', 'support', 'contact', 'admin',
-  'help', 'hello', 'dispatch', 'billing', 'jobs', 'careers', 'team', 'general',
-  'mail', 'enquiries', 'inquiry', 'inquiries', 'appointment', 'appointments',
-  'estimating', 'webmaster', 'noreply', 'no-reply', 'customerservice', 'customercare',
-  'marketing', 'privacy', 'hvac', 'plumbing', 'roofing', 'electrical', 'schedule',
-  'quotes', 'quote', 'estimates', 'estimate', 'frontdesk', 'reception',
-]);
-
 // National PE mega-chains & franchises filtered by the Ownership Gate (shared with qualifierService)
 const PE_CHAIN_PATTERNS = HARD_BLOCKED_CHAIN_PATTERNS;
+
+/**
+ * SSRF guard blocking loopback, link-local metadata, private LAN ranges, and non-HTTP schemes.
+ */
+export function isSafePublicHttpUrl(inputUrl) {
+  if (!inputUrl) return false;
+  let candidate = String(inputUrl).trim();
+  if (!/^https?:\/\//i.test(candidate)) candidate = `https://${candidate}`;
+  try {
+    const parsed = new URL(candidate);
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return false;
+    const host = parsed.hostname.toLowerCase().replace(/^\[|\]$/g, '');
+    if (!host || !host.includes('.')) return false;
+    if (
+      host === 'localhost' ||
+      host.endsWith('.local') ||
+      host.endsWith('.internal') ||
+      host.endsWith('.localhost') ||
+      host === '::1' ||
+      host === '0.0.0.0' ||
+      host.startsWith('127.') ||
+      host.startsWith('10.') ||
+      host.startsWith('169.254.') ||
+      host.startsWith('192.168.') ||
+      /^172\.(1[6-9]|2\d|3[0-1])\./.test(host) ||
+      /^f[cd][0-9a-f]{2}:/i.test(host) ||
+      /^fe80:/i.test(host)
+    ) {
+      return false;
+    }
+    return true;
+  } catch (e) {
+    return false;
+  }
+}
 
 /**
  * Stream HTTP body up to `maxBytes` so bloated CMS pages cannot OOM the worker heap.
@@ -112,6 +144,7 @@ async function readBodyCapped(res, maxBytes) {
 }
 
 async function fetchHtml(url, timeoutMs = 4500, maxBytes = MAX_HTML_BYTES) {
+  if (!isSafePublicHttpUrl(url)) return null;
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
@@ -134,6 +167,7 @@ async function fetchHtml(url, timeoutMs = 4500, maxBytes = MAX_HTML_BYTES) {
 }
 
 async function fetchJinaFallback(url, timeoutMs = 6000) {
+  if (!isSafePublicHttpUrl(url)) return null;
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
@@ -162,9 +196,10 @@ export function normalizeUrl(inputUrl) {
   if (!/^https?:\/\//i.test(url)) url = `https://${url}`;
   try {
     const parsed = new URL(url);
-    return `${parsed.protocol}//${parsed.hostname}`;
+    const out = `${parsed.protocol}//${parsed.hostname}`;
+    return isSafePublicHttpUrl(out) ? out : '';
   } catch (e) {
-    return url;
+    return '';
   }
 }
 
@@ -203,10 +238,19 @@ function sanitizeEmail(email) {
   return clean;
 }
 
-function pickBestEmail(emailSet) {
+function pickBestEmail(emailSet, activeHost = '') {
   const arr = Array.from(emailSet);
   if (arr.length === 0) return null;
-  return arr.find((e) => !GENERIC_EMAIL_LOCALS.has(e.split('@')[0])) || arr[0];
+  const hostClean = String(activeHost || '').replace(/^www\./i, '').toLowerCase();
+  const isSameHost = (e) => hostClean && (e.endsWith(`@${hostClean}`) || e.endsWith(`.${hostClean}`));
+  const isPersonal = (e) => !GENERIC_EMAIL_LOCALS.has(e.split('@')[0]);
+
+  return (
+    arr.find((e) => isSameHost(e) && isPersonal(e)) ||
+    arr.find((e) => isPersonal(e)) ||
+    arr.find((e) => isSameHost(e)) ||
+    arr[0]
+  );
 }
 
 function cleanPhone(raw) {
@@ -281,10 +325,10 @@ function extractTradeOwnerName(visibleText, primaryEmail, jsonLdFounder = null) 
   if (jsonLdFounder) return `${jsonLdFounder} (Founder)`;
 
   if (visibleText) {
-    const stopWords = /^(of|the|our|and|company|business|service|services|team|board|group|management|homes|homeowners|rapid|family|operated|operators|operator|owned|owner|founder|today|since|local|customers|clients|warranty|repair|hvac|heating|cooling|air|plumbing|roofing|electric|electrical|mechanical|veteran|staff|technicians|precision|quality|comfort|premier|elite|north|south|east|west|central)$/i;
+    const stopWords = /^(of|the|our|and|company|business|service|services|team|board|group|management|homes|homeowners|rapid|family|operated|operators|operator|owned|owner|founder|today|since|local|customers|clients|warranty|repair|hvac|heating|cooling|air|plumbing|roofing|electric|electrical|mechanical|veteran|staff|technicians|precision|quality|comfort|premier|elite|north|south|east|west|central|manual|guide|day|club|program|financing|special|offer|discount|plan|agreement|care|satisfaction|policy|portal|login|page|reviews|testimonials|estimate|estimates|quote|quotes|dispatch|emergency|system|systems|division|department|office|center|biden|trump)$/i;
     const patterns = [
-      /\b(?:Owner|President|Founder|CEO|Founded\s+by|Owned\s+(?:and\s+operated\s+)?by|Operated\s+by|Started\s+by)\s*(?:[:\-–,]|\bis\b)?\s*([A-Z][a-z]{2,15}(?:\s+[A-Z][a-z]{2,15})?)\b/g,
-      /\b([A-Z][a-z]{2,15}\s+[A-Z][a-z]{2,15})\s*,\s*(?:Owner|Founder|President|Co-Founder|Master\s+(?:Plumber|Electrician|Technician))\b/g,
+      /\b(?:Owner|President|Founder|CEO|Founded\s+by|Owned\s+(?:and\s+operated\s+)?by|Operated\s+by|Started\s+by)\s*(?:[:\-–,]|\bis\b)\s*([A-Z][a-z]{2,14}\s+[A-Z][a-z]{2,14})\b/g,
+      /\b([A-Z][a-z]{2,14}\s+[A-Z][a-z]{2,14})\s*,\s*(?:Owner|Founder|President|Co-Founder|Master\s+(?:Plumber|Electrician|Technician))\b/g,
     ];
     for (const reg of patterns) {
       let m;
@@ -432,7 +476,19 @@ function parseDomSnapshot(html, activeUrl) {
   });
 
   const locLinkCount = $('a[href*="/locations/"], a[href*="/our-locations"], a[href*="/branches/"], a[href*="/offices/"]').length;
-  const hasHtmlFormTag = $('form').length > 0;
+  let hasHtmlFormTag = false;
+  $('form').each((_, el) => {
+    const $f = $(el);
+    const role = ($f.attr('role') || '').toLowerCase();
+    const attrs = `${$f.attr('class') || ''} ${$f.attr('id') || ''} ${$f.attr('action') || ''}`.toLowerCase();
+    if (role === 'search' || /\bsearch\b|\bsite-search\b|\bwp-block-search\b/.test(attrs)) return;
+    const inputs = $f.find('input:not([type="hidden"]):not([type="submit"]), textarea, select').length;
+    const hasLeadField =
+      $f.find('textarea, select, input[type="tel"], input[name*="phone" i], input[name*="name" i], input[name*="message" i], input[name*="service" i]').length > 0;
+    if (hasLeadField || inputs >= 2) {
+      hasHtmlFormTag = true;
+    }
+  });
 
   return {
     jsonLd,
@@ -550,14 +606,12 @@ export async function scrapeClinicWebsite(inputUrl, options = {}) {
   // Ad pixels, scheduling stack & form detection BEFORE freeing homepageHtml
   const rawHomeLower = (homepageHtml || '').toLowerCase();
   const stackMatches = (rawHomeLower + ' ' + visibleHomeText.toLowerCase()).match(
-    /(housecallpro\.com|getjobber\.com|clienthub\.getjobber|leadconnectorhq\.com|msgsndr\.com|gohighlevel|servicetitan\.com|scheduleengine|calendly\.com|cal\.com|calendar\.google\.com|outlook\.office365\.com|bookings\.microsoft\.com|avoca\.ai|smith\.ai|ruby\s+receptionists?)/g
+    /(housecallpro\.com|getjobber\.com|clienthub\.getjobber|leadconnectorhq\.com|msgsndr\.com|gohighlevel|servicetitan\.com|scheduleengine|calendly\.com|(?<![a-z0-9-])(?:app\.)?cal\.com(?![a-z0-9-])|calendar\.google\.com|outlook\.office365\.com|bookings\.microsoft\.com|avoca\.ai|smith\.ai|ruby\s+receptionists?)/g
   );
   const stackText = stackMatches ? Array.from(new Set(stackMatches)).join(' ') : '';
   const adSignals = detectAdPixels(homepageHtml || '', visibleHomeText);
-  const hasHtmlForm = Boolean(snap?.hasHtmlFormTag) || /wpcf7|wpforms|gform|gravityforms|elementor-form|hubspot-form|<form\b/i.test(homepageHtml || '');
-  const hasLiveSchedulerHome = /calendly\.com|acuityscheduling\.com|cal\.com|scheduleengine|servicetitan\.com\/web|housecallpro\.com\/book|jobber\.com/i.test(
-    (homepageHtml || '') + ' ' + visibleHomeText
-  );
+  let hasHtmlForm = Boolean(snap?.hasHtmlFormTag) || /wpcf7|wpforms|gform|gravityforms|elementor-form|hubspot-form/i.test(homepageHtml || '');
+  let hasLiveSchedulerHome = hasLiveSchedulerInText((homepageHtml || '') + ' ' + visibleHomeText);
 
   const rawEmails = new Set(snap?.emails || []);
   const rawPhones = new Set(snap?.phones || []);
@@ -594,19 +648,28 @@ export async function scrapeClinicWebsite(inputUrl, options = {}) {
   const subTargets = (snap?.subUrls?.length ? snap.subUrls : [`${activeUrl}/about/`]).slice(0, options.fast ? 1 : 2);
   homepageHtml = null; // Explicitly release large homepage string for GC!
 
-  // Subpage crawl ONLY if founder/email/reviews still missing
+  // Subpage crawl if founder/email/reviews missing OR form/hours still unverified
   let subVisibleText = '';
-  const needSubCrawl = (rawEmails.size === 0 || !jsonLd.founderName || !jsonLd.reviewCount) && dataSource === 'direct_html';
+  const needSubCrawl =
+    (rawEmails.size === 0 || !jsonLd.founderName || !jsonLd.reviewCount || (!hasHtmlForm && !hasLiveSchedulerHome) || !jsonLd.openingHours.length) &&
+    dataSource === 'direct_html';
   if (needSubCrawl && !options.skipSubCrawl && subTargets.length > 0) {
     const subResults = await Promise.all(subTargets.map((su) => fetchHtml(su, 2800, MAX_SUB_HTML_BYTES)));
     for (const subHtml of subResults) {
       if (!subHtml) continue;
       const subSnap = parseDomSnapshot(subHtml, activeUrl);
+      if (subSnap.hasHtmlFormTag || /wpcf7|wpforms|gform|gravityforms|elementor-form|hubspot-form/i.test(subHtml)) {
+        hasHtmlForm = true;
+      }
+      if (hasLiveSchedulerInText(subHtml)) {
+        hasLiveSchedulerHome = true;
+      }
       subSnap.emails.forEach((e) => rawEmails.add(e));
       subSnap.phones.forEach((p) => rawPhones.add(p));
       if (subSnap.jsonLd.reviewCount && !jsonLd.reviewCount) jsonLd.reviewCount = subSnap.jsonLd.reviewCount;
       if (subSnap.jsonLd.ratingValue && !jsonLd.ratingValue) jsonLd.ratingValue = subSnap.jsonLd.ratingValue;
       if (subSnap.jsonLd.founderName && !jsonLd.founderName) jsonLd.founderName = subSnap.jsonLd.founderName;
+      if (subSnap.jsonLd.openingHours?.length && !jsonLd.openingHours.length) jsonLd.openingHours.push(...subSnap.jsonLd.openingHours);
       const subEm = subHtml.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g);
       if (subEm) subEm.forEach((em) => { const c = sanitizeEmail(em); if (c) rawEmails.add(c); });
       subVisibleText += ' ' + extractVisibleText(subHtml).slice(0, 12_000);
@@ -627,7 +690,11 @@ export async function scrapeClinicWebsite(inputUrl, options = {}) {
   );
   let primaryTreatment = detectedTreatments[0] || (isTradeSite ? 'Emergency AC & Heating Repair' : 'Morpheus8');
 
-  const primaryEmail = pickBestEmail(rawEmails);
+  let activeHost = '';
+  try {
+    activeHost = new URL(activeUrl).hostname;
+  } catch (e) {}
+  const primaryEmail = pickBestEmail(rawEmails, activeHost);
   const primaryPhone = Array.from(rawPhones)[0] || null;
   const doctorName = isTradeSite
     ? extractTradeOwnerName(visibleText, primaryEmail, jsonLd.founderName) || `Owner / Operations Lead at ${clinicName}`
@@ -635,7 +702,7 @@ export async function scrapeClinicWebsite(inputUrl, options = {}) {
 
   let city = null;
   const locationMatch = visibleText.match(
-    /\b([A-Z][a-zA-Z\s]{2,20}),\s*(AL|AK|AZ|AR|CA|CO|CT|DE|FL|GA|HI|ID|IL|IN|IA|KS|KY|LA|ME|MD|MA|MI|MN|MS|MO|MT|NE|NV|NH|NJ|NM|NY|NC|ND|OH|OK|OR|PA|RI|SC|SD|TN|TX|UT|VT|VA|WA|WV|WI|WY)\b/
+    /\b([A-Z][a-z]{1,14}(?:\s+[A-Z][a-z]{1,14}){0,2}),\s*(AL|AK|AZ|AR|CA|CO|CT|DE|FL|GA|HI|ID|IL|IN|IA|KS|KY|LA|ME|MD|MA|MI|MN|MS|MO|MT|NE|NV|NH|NJ|NM|NY|NC|ND|OH|OK|OR|PA|RI|SC|SD|TN|TX|UT|VT|VA|WA|WV|WI|WY)\b/
   );
   if (locationMatch) city = `${locationMatch[1].trim()}, ${locationMatch[2]}`;
 
@@ -647,7 +714,7 @@ export async function scrapeClinicWebsite(inputUrl, options = {}) {
   }
 
   const multiLocation = detectMultiLocation(chainMatchHomepage ? 'our locations ' + visibleText : visibleText, locLinkCount, activeUrl, clinicName);
-  const hasLiveScheduler = hasLiveSchedulerHome || /calendly|acuityscheduling|cal\.com|servicetitan|housecallpro|jobber/i.test(visibleText);
+  const hasLiveScheduler = hasLiveSchedulerHome || hasLiveSchedulerInText(visibleText);
 
   return {
     success: true,
@@ -690,20 +757,17 @@ export async function scrapeAndIngestLead({
   const result = await scrapeClinicWebsite(url, { niche: nicheOverride || 'hvac', city: cityOverride });
   if (!result.success) return { success: false, error: result.error };
 
-  let finalEmail = result.email;
-  if (!finalEmail && result.phone && result.url) {
+  let finalEmail = result.email || null;
+  let syntheticEmail = false;
+  if (!finalEmail && force && result.url) {
     try {
       finalEmail = `info@${new URL(result.url).hostname.replace(/^www\./, '')}`;
+      syntheticEmail = true;
     } catch (e) {}
   }
 
-  if (!finalEmail) {
-    return {
-      success: false,
-      message: 'Scraped successfully, but no direct email or phone found on site.',
-      data: result,
-    };
-  }
+  const parsedMin = minScore !== undefined && minScore !== null && minScore !== '' ? Number(minScore) : 60;
+  const threshold = Number.isFinite(parsedMin) ? Math.min(Math.max(parsedMin, 0), 100) : 60;
 
   const qualification = qualifyLead(
     {
@@ -714,7 +778,7 @@ export async function scrapeAndIngestLead({
       doctorName: doctorOverride || result.doctorName,
     },
     { hasStaticForm: result.hasHtmlForm && !result.hasLiveScheduler },
-    Number(minScore) || 60
+    threshold
   );
 
   if (!qualification.qualified && !force) {
@@ -722,6 +786,16 @@ export async function scrapeAndIngestLead({
       success: false,
       disqualified: true,
       message: `Lead rejected (${qualification.score}/100 ${qualification.grade}): ${qualification.disqualifyReasons.join('; ')}`,
+      qualification,
+      scrapedData: result,
+    };
+  }
+
+  if (!finalEmail) {
+    return {
+      success: false,
+      noEmail: true,
+      message: 'Qualified locally, but no verified email found on site (phone/website available — use Force Add if needed).',
       qualification,
       scrapedData: result,
     };
