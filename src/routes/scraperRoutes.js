@@ -1018,6 +1018,16 @@ scraperRouter.get('/dashboard', (req, res) => {
       }
     }
 
+    function scheduleNextPoll(delayMs) {
+      if (pollTimer) {
+        clearTimeout(pollTimer);
+        pollTimer = null;
+      }
+      if (activeJobId) {
+        pollTimer = setTimeout(pollHuntStatus, delayMs);
+      }
+    }
+
     async function runAutonomousHuntClient() {
       if (activeJobId && pollTimer) return;
       const city = document.getElementById('huntCity').value.trim();
@@ -1081,11 +1091,13 @@ scraperRouter.get('/dashboard', (req, res) => {
         }
 
         activeJobId = data.job.jobId;
-        if (pollTimer) clearInterval(pollTimer);
-        pollTimer = setInterval(pollHuntStatus, 1200);
-        setTimeout(pollHuntStatus, 450);
+        scheduleNextPoll(1000);
       } catch (err) {
         activeJobId = null;
+        if (pollTimer) {
+          clearTimeout(pollTimer);
+          pollTimer = null;
+        }
         setHuntingUiState(false);
         document.getElementById('telemetryIcon').innerHTML = SVG.fail;
         document.getElementById('telemetryStage').textContent = 'Failed to launch hunt';
@@ -1101,10 +1113,32 @@ scraperRouter.get('/dashboard', (req, res) => {
           credentials: 'include',
           headers: getAuthHeaders(),
         });
-        const data = await res.json();
         if (pollJobId !== activeJobId) return;
+
+        if (res.status === 429 || res.status === 502 || res.status === 503) {
+          pollFailures += 1;
+          if (pollFailures >= 10) {
+            throw new Error('Server rate-limited polling (HTTP ' + res.status + '). Try refreshing.');
+          }
+          scheduleNextPoll(Math.min(8000, 3200 + pollFailures * 1000));
+          return;
+        }
+
+        const rawText = await res.text();
+        let data = null;
+        try {
+          data = JSON.parse(rawText);
+        } catch (_) {
+          pollFailures += 1;
+          if (pollFailures >= 8) {
+            throw new Error('Temporary proxy HTML response (HTTP ' + res.status + ').');
+          }
+          scheduleNextPoll(Math.min(7000, 3000 + pollFailures * 1000));
+          return;
+        }
+
         if (!res.ok || !data.success || !data.job) {
-          throw new Error(data.error || 'Status check failed (' + res.status + ')');
+          throw new Error((data && data.error) || 'Status check failed (' + res.status + ')');
         }
 
         pollFailures = 0;
@@ -1127,7 +1161,7 @@ scraperRouter.get('/dashboard', (req, res) => {
         }
 
         if (job.status === 'completed' || job.status === 'cancelled' || job.status === 'failed') {
-          clearInterval(pollTimer);
+          clearTimeout(pollTimer);
           pollTimer = null;
           activeJobId = null;
           setHuntingUiState(false);
@@ -1142,16 +1176,20 @@ scraperRouter.get('/dashboard', (req, res) => {
             document.getElementById('telemetryIcon').innerHTML = SVG.fail;
             showHuntError(job.error || 'Background job terminated with an error.');
           }
+        } else {
+          scheduleNextPoll(2500);
         }
       } catch (err) {
         pollFailures += 1;
-        if (pollFailures >= 4) {
-          clearInterval(pollTimer);
+        if (pollFailures >= 8) {
+          clearTimeout(pollTimer);
           pollTimer = null;
           activeJobId = null;
           setHuntingUiState(false);
           document.getElementById('telemetryIcon').innerHTML = SVG.fail;
           showHuntError('Lost connection while polling status: ' + err.message);
+        } else {
+          scheduleNextPoll(Math.min(7000, 2800 + pollFailures * 800));
         }
       }
     }
